@@ -74,7 +74,7 @@ void Subdomain::build_datatypes_() {
     int subsizes[3] = { n0, n1, n2 };
     subsizes[axis]  = 1;                  // one slab thick
 
-    // Send/recv slab positions
+    // Send/recv slab positions (kHaloWidth = 1)
     // - send-to-minus  : first interior plane along axis (index = kHaloWidth)
     // - recv-from-plus : top halo plane             (index = n_total - kHaloWidth)
     // - send-to-plus   : last interior plane        (index = n_total - 2*kHaloWidth)

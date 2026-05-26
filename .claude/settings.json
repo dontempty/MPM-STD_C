@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make)",
+      "Bash(make all)",
+      "Bash(make lib)",
+      "Bash(make tests)",
+      "Bash(make apps)",
+      "Bash(make info)",
+      "Bash(make clean)",
+      "Bash(make all-backends)",
+      "Bash(make BACKEND=cpu *)",
+      "Bash(make BACKEND=cuda *)",
+      "Bash(make PRECISION=single *)",
+      "Bash(make PRECISION=double *)",
+
+      "Bash(mkdir -p *)",
+      "Bash(squeue *)",
+      "Bash(nvidia-smi)",
+      "Bash(nvidia-smi *)"
+    ]
+  }
+}

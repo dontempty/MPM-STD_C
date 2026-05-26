@@ -1,7 +1,6 @@
 #pragma once
 
 #include "field/scalar_field.hpp"
-#include "field/vector_field.hpp"
 
 #include <memory>
 #include <string>
@@ -9,11 +8,14 @@
 
 namespace mpmstd::field {
 
-// Named storage for ScalarField / VectorField instances.
-// Each app's main.cpp adds the fields it needs and looks them up by name.
+// Named storage for all 3-D fields used by a simulation.
 //
-// add_*("name") returns a reference to the newly created field. Re-adding
-// the same name throws.
+// We follow the PaScaL_TCS convention: each velocity component (U, V, W) is
+// registered as its own ScalarField — the staggered MAC interpretation
+// (U on x-face, V on y-face, W on z-face) is encoded by the stencil helpers
+// that consume them, not by the storage type.
+//
+// Re-adding the same name throws.
 
 class FieldRegistry {
 public:
@@ -24,25 +26,19 @@ public:
   FieldRegistry& operator=(const FieldRegistry&) = delete;
 
   ScalarField& add_scalar(const std::string& name);
-  VectorField& add_vector(const std::string& name);
 
   bool has_scalar(const std::string& name) const;
-  bool has_vector(const std::string& name) const;
 
   ScalarField&       scalar(const std::string& name);
   const ScalarField& scalar(const std::string& name) const;
-  VectorField&       vector(const std::string& name);
-  const VectorField& vector(const std::string& name) const;
 
   // Iteration helpers (for IO / debug dumps).
   std::vector<std::string> scalar_names() const;
-  std::vector<std::string> vector_names() const;
 
 private:
   const parallel::mpi::Subdomain& sub_;
   parallel::Backend&              backend_;
   std::unordered_map<std::string, std::unique_ptr<ScalarField>> scalars_;
-  std::unordered_map<std::string, std::unique_ptr<VectorField>> vectors_;
 };
 
 } // namespace mpmstd::field

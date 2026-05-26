@@ -86,10 +86,21 @@ public:
 
 private:
   const MpiTopology& topo_;
-  std::array<int, 3> n_global_{};
-  std::array<int, 3> n_interior_{};
-  std::array<int, 3> n_total_{};
-  std::array<int, 3> offset_{};
+  std::array<int, 3> n_global_{};   // 시뮬레이션 전체 cell 개수
+  std::array<int, 3> n_interior_{}; // 각 subdomain이 담당하는 cell 개수 (ghost 미포함)
+  std::array<int, 3> n_total_{};    // ghost 포함 cell 개수
+  std::array<int, 3> offset_{};     // global 기준에서 local의 시작 지점 (ex: i_global = offset_[0] + i_local)
+  
+  //   전역:  [0 .. 49 | 50 .. 99]         ← n_global_[0] = 100
+  //         rank 0     rank 1
+
+  // rank 1 로컬 배열 (n_total_[0]=52):
+  //  idx:   0    1    2  ...  50    51
+  //        halo  내부 내부      내부  halo
+  //               ↑
+  //        offset_[0]=50 인 전역 셀
+  //        (n_interior_[0]=50 칸)
+
 
   // Per-axis derived datatypes: send/recv buffers of one full halo plane.
   // halo_type_[axis][side]: contiguous block of one halo slab in the row-major

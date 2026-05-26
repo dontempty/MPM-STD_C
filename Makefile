@@ -2,8 +2,8 @@ include Makefile.inc
 
 .PHONY: all lib apps tests clean info
 
-# Default: build library + tests (apps come online from M5)
-all: lib tests
+# Default: build library + tests + apps
+all: lib tests apps
 
 lib:
 	@$(MAKE) -C src
@@ -12,7 +12,7 @@ tests: lib
 	@$(MAKE) -C test
 
 apps: lib
-	@echo "(no apps yet — added at M5)"
+	@$(MAKE) -C apps/rbc
 
 clean:
 	@rm -rf build/

@@ -1,0 +1,63 @@
+# =============================================================================
+#  RBC (Rayleigh-Bénard Convection) — minimal demo input
+#  Run with: mpirun -np <N> ./build/cpu/bin/rbc apps/rbc/input.toml
+# =============================================================================
+
+[domain]
+Lx = 4.0
+Ly = 2.0
+Lz = 1.0
+
+[mesh]
+n1m = 32
+n2m = 32
+n3m = 16
+
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 1
+
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+
+[physics]
+Ra     = 100.0
+Pr     = 1.0
+DeltaT = 1.0
+
+# =============================================================================
+#  Boundary conditions
+# =============================================================================
+# Each axis is one of: "periodic", "dirichlet", "neumann", "wall".
+#
+#   periodic   → halo exchange handles everything; [bc.*] entries ignored.
+#   dirichlet  → every field Dirichlet 0 by default; overridable in [bc.*].
+#   neumann    → every field Neumann 0; values are always 0 (no [bc.*] entries).
+#   wall       → U, V, W, T Dirichlet 0 (overridable);  P Neumann 0 (fixed).
+#                This is the canonical kind for RBC / channel walls.
+
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+
+[bc.z.minus]
+T = -0.5
+
+[bc.z.plus]
+T = 0.5
+
+[time]
+t_start  = 0.0
+t_end    = 10.0
+dt_start = 0.05
+MaxCFL   = 1.0
+n_steps  = 10
