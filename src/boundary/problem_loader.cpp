@@ -153,6 +153,69 @@ Problem load_problem_from_config(const config::Config& cfg) {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // (4) 2nd-order Dirichlet ghost policy for T, U, V.
+  //
+  //     Default: antisymmetric ghost (ghost = 2*v_wall - phi_interior).
+  //     Overridable per face via [bc.<axis>.<side>] ghost = "zero".
+  //
+  //     Use "antisymmetric" (default) for DHVC / natural convection —
+  //     places the effective wall value exactly on the face (2nd order).
+  //
+  //     Use "zero" for sub-critical channel / Poiseuille flow —
+  //     antisymmetric adds extra nu/dz² damping that kills bypass transition
+  //     (see feedback memory: feedback_wall_bc_zero_ghost).
+  //
+  //     W keeps ZeroGhost regardless: its lower wall face sits at interior
+  //     index k=kHaloWidth (staggered MAC), handled by an explicit workaround
+  //     in the time loop that is incompatible with the antisymmetric fold.
+  // -----------------------------------------------------------------------
+  for (int a = 0; a < 3; ++a) {
+    for (int sidx = 0; sidx < 2; ++sidx) {
+      const Direction d = static_cast<Direction>(a);
+      const Side      s = static_cast<Side>(sidx);
+      auto set_antisymm = [](FaceBc& f) {
+        if (f.kind == BcKind::Dirichlet)
+          f.ghost_policy = GhostPolicy::Antisymmetric;
+      };
+      set_antisymm(p.T.face(d, s));
+      set_antisymm(p.U.face(d, s));
+      set_antisymm(p.V.face(d, s));
+      // p.W: keep ZeroGhost (stagger workaround in time loop)
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // (5) Per-face ghost policy override from [bc.<axis>.<side>] ghost = ...
+  //
+  //     "antisymmetric"  → GhostPolicy::Antisymmetric  (DHVC, default)
+  //     "zero"           → GhostPolicy::ZeroGhost       (channel flow)
+  // -----------------------------------------------------------------------
+  for (int a = 0; a < 3; ++a) {
+    for (int sidx = 0; sidx < 2; ++sidx) {
+      const Direction     d       = static_cast<Direction>(a);
+      const Side          s       = static_cast<Side>(sidx);
+      const std::string   section = std::string("bc.") + kAxisNames[a]
+                                  + "." + kSideNames[sidx];
+      if (!cfg.has(section, "ghost")) continue;
+
+      const std::string gp = cfg.get<std::string>(section, "ghost");
+      GhostPolicy policy{};
+      if      (gp == "zero")          policy = GhostPolicy::ZeroGhost;
+      else if (gp == "antisymmetric") policy = GhostPolicy::Antisymmetric;
+      else throw std::runtime_error(
+        "load_problem_from_config: unknown ghost policy '" + gp +
+        "' in [" + section + "] (expected 'zero' or 'antisymmetric')");
+
+      auto apply = [policy](FaceBc& f) {
+        if (f.kind == BcKind::Dirichlet) f.ghost_policy = policy;
+      };
+      apply(p.T.face(d, s));
+      apply(p.U.face(d, s));
+      apply(p.V.face(d, s));
+    }
+  }
+
   return p;
 }
 

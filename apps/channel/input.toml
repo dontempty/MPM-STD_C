@@ -1,0 +1,101 @@
+# =============================================================================
+#  Turbulent channel flow — small 64^3 smoke test (Re_b = 180, laminar regime)
+#
+#  Non-dimensionalisation: Ub = 1, H = 1 (half-channel), nu = 1/Re_b
+#
+#  x = streamwise (periodic)
+#  y = spanwise   (periodic)
+#  z = wall-normal (walls at z=0 and z=Lz, full channel Lz=2H)
+#
+#  Forcing: MASS_FLOW  → constant bulk velocity Ub=1 (dPdx adjusted each step)
+#           or PRESSURE_GRADIENT  → constant body force, dPdx = target_dPdx
+#
+#  Ghost policy for U/V walls: "zero" (avoids extra nu/dz^2 damping that kills
+#  bypass transition in sub-critical Re).
+#
+#  For Re_tau≈180 DNS validation use input_Re180.toml (256^3, nu=1/2857).
+#  Run:  mpirun -np N ./build/cpu/bin/channel apps/channel/input.toml
+# =============================================================================
+
+[domain]
+Lx = 6.2832    # 2*pi  (streamwise)
+Ly = 3.1416    # pi    (spanwise)
+Lz = 2.0       # full channel (H=1 half-channel)
+
+[mesh]
+n1m = 64
+n2m = 64
+n3m = 64
+
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 1
+
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0   # tanh-stretched wall-normal grid
+
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.0   # moderate stretching for Re_tau=180
+
+[physics]
+nu = 0.005556   # = 1/Re_b = 1/180  (smoke test, laminar regime)
+
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+
+# Zero-ghost for U/V at both walls (critical for sub-critical bypass transition).
+[bc.z.minus]
+ghost = "zero"
+
+[bc.z.plus]
+ghost = "zero"
+
+[thermal]
+enabled = 0     # isothermal channel: skip T solve
+
+# =============================================================================
+#  Channel forcing
+#  mode = "mass_flow"         → maintains bulk velocity = target_bulk_velocity
+#         "pressure_gradient" → constant body force magnitude = target_dPdx
+# =============================================================================
+[channel_forcing]
+mode = "mass_flow"
+target_bulk_velocity = 1.0    # Ub target (mass_flow)
+target_dPdx = 1.0             # |dP/dx| body-force magnitude (pressure_gradient)
+
+[time]
+t_start  = 0.0
+t_end    = 200.0
+dt_start = 0.005
+MaxCFL   = 0.5
+n_steps  = 100000
+
+[init]
+# Parabolic Poiseuille + 3-component perturbation to trigger bypass transition.
+# laminar_init pattern: noise→mean-subtract→add Poiseuille→bulk-normalize (Ub).
+u_ic_poiseuille = 1
+perturbation    = 0.05   # amplitude as fraction of Umax = 1.5*Ub
+
+# =============================================================================
+#  Output
+# =============================================================================
+[output]
+dir_restart    = "apps/channel/restart_out/"
+dir_stats      = "apps/channel/statistics/"
+dir_instant    = "apps/channel/instant/"
+nmonitor       = 100     # monitor print interval (steps)
+nstat_start    = 10000   # step to start stat accumulation
+nstat          = 1       # accumulate every nstat steps from nstat_start
+nout_stats     = 10000   # write stats file every nout_stats steps from nstat_start
+nout           = 50000   # 3D field dump interval (steps); 0 = disabled
+out_stats      = 1       # 1 = write stats files
+out_field      = 0       # 1 = write 3D field dumps
+continue_in    = 0       # 1 = restart from dir_restart/
+continue_out   = 1       # 1 = write restart files at stats cadence

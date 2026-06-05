@@ -31,6 +31,13 @@ public:
 
   virtual void solve_many_cyclic(real_t* A, real_t* B, real_t* C, real_t* D,
                                   int n_sys, int n_row) = 0;
+
+  // Optional: set spectral-radius coefficients before z-direction solve.
+  // Called by the ADI driver before solve_many on the wall-normal axis.
+  // Default no-op for backends that don't use filtering.
+  virtual void set_rho(const real_t* A, const real_t* B, const real_t* C,
+                        int n_sys) {}
+  virtual void set_eps_constant(double /*eps*/) {}
 };
 
 } // namespace mpmstd::linear_solver::tdma

@@ -39,12 +39,23 @@ public:
 
   const CartComm1D& axis(Direction d) const { return axis_[to_int(d)]; }
 
+  // comm_xz: sub-communicator containing all ranks with the same Y-coordinate
+  // (np1 * np3 ranks total). Used by the pressure-FFT pencil decomposition for
+  // the distributed z-TDMA over all X–Z process pairs.
+  MPI_Comm comm_xz() const { return comm_xz_; }
+  int      rank_xz() const { return rank_xz_; }
+  int      size_xz() const { return size_xz_; }
+
 private:
   MPI_Comm                cart_comm_ = MPI_COMM_NULL;
   std::array<int, 3>      dims_{};
   std::array<bool, 3>     periodic_{};
   std::array<int, 3>      coords_{};
   std::array<CartComm1D, 3> axis_{};
+
+  MPI_Comm comm_xz_ = MPI_COMM_NULL;
+  int      rank_xz_ = 0;
+  int      size_xz_ = 1;
 
   void build_axis_comm_(int axis);
 };

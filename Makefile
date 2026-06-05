@@ -13,6 +13,7 @@ tests: lib
 
 apps: lib
 	@$(MAKE) -C apps/rbc
+	@$(MAKE) -C apps/channel
 
 clean:
 	@rm -rf build/

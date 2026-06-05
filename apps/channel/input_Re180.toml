@@ -1,0 +1,92 @@
+# =============================================================================
+#  Turbulent channel flow — Re_tau ≈ 180 DNS validation  (fresh start)
+#
+#  Non-dimensionalisation: Ub = 1, H = 1 (half-channel), nu = 1/Re_b
+#    Re_b = 2857  →  nu = 1/2857 ≈ 3.504e-4  →  Re_tau ≈ 180
+#
+#  x = streamwise (periodic)
+#  y = spanwise   (periodic)
+#  z = wall-normal (walls at z=0 and z=Lz, full channel Lz=2H=2)
+#
+#  IC: Poiseuille + 5% random perturbation (laminar_init pattern).
+#  Statistics accumulation starts at step 20000 (t≈235, after transition).
+#
+#  Run:  mpirun -np 32 ./build/cpu/bin/channel apps/channel/input_Re180.toml
+#        (np1=4, np2=4, np3=2 — matches Filtered_TDMA PARA_INPUT.dat)
+# =============================================================================
+
+[domain]
+Lx = 12.56637061436  # 4*pi  (streamwise)
+Ly = 6.28318530718   # 2*pi  (spanwise, = H*Aspect2 = 2.0*pi)
+Lz = 2.0             # full channel height (H=1 half-channel)
+
+[mesh]
+n1m = 256
+n2m = 256
+n3m = 256
+
+[mpi]
+np1 = 4
+np2 = 4
+np3 = 2
+
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0   # tanh-stretched wall-normal grid
+
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 1.5   # matching Filtered_TDMA PARA_INPUT.dat
+
+[physics]
+nu = 3.5035035035035e-4   # = 1/2857  (bulk-based Re_b = 2857 → Re_tau ≈ 180)
+
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+
+[bc.z.minus]
+ghost = "antisymmetric"   # antisymmetric: correct wall-adjacent Laplacian; no-fold in ADI prevents extra damping
+
+[bc.z.plus]
+ghost = "antisymmetric"
+
+[thermal]
+enabled = 0   # isothermal channel: skip T solve
+
+[channel_forcing]
+mode = "mass_flow"
+target_bulk_velocity = 1.0    # Ub = 1 (matches Filtered_TDMA)
+target_dPdx = 0.0
+
+[time]
+t_start  = 0.0
+t_end    = 1000.0
+dt_start = 0.05     # upper cap on dt (matches Filtered_TDMA dtStart)
+MaxCFL   = 1.0
+n_steps  = 30000    # 20000 for transition + 10000 for statistics
+
+[init]
+# Poiseuille parabola + 3-component random perturbation (mean-subtracted, bulk-normalized).
+u_ic_poiseuille = 1
+perturbation    = 0.3    # 30% of Umax: finite-amplitude kick for sub-critical bypass transition
+
+# =============================================================================
+#  Output
+# =============================================================================
+[output]
+dir_restart    = "apps/channel/restart_out/"
+dir_stats      = "apps/channel/statistics/"
+dir_instant    = "apps/channel/instant/"
+nmonitor       = 1        # console/monitor print interval (matches Filtered_TDMA)
+nstat_start    = 20000    # start collecting stats after transition
+nstat          = 1        # accumulate every step
+nout_stats     = 10000    # write stats at step 30000 (10k samples)
+nout           = 30000    # 3D field dump at final step
+out_stats      = 1
+out_field      = 1
+continue_in    = 0        # fresh start from Poiseuille + perturbation
+continue_out   = 1        # write restart files at nout_stats cadence

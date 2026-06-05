@@ -11,15 +11,35 @@ namespace mpmstd::boundary {
 // For a constant BC we just capture a literal and ignore the args.
 using BcValueFn = std::function<real_t(real_t, real_t, real_t, real_t)>;
 
-// FaceBc is a small POD-ish struct: kind + value function.
+// Ghost-cell filling policy for Dirichlet faces.
+//
+//   ZeroGhost      ghost = v_wall  (1st-order; wall velocity, pressure)
+//   Antisymmetric  ghost = 2*v_wall - phi_interior  (2nd-order; temperature)
+//
+// Only Dirichlet faces use this; Neumann/Periodic ignore it.
+enum class GhostPolicy { ZeroGhost, Antisymmetric };
+
+constexpr const char* ghost_policy_name(GhostPolicy p) {
+  switch (p) {
+    case GhostPolicy::ZeroGhost:     return "zero";
+    case GhostPolicy::Antisymmetric: return "antisymmetric";
+  }
+  return "?";
+}
+
+// FaceBc is a small POD-ish struct: kind + value function + ghost policy.
 struct FaceBc {
-  BcKind    kind  = BcKind::Periodic;
-  BcValueFn value = constant(0.0);
+  BcKind      kind         = BcKind::Periodic;
+  BcValueFn   value        = constant(0.0);
+  GhostPolicy ghost_policy = GhostPolicy::ZeroGhost;
 
   // ----- helper factories (preferred over manual construction) -----
   static FaceBc periodic();
   static FaceBc dirichlet(real_t v);
   static FaceBc dirichlet(BcValueFn f);
+  // Antisymmetric ghost: ghost = 2*v_wall - phi_interior (2nd-order Dirichlet)
+  static FaceBc dirichlet_antisymm(real_t v);
+  static FaceBc dirichlet_antisymm(BcValueFn f);
   static FaceBc neumann(real_t v);
   static FaceBc neumann(BcValueFn f);
 

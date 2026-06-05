@@ -1,35 +1,26 @@
 // =============================================================================
-//  apps/rbc/main.cpp  —  Rayleigh-Bénard convection, SETUP-ONLY (no time loop)
-//
-//  This file is intentionally written top-to-bottom in plain procedural style
-//  so you can read it as a "tour" of the MPM-STD library.  Each numbered
-//  section corresponds to one module in src/.  The time loop is deferred
-//  until M5 (it will sit at the end of section 12).
+//  apps/rbc/main.cpp  —  Rayleigh-Bénard / DHVC convection
 //
 //  Run with:
 //      mpirun -np 1 build/cpu/bin/rbc apps/rbc/input.toml
-//
-//  Layer cake of dependencies (top-to-bottom in this file matches bottom-to-
-//  top in the dependency graph):
-//
-//      common  ──► parallel/mpi ──► parallel/backend
-//                          │
-//                          └──► grid
-//                                │
-//                                └──► field ──► boundary ──► linear_solver
 // =============================================================================
 
 #include "boundary/main.hpp"
 #include "common/main.hpp"
 #include "config/main.hpp"
+#include "equation/main.hpp"
+#include "equation/pressure/pressure_solver_factory.hpp"
 #include "field/main.hpp"
 #include "grid/main.hpp"
 #include "linear_solver/tdma/main.hpp"
 #include "parallel/main.hpp"
 #include "post/main.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <string>
 
 using namespace mpmstd;
@@ -39,23 +30,12 @@ int main(int argc, char** argv) {
 
   // -------------------------------------------------------------------------
   //  (1)  MPI startup.
-  //
-  //  MpiContext is RAII — the ctor calls MPI_Init_thread and the dtor calls
-  //  MPI_Finalize.  It also splits MPI_COMM_WORLD by node-shared memory to
-  //  get a node-local communicator; on the CUDA build that's used to bind
-  //  one MPI rank to one GPU.  On CPU build it's harmless.
   // -------------------------------------------------------------------------
   parallel::mpi::MpiContext mpi(&argc, &argv);
 
 
   // -------------------------------------------------------------------------
   //  (2)  Logger + config file.
-  //
-  //  Logger::init binds the world rank.  Only rank 0 actually writes; all
-  //  other ranks ignore log calls silently.
-  //
-  //  Config::load parses an INI-style key/value file.  Missing keys throw,
-  //  unless you use the get_or<T>(...) variant with a default.
   // -------------------------------------------------------------------------
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
 
@@ -66,41 +46,25 @@ int main(int argc, char** argv) {
 
   // -------------------------------------------------------------------------
   //  (3)  Cartesian MPI topology.
-  //
-  //  Reads (np1, np2, np3) from [mpi].  The product must equal the world
-  //  size; otherwise MpiTopology's ctor throws.
-  //
-  //  periodic[]:  x and y are periodic (typical RBC), z is non-periodic
-  //               because it holds the two thermal walls.
-  //
-  //  Internally MpiTopology builds:
-  //    * the 3D Cartesian comm,
-  //    * three 1-D axis sub-comms (used by TDMA and halo exchange),
-  //    * neighbor ranks via MPI_Cart_shift (MPI_PROC_NULL at non-periodic
-  //      global faces).
   // -------------------------------------------------------------------------
   std::array<int, 3> dims = {
     cfg.get<int>("mpi", "np1"),
     cfg.get<int>("mpi", "np2"),
     cfg.get<int>("mpi", "np3"),
   };
-  std::array<bool, 3> periodic = { true, true, false };
+  auto axis_to_periodic = [](const std::string& s) -> bool {
+    return s == "periodic";
+  };
+  std::array<bool, 3> periodic = {
+    axis_to_periodic(cfg.get_or<std::string>("topology", "x", "periodic")),
+    axis_to_periodic(cfg.get_or<std::string>("topology", "y", "periodic")),
+    axis_to_periodic(cfg.get_or<std::string>("topology", "z", "periodic")),
+  };
   parallel::mpi::MpiTopology topo(mpi, dims, periodic);
 
 
   // -------------------------------------------------------------------------
   //  (4)  Subdomain decomposition.
-  //
-  //  n_global = interior cell counts in each axis.  Subdomain uses para_range
-  //  (matching PaScaL_TDMA_C) to split them across the axis sub-comms; its
-  //  state includes:
-  //
-  //      n_interior(d) : local interior cell count along d
-  //      n_total(d)    : n_interior(d) + 2 * kHaloWidth   (halos included)
-  //      global_offset(d) : index of the first local interior cell in global
-  //
-  //  Subdomain also builds the MPI derived datatypes used by exchange_halo()
-  //  and the post::restart_io routines.
   // -------------------------------------------------------------------------
   std::array<int, 3> n_global = {
     cfg.get<int>("mesh", "n1m"),
@@ -112,18 +76,6 @@ int main(int argc, char** argv) {
 
   // -------------------------------------------------------------------------
   //  (5)  Grid (per-axis coordinates + metrics).
-  //
-  //  For each axis we pass:
-  //      n_global, length, stretch kind, gamma (tanh parameter)
-  //
-  //  Grid::build_axis_ generates the global face coordinates, then slices
-  //  out the local-rank portion (interior + halos) into:
-  //      xf[d] : face coordinates  (size n_total(d) + 1)
-  //      xc[d] : cell-center coords (size n_total(d))
-  //      dx[d] : cell widths       (size n_total(d))
-  //      dmx[d]: face-to-face dist (size n_total(d))
-  //
-  //  Stencil helpers in field/stencil/ take dx, dmx and field arrays.
   // -------------------------------------------------------------------------
   std::array<grid::AxisConfig, 3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -148,47 +100,24 @@ int main(int argc, char** argv) {
 
   // -------------------------------------------------------------------------
   //  (6)  Problem  =  Topology + per-field BC table.
-  //
-  //  load_problem_from_config() reads:
-  //      [topology]      x/y/z = "periodic" | "non_periodic"
-  //      [bc.<a>.<s>]    Dirichlet values for U, V, W, T
-  //                       (P is always Neumann 0, Periodic faces auto.)
-  //
-  //  Missing Dirichlet entries default to 0 — see problem_loader.hpp.
-  //  validate() throws if face periodicity disagrees with axis topology.
   // -------------------------------------------------------------------------
   boundary::Problem problem = boundary::load_problem_from_config(cfg);
   problem.validate();
 
 
   // -------------------------------------------------------------------------
-  //  (7)  Backend  =  memory + stream abstraction.
-  //
-  //  make_default_backend() returns a CpuBackend on the CPU build and (later)
-  //  a CudaBackend on BACKEND=cuda.  Past memory ownership the backend is
-  //  intentionally thin — kernel dispatch happens by which .cpp/.cu the
-  //  build system selects, not by virtual dispatch.
+  //  (7)  Backend.
   // -------------------------------------------------------------------------
   auto backend = parallel::make_default_backend();
 
 
   // -------------------------------------------------------------------------
-  //  (8)  FieldRegistry  =  named storage for all 3-D arrays.
-  //
-  //  Following the PaScaL_TCS convention, every velocity component (U, V, W)
-  //  is its own ScalarField. The staggered MAC interpretation —
-  //  U on the x-face, V on the y-face, W on the z-face — is encoded by the
-  //  stencil helpers that consume the arrays, not by the storage type.
-  //  All arrays share the same (n_total) shape (see Report/07).
-  //
-  //  dU, dV, dW are the per-step velocity increments used by the momentum
-  //  predictor; we pre-allocate them once so the future time loop can reuse
-  //  the buffers every step.
+  //  (8)  FieldRegistry.
   // -------------------------------------------------------------------------
   field::FieldRegistry fields(sub, *backend);
-  auto& U  = fields.add_scalar("U");   // x-velocity on FaceX
-  auto& V  = fields.add_scalar("V");   // y-velocity on FaceY
-  auto& W  = fields.add_scalar("W");   // z-velocity on FaceZ
+  auto& U  = fields.add_scalar("U");
+  auto& V  = fields.add_scalar("V");
+  auto& W  = fields.add_scalar("W");
   auto& dU = fields.add_scalar("dU");
   auto& dV = fields.add_scalar("dV");
   auto& dW = fields.add_scalar("dW");
@@ -199,57 +128,57 @@ int main(int argc, char** argv) {
 
   // -------------------------------------------------------------------------
   //  (9)  BoundaryApplier.
-  //
-  //  Owns a reference to `problem` and does two things:
-  //
-  //    apply_ghost(field, FieldBoundary, t)
-  //        Fills ghost cells on global boundary faces only (Periodic faces
-  //        are no-op — halo exchange handles them via MPI_Cart wrap-around).
-  //
-  //    modify_tdma_row(direction, fbc, A, B, C, D, n_sys, n_row)
-  //        Will be implemented in M3 when the momentum solver starts
-  //        building tridiagonal systems; for now it throws if called.
   // -------------------------------------------------------------------------
   boundary::BoundaryApplier bc(problem);
 
 
   // -------------------------------------------------------------------------
-  //  (10) TdmaRegistry  =  one TDMA solver per axis.
-  //
-  //  Wraps PaScaL_TDMA_C.  Each axis gets its own plan, lazily cached by
-  //  n_sys, so the same registry serves every ADI stage across the whole
-  //  time loop.  We don't call solve_*() in this file yet — the equation
-  //  modules will (M2 thermal, M3 momentum, M4 pressure).
+  //  (10) TdmaRegistry.
   // -------------------------------------------------------------------------
   auto tdma = linear_solver::tdma::TdmaRegistry::make_default(topo);
 
 
   // -------------------------------------------------------------------------
-  //  (11) Initial conditions.
+  //  (11) Physics constants.
+  // -------------------------------------------------------------------------
+  const double Ra      = cfg.get<double>("physics", "Ra");
+  const double Pr      = cfg.get<double>("physics", "Pr");
+  const double nu      = std::sqrt(Pr  / Ra);
+  const double alpha_T = std::sqrt(1.0 / (Ra * Pr));
+
+
+  // -------------------------------------------------------------------------
+  //  (12) Initial conditions.
   //
-  //  For RBC at rest:
-  //      U, V, W   = 0
-  //      P, dP     = 0
-  //      T         = linear conductive profile  T_hot + (T_cold-T_hot)*z/Lz
-  //
-  //  In a real run we'd add a small velocity perturbation to break symmetry
-  //  (otherwise the conductive state is a fixed point of the equations).
-  //  Here we keep it simple — the time loop in M5 will optionally add a
-  //  perturbation.
+  //  [init] u_ic_dhvc = 1: start from analytical DHVC steady state.
+  //  Bypasses the O(n²) CN transient from U=0 for spatial EOC studies.
   // -------------------------------------------------------------------------
   U.fill_host(0.0);   V.fill_host(0.0);   W.fill_host(0.0);
   dU.fill_host(0.0);  dV.fill_host(0.0);  dW.fill_host(0.0);
   P.fill_host(0.0);
   dP.fill_host(0.0);
 
-  // Linear conductive temperature profile between the two z-wall Dirichlet
-  // values that were loaded into `problem`.  Reading from the FaceBc objects
-  // makes `problem` the single source of truth for wall temperatures.
+  if (cfg.get_or<int>("init", "u_ic_dhvc", 0)) {
+    const double Lz_ = cfg.get<double>("domain", "Lz");
+    const auto&  zc_ = g.xc(Direction::Z);
+    const int n1_ = sub.n_total()[0];
+    const int n2_ = sub.n_total()[1];
+    const int n3_ = sub.n_total()[2];
+    for (int i = 0; i < n1_; ++i)
+      for (int j = 0; j < n2_; ++j)
+        for (int k = 0; k < n3_; ++k) {
+          const double z_ = zc_[k];
+          U.host_at(i, j, k) = static_cast<real_t>(
+              z_ * (2.0*z_/Lz_ - 1.0) * (z_/Lz_ - 1.0) / (12.0 * nu));
+        }
+  }
+
+  // Linear conductive temperature profile.
   {
     const double Lz      = cfg.get<double>("domain", "Lz");
     const double T_minus = problem.T.face(Direction::Z, Side::Minus).value(0, 0, 0, 0);
     const double T_plus  = problem.T.face(Direction::Z, Side::Plus ).value(0, 0, 0, 0);
-    const auto&  zc      = g.xc(Direction::Z);   // cell-center z coordinates
+    const auto&  zc      = g.xc(Direction::Z);
 
     const int n1 = sub.n_total()[0];
     const int n2 = sub.n_total()[1];
@@ -257,34 +186,19 @@ int main(int argc, char** argv) {
     for (int i = 0; i < n1; ++i)
       for (int j = 0; j < n2; ++j)
         for (int k = 0; k < n3; ++k) {
-          const double frac = zc[k] / Lz;       // 0 at lower wall, 1 at upper
+          const double frac = zc[k] / Lz;
           T.host_at(i, j, k) = T_minus + (T_plus - T_minus) * frac;
         }
   }
 
 
   // -------------------------------------------------------------------------
-  //  (12) Halo exchange + boundary fill  (twice the same pattern: first MPI,
-  //       then global walls).
-  //
-  //  Order matters:
-  //    [a]  exchange_halo()   fills interior rank-rank interface halos AND
-  //                            Periodic wrap-around halos.
-  //    [b]  apply_ghost(...)  fills global boundary halos (Dirichlet/Neumann).
-  //
-  //  After this pair of calls, every field has well-defined values in every
-  //  cell — including all halos — and is ready for the first stencil
-  //  evaluation in the time loop.
+  //  (13) Halo exchange + boundary fill.
   // -------------------------------------------------------------------------
-  // --- [a] velocity (3 separate scalars: U, V, W) ---
   U.exchange_halo();  bc.apply_ghost(U, problem.U);
   V.exchange_halo();  bc.apply_ghost(V, problem.V);
   W.exchange_halo();  bc.apply_ghost(W, problem.W);
-
-  // --- [b] pressure ---
   P.exchange_halo();  bc.apply_ghost(P, problem.P);
-
-  // --- [c] temperature ---
   T.exchange_halo();  bc.apply_ghost(T, problem.T);
 
 
@@ -303,56 +217,239 @@ int main(int argc, char** argv) {
               << "  domain L   : " << cfg.get<double>("domain", "Lx") << " x "
                                    << cfg.get<double>("domain", "Ly") << " x "
                                    << cfg.get<double>("domain", "Lz") << "\n"
-              << "  Ra / Pr    : " << cfg.get<double>("physics", "Ra")
-                                   << " / " << cfg.get<double>("physics", "Pr") << "\n"
+              << "  Ra / Pr    : " << Ra << " / " << Pr << "\n"
+              << "  nu / alpha : " << nu << " / " << alpha_T << "\n"
               << "  T walls    : "
               << problem.T.face(Direction::Z, Side::Minus).value(0,0,0,0) << " (-z) , "
               << problem.T.face(Direction::Z, Side::Plus ).value(0,0,0,0) << " (+z)\n"
-              << "  U walls    : "
-              << problem.U.face(Direction::Z, Side::Minus).value(0,0,0,0) << " (-z) , "
-              << problem.U.face(Direction::Z, Side::Plus ).value(0,0,0,0) << " (+z)\n"
               << "  U.kind ±z  : "
               << boundary::bc_kind_name(problem.U.face(Direction::Z, Side::Minus).kind) << " / "
               << boundary::bc_kind_name(problem.U.face(Direction::Z, Side::Plus ).kind) << "\n"
-              << "  P.kind ±z  : "
-              << boundary::bc_kind_name(problem.P.face(Direction::Z, Side::Minus).kind) << " / "
-              << boundary::bc_kind_name(problem.P.face(Direction::Z, Side::Plus ).kind) << "\n"
-              << "  scalars    :";
-    for (auto& n : fields.scalar_names()) std::cout << " " << n;
-    std::cout << "\n  wall axis  : "
+              << "  wall axis  : "
               << (wax ? direction_name(wax.value()) : "(ambiguous)") << "\n"
               << "  sweep ord  : "
               << direction_name(so[0]) << " -> "
               << direction_name(so[1]) << " -> "
-              << direction_name(so[2]) << "\n";
-
-    // Print a 1-D temperature slice through the centre to confirm the
-    // conductive profile is correct.
-    std::cout << "\n  T(x_mid, y_mid, z):";
-    const int n3 = sub.n_total()[2];
-    const int im = sub.n_total()[0] / 2;
-    const int jm = sub.n_total()[1] / 2;
-    for (int k = kHaloWidth; k < n3 - kHaloWidth; ++k)
-      std::cout << "  " << T.host_at(im, jm, k);
-    std::cout << "\n";
-
-    std::cout << "\n[ next:  time loop  (added in milestone M5) ]\n\n";
+              << direction_name(so[2]) << "\n\n";
   }
 
 
   // -------------------------------------------------------------------------
-  //  (12') TIME LOOP would start here in M5.
+  //  TIME LOOP
   //
-  //      while (time < t_end) {
-  //          1. thermal solver  (M2)        T^{n+1}
-  //          2. momentum solver (M3)        dU, then U* = U + dU
-  //          3. pressure solver (M4)        dP, then U^{n+1} = U* - dt grad dP
-  //          4. plugins / stats / io
-  //          5. dt = CFL controller
-  //      }
-  //
-  //  None of those exist yet — this file ends here.
+  //  DHVC free-fall scaling: ν = sqrt(Pr/Ra), α_T = 1/sqrt(Ra·Pr)
+  //  Boussinesq buoyancy on U:  f_x = T
   // -------------------------------------------------------------------------
+  const double t_start = cfg.get_or<double>("time", "t_start",  0.0);
+  const double t_end   = cfg.get<double>("time", "t_end");
+  const double MaxCFL  = cfg.get_or<double>("time", "MaxCFL",   1.0);
+  const int    n_steps = cfg.get_or<int>   ("time", "n_steps",  std::numeric_limits<int>::max());
+
+  // --- Thermal equation ------------------------------------------------
+  equation::scalar::ScalarTraits T_traits;
+  T_traits.name            = "T";
+  T_traits.diffusivity     = static_cast<real_t>(alpha_T);
+  T_traits.with_convection = true;
+
+  equation::scalar::ScalarEquation thermal_eq(
+      T_traits, g, sub, fields, problem, problem.T, *tdma, bc);
+
+  // --- Momentum equations (U, V, W) ------------------------------------
+  equation::momentum::MomentumTraits U_traits, V_traits, W_traits;
+  U_traits.name            = "U";
+  U_traits.viscosity       = static_cast<real_t>(nu);
+  U_traits.with_convection = true;
+  U_traits.source_name     = "T";   // Boussinesq buoyancy: f_x = T
+
+  V_traits.name            = "V";
+  V_traits.viscosity       = static_cast<real_t>(nu);
+  V_traits.with_convection = true;
+
+  W_traits.name            = "W";
+  W_traits.viscosity       = static_cast<real_t>(nu);
+  W_traits.with_convection = true;
+
+  equation::momentum::MomentumEquation mom_U(
+      U_traits, g, sub, fields, problem, problem.U, *tdma, bc);
+  equation::momentum::MomentumEquation mom_V(
+      V_traits, g, sub, fields, problem, problem.V, *tdma, bc);
+  equation::momentum::MomentumEquation mom_W(
+      W_traits, g, sub, fields, problem, problem.W, *tdma, bc);
+
+  // --- Pressure solver -------------------------------------------------
+  auto pressure_solver = equation::pressure::make_pressure_solver(
+      g, sub, fields, problem, *tdma, bc);
+
+  // --- CFL helper ------------------------------------------------------
+  auto compute_max_cfl = [&](real_t dt) -> double {
+    const int h  = kHaloWidth;
+    const int n1 = sub.n_total()[0];
+    const int n2 = sub.n_total()[1];
+    const int n3 = sub.n_total()[2];
+
+    const real_t* u   = fields.scalar("U").host_ptr();
+    const real_t* v   = fields.scalar("V").host_ptr();
+    const real_t* w   = fields.scalar("W").host_ptr();
+    const real_t* dx1 = g.dx_ptr(Direction::X);
+    const real_t* dx2 = g.dx_ptr(Direction::Y);
+    const real_t* dx3 = g.dx_ptr(Direction::Z);
+
+    double local_max = 1e-20;
+    for (int i = h; i < n1 - h; ++i)
+      for (int j = h; j < n2 - h; ++j)
+        for (int k = h; k < n3 - h; ++k) {
+          const int p = (i * n2 + j) * n3 + k;
+          const double c = (std::abs(static_cast<double>(u[p])) / dx1[i]
+                          + std::abs(static_cast<double>(v[p])) / dx2[j]
+                          + std::abs(static_cast<double>(w[p])) / dx3[k]);
+          if (c > local_max) local_max = c;
+        }
+
+    double global_max = local_max;
+    MPI_Allreduce(&local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX,
+                  topo.cart_comm());
+    return global_max * static_cast<double>(dt);
+  };
+
+  // --- Divergence check ------------------------------------------------
+  auto max_divergence = [&]() -> double {
+    const int h  = kHaloWidth;
+    const int n1 = sub.n_total()[0];
+    const int n2 = sub.n_total()[1];
+    const int n3 = sub.n_total()[2];
+
+    const real_t* u   = fields.scalar("U").host_ptr();
+    const real_t* v   = fields.scalar("V").host_ptr();
+    const real_t* w   = fields.scalar("W").host_ptr();
+    const real_t* dx1 = g.dx_ptr(Direction::X);
+    const real_t* dx2 = g.dx_ptr(Direction::Y);
+    const real_t* dx3 = g.dx_ptr(Direction::Z);
+
+    double local_max = 0.0;
+    for (int i = h; i < n1 - h; ++i)
+      for (int j = h; j < n2 - h; ++j)
+        for (int k = h; k < n3 - h; ++k) {
+          const int p   = (i * n2 + j) * n3 + k;
+          const int pip = ((i+1)*n2 + j) * n3 + k;
+          const int pjp = (i * n2 + j+1) * n3 + k;
+          const int pkp = (i * n2 + j) * n3 + k+1;
+          const double div = (u[pip] - u[p]) / dx1[i]
+                           + (v[pjp] - v[p]) / dx2[j]
+                           + (w[pkp] - w[p]) / dx3[k];
+          const double adiv = std::abs(div);
+          if (adiv > local_max) local_max = adiv;
+        }
+
+    double global_max = local_max;
+    MPI_Allreduce(&local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX,
+                  topo.cart_comm());
+    return global_max;
+  };
+
+  // --- Time loop -------------------------------------------------------
+  real_t dt   = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.05));
+  double time = t_start;
+  int    step = 0;
+
+  if (mpi.is_root()) {
+    std::cout << "=== time loop start  t_end=" << t_end
+              << "  n_steps=" << n_steps << " ===\n" << std::flush;
+  }
+
+  while (time < t_end && step < n_steps) {
+
+    // 1. Thermal: T^n → T^{n+1}
+    thermal_eq.step(dt);
+
+    // 2. Momentum predictor
+    mom_U.step(dt);
+    mom_V.step(dt);
+    mom_W.step(dt);
+
+    // W wall face at interior index k=h: enforce no-penetration explicitly.
+    {
+      const int n1t = sub.n_total()[0], n2t = sub.n_total()[1], n3t = sub.n_total()[2];
+      const int h   = kHaloWidth;
+      real_t* w = fields.scalar("W").host_ptr();
+      const bool lower_wall = (sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL);
+      const bool upper_wall = (sub.topology().axis(Direction::Z).east_rank == MPI_PROC_NULL);
+      if (lower_wall)
+        for (int i = 0; i < n1t; ++i)
+          for (int j = 0; j < n2t; ++j)
+            w[(i * n2t + j) * n3t + h] = real_t{0};
+      if (upper_wall)
+        for (int i = 0; i < n1t; ++i)
+          for (int j = 0; j < n2t; ++j)
+            w[(i * n2t + j) * n3t + (n3t - h)] = real_t{0};
+    }
+
+    // 3. Pressure + projection
+    pressure_solver->solve(dt, fields.scalar("U"), fields.scalar("V"),
+                                fields.scalar("W"), fields.scalar("P"));
+
+    time += static_cast<double>(dt);
+    ++step;
+
+    // 4. Diagnostics
+    if (mpi.is_root()) {
+      const double div = max_divergence();
+      const double cfl = compute_max_cfl(dt);
+      std::cout << "  step " << step
+                << "  t=" << time
+                << "  dt=" << static_cast<double>(dt)
+                << "  CFL=" << cfl
+                << "  div=" << div
+                << "\n" << std::flush;
+    }
+
+    // 5. CFL-based dt update (20% growth cap)
+    {
+      const double speed_sum = compute_max_cfl(real_t{1.0});
+      if (speed_sum > 1e-14) {
+        const real_t dt_cfl = static_cast<real_t>(MaxCFL / speed_sum);
+        dt = std::min(dt_cfl, static_cast<real_t>(1.2) * dt);
+      }
+    }
+  }
+
+  if (mpi.is_root()) {
+    std::cout << "\n=== time loop complete: " << step << " steps, t=" << time << " ===\n\n";
+  }
+
+  // Binary dump for PaScaL_TCS / EOC comparison.
+  // Layout: outer=stream(X), middle=wall(Z), inner=span(Y)
+  if (mpi.is_root()) {
+    const int h   = kHaloWidth;
+    const int n2t = sub.n_total()[1];
+    const int n3t = sub.n_total()[2];
+    const int n1m = sub.n_interior()[0];
+    const int n2m = sub.n_interior()[1];
+    const int n3m = sub.n_interior()[2];
+
+    const real_t* t = fields.scalar("T").host_ptr();
+    FILE* f = std::fopen("dump_mpm_T.bin", "wb");
+    for (int ii = 0; ii < n1m; ++ii)
+      for (int kk = 0; kk < n3m; ++kk)
+        for (int jj = 0; jj < n2m; ++jj) {
+          double v = static_cast<double>(
+              t[(ii + h) * n2t * n3t + (jj + h) * n3t + (kk + h)]);
+          std::fwrite(&v, sizeof(double), 1, f);
+        }
+    std::fclose(f);
+    std::cout << "Wrote dump_mpm_T.bin  (" << n1m << "x" << n3m << "x" << n2m << " doubles)\n";
+
+    const real_t* u = fields.scalar("U").host_ptr();
+    FILE* fu = std::fopen("dump_mpm_U.bin", "wb");
+    for (int ii = 0; ii < n1m; ++ii)
+      for (int kk = 0; kk < n3m; ++kk)
+        for (int jj = 0; jj < n2m; ++jj) {
+          double v = static_cast<double>(
+              u[(ii + h) * n2t * n3t + (jj + h) * n3t + (kk + h)]);
+          std::fwrite(&v, sizeof(double), 1, fu);
+        }
+    std::fclose(fu);
+    std::cout << "Wrote dump_mpm_U.bin  (" << n1m << "x" << n3m << "x" << n2m << " doubles)\n";
+  }
 
   return 0;
 }

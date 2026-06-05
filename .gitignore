@@ -1,0 +1,23 @@
+# ── Build artifacts ──────────────────────────────────────────────
+build/
+*.o
+*.mod
+*.a
+
+# ── SLURM logs ───────────────────────────────────────────────────
+log/
+*.out
+*.err
+
+# ── Run outputs / results (large binary fields, restart, stats) ──
+# Field dumps, restart checkpoints, statistics, monitor files.
+apps/*/instant/
+apps/*/restart_in/
+apps/*/restart_out/
+apps/*/statistics/
+*.bin
+*.plt
+
+# editor / misc
+*~
+.DS_Store

@@ -1,5 +1,5 @@
 #pragma once
 
 #include "equation/scalar/main.hpp"
-// momentum/main.hpp added in M3.
-// pressure/main.hpp added in M4.
+#include "equation/momentum/main.hpp"
+#include "equation/pressure/main.hpp"

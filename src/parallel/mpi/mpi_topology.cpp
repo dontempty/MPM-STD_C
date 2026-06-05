@@ -37,9 +37,25 @@ MpiTopology::MpiTopology(const MpiContext& ctx,
   for (int a = 0; a < 3; ++a) {
     build_axis_comm_(a);
   }
+
+  // comm_xz: all ranks with the same Y-coordinate (np1 * np3 ranks).
+  // color = coords_[1]  → groups all (ix, *, iz) with the same iy.
+  // key   = coords_[0] + dims_[0] * coords_[2]
+  //       → sequential ordering so rank_xz = r0 + np1*r2
+  //       → global z-start in I-pencil = rank_xz * n3_I
+  {
+    const int color = coords_[1];
+    const int key   = coords_[0] + dims_[0] * coords_[2];
+    MPI_Comm_split(cart_comm_, color, key, &comm_xz_);
+    MPI_Comm_rank(comm_xz_, &rank_xz_);
+    MPI_Comm_size(comm_xz_, &size_xz_);
+  }
 }
 
 MpiTopology::~MpiTopology() {
+  if (comm_xz_ != MPI_COMM_NULL) {
+    MPI_Comm_free(&comm_xz_);
+  }
   for (auto& a : axis_) {
     if (a.comm != MPI_COMM_NULL) {
       MPI_Comm_free(&a.comm);

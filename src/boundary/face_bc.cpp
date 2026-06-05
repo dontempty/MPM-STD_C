@@ -10,10 +10,16 @@ FaceBc FaceBc::periodic() {
   return FaceBc{BcKind::Periodic, constant(0.0)};
 }
 FaceBc FaceBc::dirichlet(real_t v) {
-  return FaceBc{BcKind::Dirichlet, constant(v)};
+  return FaceBc{BcKind::Dirichlet, constant(v), GhostPolicy::ZeroGhost};
 }
 FaceBc FaceBc::dirichlet(BcValueFn f) {
-  return FaceBc{BcKind::Dirichlet, std::move(f)};
+  return FaceBc{BcKind::Dirichlet, std::move(f), GhostPolicy::ZeroGhost};
+}
+FaceBc FaceBc::dirichlet_antisymm(real_t v) {
+  return FaceBc{BcKind::Dirichlet, constant(v), GhostPolicy::Antisymmetric};
+}
+FaceBc FaceBc::dirichlet_antisymm(BcValueFn f) {
+  return FaceBc{BcKind::Dirichlet, std::move(f), GhostPolicy::Antisymmetric};
 }
 FaceBc FaceBc::neumann(real_t v) {
   return FaceBc{BcKind::Neumann, constant(v)};

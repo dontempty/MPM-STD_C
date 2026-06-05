@@ -17,6 +17,10 @@ PASCAL_TDMA_DIR ?= /shared/home/wel1come1234/workspace/PaScaL_TDMA_C
 PASCAL_TDMA_INC := $(PASCAL_TDMA_DIR)/build/include
 PASCAL_TDMA_LIB := $(PASCAL_TDMA_DIR)/build/lib
 
+FFTW3_DIR ?= /shared/home/wel1come1234/local/fftw3
+FFTW3_INC := $(FFTW3_DIR)/include
+FFTW3_LIB := $(FFTW3_DIR)/lib
+
 # -------- common flags --------
 # OMPI_SKIP_MPICXX disables the deprecated OpenMPI C++ bindings header (we use
 # the C interface only). Without it the build is flooded with "cast between
@@ -26,7 +30,7 @@ COMMON_DEFS := -DOMPI_SKIP_MPICXX
 ROOT_DIR    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # Wrap paths in quotes because the project root path may contain shell-special
 # characters such as `(` or `)` (e.g. .../MPM-STD(C++)/).
-INCS        := -I"$(ROOT_DIR)/src" -I"$(PASCAL_TDMA_INC)"
+INCS        := -I"$(ROOT_DIR)/src" -I"$(PASCAL_TDMA_INC)" -I"$(FFTW3_INC)"
 DEFINES     := $(COMMON_DEFS)
 DEPFLAGS    := -MMD -MP
 COMMON_OPT  := -O3
@@ -43,7 +47,7 @@ ifeq ($(BACKEND),cpu)
   CXXFLAGS   := $(CXX_STD) $(COMMON_OPT) -march=native -fno-fast-math -fno-associative-math
   CUFLAGS    :=
   DEFINES    += -DMPMSTD_BACKEND_CPU
-  EXT_LIBS   := -L$(PASCAL_TDMA_LIB) -lpascal_tdma -lm
+  EXT_LIBS   := -L$(PASCAL_TDMA_LIB) -lpascal_tdma -L$(FFTW3_LIB) -lfftw3 -lm
   BUILD_DIR  := build/cpu
 
 else ifeq ($(BACKEND),cuda)

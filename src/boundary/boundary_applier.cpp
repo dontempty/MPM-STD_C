@@ -70,41 +70,49 @@ void BoundaryApplier::fill_face_dirichlet_(field::ScalarField& phi,
                                              Direction d, Side s,
                                              const FaceBc& bc,
                                              real_t t) const {
-  // Cell-centered Dirichlet: we set the ghost cell directly to the boundary
-  // value.  Combined with `modify_tdma_row` (M3+), this implements the
-  // zero-ghost + matrix-flag-drop policy on the wall row.
+  // Cell-centered Dirichlet ghost fill.  Two policies:
   //
-  // Note: for cell-centered fields whose physical wall sits on the face
-  // exactly between the last interior cell and the ghost cell, a more
-  // accurate stencil is ghost = 2*v_wall - interior.  Choosing one or the
-  // other is the responsibility of the equation that owns this field; for
-  // now we apply the simple "ghost = v_wall" policy (consistent with the
-  // RBC defaults of `U=V=W=0` and `T=±0.5`).
+  //   ZeroGhost:     ghost = v_wall                   (1st-order)
+  //   Antisymmetric: ghost = 2*v_wall - phi_interior  (2nd-order)
+  //
+  // ZeroGhost is used for velocity (U/V/W) — antisymmetric ghost would fold
+  // extra ν/dz² damping into the implicit operator and break sub-critical
+  // transition.  Antisymmetric is used for temperature (T) where 2nd-order
+  // wall accuracy matters and no such physical issue exists.
+  //
+  // The matching modify_tdma_row call must be consistent: ZeroGhost → A=0
+  // only; Antisymmetric → B -= A then A=0 (fold δ_ghost = -δ_interior).
   const int n1 = phi.n_total(Direction::X);
   const int n2 = phi.n_total(Direction::Y);
   const int n3 = phi.n_total(Direction::Z);
 
-  // For x, y, z coordinates we use cell-center positions of the ghost slab;
-  // these are passed to the user's value function (constant BCs ignore them).
-  const auto& g_xc = phi.subdomain();  // not actually a grid here — we don't
-  (void)g_xc;
-  // Phase-1: pass (0, 0, 0) — value functions in M1 are all constants.
+  const real_t v_wall = bc.value(0.0, 0.0, 0.0, t);
+  const bool antisymm = (bc.ghost_policy == GhostPolicy::Antisymmetric);
 
   if (d == Direction::X) {
-    const int i = (s == Side::Minus) ? 0 : (n1 - 1);
+    const int ghost    = (s == Side::Minus) ? 0           : (n1 - 1);
+    const int interior = (s == Side::Minus) ? kHaloWidth  : (n1 - 1 - kHaloWidth);
     for (int j = 0; j < n2; ++j)
       for (int k = 0; k < n3; ++k)
-        phi.host_at(i, j, k) = bc.value(0.0, 0.0, 0.0, t);
+        phi.host_at(ghost, j, k) = antisymm
+            ? (2.0 * v_wall - phi.host_at(interior, j, k))
+            : v_wall;
   } else if (d == Direction::Y) {
-    const int j = (s == Side::Minus) ? 0 : (n2 - 1);
+    const int ghost    = (s == Side::Minus) ? 0           : (n2 - 1);
+    const int interior = (s == Side::Minus) ? kHaloWidth  : (n2 - 1 - kHaloWidth);
     for (int i = 0; i < n1; ++i)
       for (int k = 0; k < n3; ++k)
-        phi.host_at(i, j, k) = bc.value(0.0, 0.0, 0.0, t);
+        phi.host_at(i, ghost, k) = antisymm
+            ? (2.0 * v_wall - phi.host_at(i, interior, k))
+            : v_wall;
   } else { // Direction::Z
-    const int k = (s == Side::Minus) ? 0 : (n3 - 1);
+    const int ghost    = (s == Side::Minus) ? 0           : (n3 - 1);
+    const int interior = (s == Side::Minus) ? kHaloWidth  : (n3 - 1 - kHaloWidth);
     for (int i = 0; i < n1; ++i)
       for (int j = 0; j < n2; ++j)
-        phi.host_at(i, j, k) = bc.value(0.0, 0.0, 0.0, t);
+        phi.host_at(i, j, ghost) = antisymm
+            ? (2.0 * v_wall - phi.host_at(i, j, interior))
+            : v_wall;
   }
 }
 
@@ -189,12 +197,28 @@ void BoundaryApplier::modify_tdma_row(Direction wall_axis,
   const bool owns_lower = (axis_comm.west_rank == MPI_PROC_NULL);
   const bool owns_upper = (axis_comm.east_rank == MPI_PROC_NULL);
 
-  auto modify_lower_row = [&](BcKind kind) {
+  // Dirichlet ghost policy determines how the sub/super-diagonal is handled:
+  //
+  //   ZeroGhost:     δ_ghost = 0   → just drop A (set to 0); D unchanged.
+  //   Antisymmetric: δ_ghost = -δ_interior  (since ghost = 2v - φ)
+  //                  → fold: B -= A, then A = 0  (and B -= C, C = 0 for upper).
+  //
+  // Neumann: ghost = interior → δ_ghost = δ_interior → fold: B += A, A = 0.
+
+  auto modify_lower_row = [&](const FaceBc& face) {
     for (int s = 0; s < n_sys; ++s) {
       const int p = s;                       // row 0, column s
-      switch (kind) {
+      switch (face.kind) {
         case BcKind::Dirichlet:
-          A[p] = 0.0;
+          // Neumann-style fold: B += A, A = 0.
+          // This gives B+C = 1 at the wall row, so the discrete steady-state
+          // Laplacian matches the continuous -F/nu (Poiseuille condition).
+          // Flag-drop (A=0 only) gives B+C = 1+|av|, which biases the wall-cell
+          // velocity and produces a wrong WSS fixed point (~16x laminar).
+          // The antisymmetric ghost in apply_ghost already gives the correct
+          // explicit Laplacian; the fold here only affects the implicit delta system.
+          B[p] += A[p];
+          A[p]  = 0.0;
           break;
         case BcKind::Neumann:
           B[p] += A[p];
@@ -207,16 +231,18 @@ void BoundaryApplier::modify_tdma_row(Direction wall_axis,
         default:
           throw std::runtime_error(
             std::string("BoundaryApplier::modify_tdma_row: BcKind '") +
-            bc_kind_name(kind) + "' not implemented yet");
+            bc_kind_name(face.kind) + "' not implemented yet");
       }
     }
   };
-  auto modify_upper_row = [&](BcKind kind) {
+  auto modify_upper_row = [&](const FaceBc& face) {
     for (int s = 0; s < n_sys; ++s) {
       const int p = (n_row - 1) * n_sys + s;
-      switch (kind) {
+      switch (face.kind) {
         case BcKind::Dirichlet:
-          C[p] = 0.0;
+          // Neumann-style fold (same reasoning as lower wall).
+          B[p] += C[p];
+          C[p]  = 0.0;
           break;
         case BcKind::Neumann:
           B[p] += C[p];
@@ -229,13 +255,13 @@ void BoundaryApplier::modify_tdma_row(Direction wall_axis,
         default:
           throw std::runtime_error(
             std::string("BoundaryApplier::modify_tdma_row: BcKind '") +
-            bc_kind_name(kind) + "' not implemented yet");
+            bc_kind_name(face.kind) + "' not implemented yet");
       }
     }
   };
 
-  if (owns_lower) modify_lower_row(fbc.face(wall_axis, Side::Minus).kind);
-  if (owns_upper) modify_upper_row(fbc.face(wall_axis, Side::Plus ).kind);
+  if (owns_lower) modify_lower_row(fbc.face(wall_axis, Side::Minus));
+  if (owns_upper) modify_upper_row(fbc.face(wall_axis, Side::Plus ));
 }
 
 } // namespace mpmstd::boundary

@@ -1,5 +1,12 @@
 # =============================================================================
-#  RBC (Rayleigh-Bénard Convection) — minimal demo input
+#  DHVC (Differentially Heated Vertical Convection) — matches PaScaL_TCS setup
+#  x = vertical/streamwise (periodic, buoyancy direction)
+#  y = spanwise (periodic)
+#  z = horizontal wall-normal (hot wall at z=0, cold wall at z=Lz)
+#  Buoyancy in U (x-momentum):  f_x = T
+#  Analytical steady solution (Ra=100, Pr=1, Lz=1):
+#    T(z) = 0.5 - z
+#    U(z) = z*(2z-1)*(z-1) / (12*nu),  nu = sqrt(Pr/Ra) = 0.1
 #  Run with: mpirun -np <N> ./build/cpu/bin/rbc apps/rbc/input.toml
 # =============================================================================
 
@@ -33,31 +40,25 @@ Ra     = 100.0
 Pr     = 1.0
 DeltaT = 1.0
 
-# =============================================================================
-#  Boundary conditions
-# =============================================================================
-# Each axis is one of: "periodic", "dirichlet", "neumann", "wall".
-#
-#   periodic   → halo exchange handles everything; [bc.*] entries ignored.
-#   dirichlet  → every field Dirichlet 0 by default; overridable in [bc.*].
-#   neumann    → every field Neumann 0; values are always 0 (no [bc.*] entries).
-#   wall       → U, V, W, T Dirichlet 0 (overridable);  P Neumann 0 (fixed).
-#                This is the canonical kind for RBC / channel walls.
-
 [topology]
 x = "periodic"
 y = "periodic"
 z = "wall"
 
 [bc.z.minus]
-T = -0.5
+T = 0.5     # hot wall
 
 [bc.z.plus]
-T = 0.5
+T = -0.5    # cold wall
 
 [time]
 t_start  = 0.0
-t_end    = 10.0
+t_end    = 30.0
 dt_start = 0.05
-MaxCFL   = 1.0
-n_steps  = 10
+MaxCFL   = 0.5
+n_steps  = 10000
+
+[init]
+# Initialize U from analytical DHVC steady state (1=yes, 0=no).
+# Set to 1 for EOC studies: avoids O(n²) transient stiffness from U=0 start.
+u_ic_dhvc = 0
