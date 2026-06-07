@@ -80,8 +80,12 @@ public:
         const int n1 = sub_.n_total()[0];
         const int n2 = sub_.n_total()[1];
         const int n3 = sub_.n_total()[2];
-        const int nx = sub_.n_interior()[0];
-        const int ny = sub_.n_interior()[1];
+        // GLOBAL xy cell count: write() does MPI_Allreduce(SUM) over all xy-ranks
+        // (np1*np2 of them share each z-slab), so the spatial xy-average must be
+        // normalized by the GLOBAL nx*ny, not the per-rank local count — otherwise
+        // every mean/rms is inflated by np1*np2 (the same bug as wss_diagnostic).
+        const int nx = sub_.n_global()[0];
+        const int ny = sub_.n_global()[1];
         const double inv_NxNy = 1.0 / static_cast<double>(nx * ny);
 
         const real_t* u = U.host_ptr();

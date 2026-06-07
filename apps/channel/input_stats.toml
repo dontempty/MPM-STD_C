@@ -67,7 +67,7 @@ t_start  = 0.0
 t_end    = 1000.0
 dt_start = 0.05     # upper cap on dt (matches Filtered_TDMA dtStart)
 MaxCFL   = 1.0
-n_steps  = 30000    # 20000 for transition + 10000 for statistics
+n_steps  = 40000    # 20000 for transition + 10000 for statistics
 
 [init]
 # Poiseuille parabola + 3-component random perturbation (mean-subtracted, bulk-normalized).
@@ -84,11 +84,11 @@ dir_restart    = "apps/channel/restart_out/"
 dir_stats      = "apps/channel/statistics/"
 dir_instant    = "apps/channel/instant/"
 nmonitor       = 10       # console/monitor print interval (matches Filtered_TDMA)
-nstat_start    = 20000    # start collecting stats after transition
+nstat_start    = 30000    # start collecting stats after transition
 nstat          = 1        # accumulate every step
 nout_stats     = 10000    # write stats at step 30000 (10k samples)
 nout           = 30000    # 3D field dump at final step
 out_stats      = 1
-out_field      = 1
-continue_in    = 0        # fresh start from Poiseuille + perturbation
-continue_out   = 1        # write restart files at nout_stats cadence
+out_field      = 0
+continue_in    = 1        # fresh start from Poiseuille + perturbation
+continue_out   = 0        # write restart files at nout_stats cadence
