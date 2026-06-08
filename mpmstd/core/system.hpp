@@ -25,16 +25,29 @@ struct ScalarSystem {
   }
 };
 
-// Momentum: 3 velocity components, each a 3-direction ADI system. The block
-// lower-triangular velocity coupling (blockLdV/blockLdU in the MPM-STD fortran
-// core_momentum) is handled INSIDE solve_momentum_* (rev.2 M2), not as a
-// separate call in main — so MomentumSystem just carries the per-component
-// directional Bands here; coupling metadata is added in P1.
+// Momentum (rev.2 M2): solve_momentum does U,V,W + the block lower-triangular
+// velocity coupling (blockLdV/blockLdU) in one. For the CPU port (P1) the system
+// carries the per-component explicit RHS / running increment, the ADI ping-pong
+// buffer, and the shared tridiagonal band workspace — allocated once from the
+// grid extents. [Device-resident bands for the GPU land in P4/P5.]
 struct MomentumSystem {
-  ScalarSystem comp[3];   // index by Component: U=0, V=1, W=2
+  std::vector<real_t> rhs_u, rhs_v, rhs_w;   // explicit RHS → running increment (n_total³)
+  std::vector<real_t> stage;                 // ADI ping-pong buffer (n_total³)
+  std::vector<real_t> A, B, C, D;            // tridiagonal bands (n_interior³, [n_row×n_sys])
+  std::array<int, 3>  n_total{}, n_interior{};
 
-  ScalarSystem&       component(Component c)       { return comp[to_int(c)]; }
-  const ScalarSystem& component(Component c) const { return comp[to_int(c)]; }
+  void allocate(std::array<int, 3> nt, std::array<int, 3> ni) {
+    if (n_total == nt && n_interior == ni && !rhs_u.empty()) return;
+    n_total = nt; n_interior = ni;
+    const std::size_t nf  = static_cast<std::size_t>(nt[0]) * nt[1] * nt[2];
+    const std::size_t nin = static_cast<std::size_t>(ni[0]) * ni[1] * ni[2];
+    rhs_u.assign(nf, 0); rhs_v.assign(nf, 0); rhs_w.assign(nf, 0); stage.assign(nf, 0);
+    A.assign(nin, 0); B.assign(nin, 0); C.assign(nin, 0); D.assign(nin, 0);
+  }
+
+  std::vector<real_t>& rhs(Component c) {
+    return c == Component::U ? rhs_u : (c == Component::V ? rhs_v : rhs_w);
+  }
 };
 
 // Per-axis spectral transform used by the pressure Poisson solve. Chosen from

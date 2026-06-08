@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **P-0.5** | 인터페이스 스파이크 (core/solve API 동결 + halo/banded PoC + 듀얼빌드) | ✅ 완료 | `9e6df3b` |
 | **P0** | 6계층 트리 전체 스켈레톤 + 듀얼빌드 lib/apps/tests | ✅ 완료 | `4a178fc` |
-| P1 | CPU 자유함수 본문 포팅 + Re_tau=180 회귀 | ⏳ 예정 | — |
+| P1 | CPU 자유함수 본문 포팅 + Re_tau=180 회귀 | 🔧 진행중 (momentum ✅) | — |
 | P2 | channel main 가독화 (§7 레시피) | ⏳ | — |
 | P3 / P3b | solve 일반화·BC-agnostic / cavity vs Ghia | ⏳ | — |
 | P4 / P5 | GPU core+멀티GPU 통신 / GPU 커널 | ⏳ | — |
@@ -54,6 +54,22 @@
 **검증**
 - `make cpu`: 17 lib TU + 4앱 + smoke 빌드/실행; cpu lib에 `_cpu`만, `_gpu` **0** (폴더 선택 검증)
 - `make BACKEND=cuda` (job 29049, gpu01): 17 cpu `.cpp` + 14 gpu `.cu` → **하나의 libmpmstd에 `_cpu`/`_gpu` 양쪽 공존** (`exchange_halo_cpu`+`exchange_halo_gpu`+`solve_momentum_gpu`); 앱/테스트 링크; A100 실행
+
+---
+
+## P1 — CPU 자유함수 본문 포팅 (진행중)
+
+검증된 기존 `src/` 수치를 신구조 자유함수로 충실히 이식. 전략: 순수 커널(raw-pointer 자유함수)은 mpmstd로 **복사**(자기완결), 분산 TDMA는 `TdmaRegistry` **재사용**, BC는 **CpuField용 자유함수로 이식**(ScalarField/virtual Backend 의존 제거).
+
+**✅ momentum (이식 완료·컴파일)**
+- `mpmstd/equation/momentum/kernels.*` — `compute_mpmstd_rhs`/`build_adi_bands`/`block_couple_dV,dU`/`scatter_from_tdma`/`add_increment` 복사(검증된 수치 보존)
+- `assemble_momentum_const_visc_cpu` — 성분별 explicit BW-ADI RHS (점성+대류, conv_f=1.0, W z-stagger). momentum은 T·P 비의존
+- `solve_momentum_cpu` (M2) — 성분별 3-sweep ADI(`build_adi_bands`+TDMA+`scatter`, sweep order·cyclic/solve는 BC도출) + 블록 하삼각 커플링(`block_couple_dV`→halo/ghost→`block_couple_dU`) 한 번에
+- `update_velocity_cpu` — `add_increment`
+- `mpmstd/core/boundary_ops.*` — `apply_ghost_cpu`(Dirichlet zero/antisym·Neumann)·`modify_tdma_row_cpu`(B+=A/A=0 fold)를 **CpuField/포인터 자유함수로 이식** (기존 BoundaryApplier=ScalarField 기반 → 의존 제거)
+- `MomentumSystem` = 성분별 RHS/증분 + ADI 핑퐁 + tridiagonal 밴드 워크스페이스
+
+**다음 (순서)**: 압력(divergence + FFT/DCT/TDMA Poisson + projection — 상태있는 최대 조각) → forcing/cfl/statistics(전역 nx·ny)/restart → 실제 channel main + Config 배선 → **빌드·실행·Re_tau=180 회귀**.
 
 ---
 
