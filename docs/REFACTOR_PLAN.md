@@ -276,7 +276,7 @@ while (time < t_end) {
 | **P2** | channel main 가독화 (§7 레시피) | ✅ 완료 (`099a04c`) |
 | **구조 재설계** | §4 묶음 타입(Domain/BoundaryCondition/Fields{Field+Constant}/MomentumSystem dU 소유) + 통일 시그니처 `op(domain,[bc,]fields,system,dt)` + 풀네임 + GPU-resident | ✅ 완료 (`8d9db67`); Re_tau=180 **비트-동일**, 듀얼빌드 그린 |
 | **P3** | solve 일반화: 5중대각 hook; **BC-agnostic**(sweep/cyclic/ghost/행보정/Poisson변환을 BC서 도출). sweep order는 BC 자동(z-wall→x,y,z; y-wall→x,z,y) | 3중대각·channel 결과 불변 |
-| **P3b** | **cavity** (`apps/cavity/`, 전벽+이동벽, 주기축 X→DCT+TDMA Poisson+null-space) — ⚠ **보류 검토 중**(§8b): 유일하게 전(全)-Neumann Poisson 신설 필요, RBC/DHVC는 미사용 → skip하고 P6/P7 직행 가능성 | Ghia et al. 기준해 일치 |
+| ~~**P3b**~~ | ~~cavity~~ — ❌ **SKIP 확정(2026-06-09, §8b)**: 전-Neumann Poisson 신설은 DHVC/RBC가 미사용. 대신 **P6 DHVC 먼저** | — |
 | **P4** | **GPU core + multi-GPU 통신**: `GpuField`, **CUDA-aware MPI halo(device-to-device)**, **1 rank=1 GPU(cudaSetDevice)**, 동시 빌드 | 2-GPU device halo·PTDMA 동작, `*_gpu` 실행 |
 | **P5** | GPU 커널 (assemble/solve/post `_gpu`) — 기존 `kernels_cuda.cu` 활용 | GPU가 **기존/CPU와 통계 일치** (점단위 1e-10 폐기, §10) |
 | **P6** | 에너지(T)+OB 부력 → **DHVC** (Re_δ* 진단, tanh stretch, Ra 범위, 상수물성) | **Fig 7 재현** (CPU→multi-GPU) |
@@ -314,6 +314,10 @@ pressure_engine_cpu.cpp:41  if(!is_periodic(X)||!is_periodic(Y)) throw "X,Y must
 **결론 = cavity SKIP 권고.** cavity의 큰 비용(전-Neumann Poisson)은 **최종 목표(Fig7/9)가 안 씀** — DHVC/RBC는 z벽+2주기로 기존 FFT 재사용. cavity가 주려던 "임의 BC·Poisson 일반화" 검증은 우리가 안 쓸 능력에 대한 것. **P3b 건너뛰고 P6(DHVC)→P7(RBC) 직행.** BC-agnostic(sweep/ghost/행보정 BC도출, P3 경량부)은 DHVC/RBC가 다른 벽배치로 자연히 행사 → 별도 cavity 앱 불필요.
 
 **권고 순서:** P3 경량(BC도출 검증, 5중대각 hook은 NOB 전엔 불요) → **P6 DHVC**(가장 쉬움: OB·상수물성·기존 Poisson, T수송+부력만 추가) → **P7 RBC**(NOB+cross-stress) → P8 multi-GPU.
+
+### 확정 (2026-06-09)
+- **cavity SKIP.** 계산량 적고 빠른 것부터 검증 → **DHVC 먼저**(OB·Pr=0.7·저Ra 작은격자 = RBC의 NOB+Pr=2547+128³보다 훨씬 가볍고 새 코드 적음).
+- **CPU 먼저 → GPU.** DHVC **Ra=10⁵ 작은 격자**를 CPU(login01)에서 검증(채널 회귀보다 가벼움; 저Ra 정상상태 빨리 도달) → 물리(부력·T수송) 확정 후 GPU 커널(P5)+대규모를 multi-GPU(P8). ⚠ 고Ra 스윕(10⁹–10¹⁰)·RBC 수렴은 GPU 전용(CPU로 돌리지 말 것).
 
 ---
 

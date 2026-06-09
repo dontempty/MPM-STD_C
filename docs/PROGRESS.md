@@ -141,6 +141,7 @@ time loop의 12-인자 난잡한 호출(static/pointer/raw 혼재)을 정돈된 
 
 **검증:** CPU·GPU 듀얼빌드 그린. Re_tau=180 회귀 **비트-동일**(div 4.63e-14, max u_rms⁺ 0.1717, centerline U 1.2448) — 대규모 재배선이 수치 결과를 1비트도 안 바꿈.
 
-## 다음 — cavity(P3b) 보류 권고 → DHVC/RBC 직행 (분석: REFACTOR_PLAN §8b)
-압력 엔진이 **X·Y 주기 하드 요구**(`pressure_engine_cpu.cpp:41`). cavity(전벽)만 전-Neumann `DctPressureSolver` 신설 필요(+stretch면 반복법 = 대형) — 그런데 **DHVC·RBC는 z벽+2주기라 기존 FFT 엔진 그대로 재사용**. ⇒ cavity의 큰 비용은 최종 목표가 안 씀 → **P3b SKIP 권고**.
-- **권고 순서**: P3 경량(BC도출 검증) → **P6 DHVC**(OB·상수물성·기존 Poisson; T수송+부력만 추가, 가장 쉬움) → **P7 RBC**(NOB+cross-stress) → P4/P5 GPU 커널(현재 GPU 경로 no-op 스텁; nvc++ ICE 해결됨) → P8 multi-GPU.
+## 다음 — cavity SKIP 확정 → DHVC 먼저 (CPU 검증 → GPU) (분석: REFACTOR_PLAN §8b)
+압력 엔진이 **X·Y 주기 하드 요구**(`pressure_engine_cpu.cpp:41`). cavity(전벽)만 전-Neumann `DctPressureSolver` 신설 필요(+stretch면 반복법 = 대형) — 그런데 **DHVC·RBC는 z벽+2주기라 기존 FFT 엔진 그대로 재사용**. ⇒ **cavity SKIP 확정.**
+- **DHVC 먼저**(RBC보다 가벼움: OB·Pr=0.7·저Ra 작은격자 vs NOB·Pr=2547·128³+cross-stress). **Ra=10⁵를 CPU(login01)에서 먼저 검증**(채널 회귀보다 가벼움) → 물리(부력·T수송) 확정 후 **GPU 커널(P5)+대규모 multi-GPU(P8)**. ⚠ 고Ra(10⁹–10¹⁰)·RBC 수렴은 GPU 전용.
+- **P6 DHVC 작업 항목**: scalar(T) 수송 assemble/solve(스텁 채우기) + OB buoyancy 모디파이어(main 합성, x-momentum RHS 가산) + Re_δ* 진단(post) + 입력(DHVC BC: 양벽 θ=±0.5, 2주기; Lx=8H/Lz=4H; tanh stretch). GPU 경로는 P5 스텁 그대로 두고 CPU 먼저.
