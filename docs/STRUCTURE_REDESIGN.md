@@ -128,7 +128,56 @@ while (c.time < c.t_end && ...) {
 
 ---
 
+## 9. 사용자 정제안 재분석 — Domain / BoundaryCondition / Fields(Field+Constant)
+
+**제안**: ① `Domain` = Grid + MPI(topology) + Subdomain(전처리 묶음, 유지) ② BC는 별도 객체, `Problem`→**`BoundaryCondition`** 개명 ③ 변수를 하나씩 받지 말고 loop 전에 **사용할 변수를 정의**해 **컨테이너 하나로** 전달 ④ `nu` 같은 상수는 U,V,W와 같은 곳에서 **`Constant` 클래스**로 — `Field`=공간변화, `Constant`=상수, 한 컨테이너.
+
+**평가**: 그룹핑이 좋다. 인자 12 → **3덩이(Domain, BoundaryCondition, Fields)**. Problem→BoundaryCondition 개명 명확. Field/Constant 통합은 **NOB의 nu(상수)→mu(필드) 전환**을 자연스럽게 해 최종목표와 정합. 단 아래 결정·문제를 짚어야 함.
+
+### 9.1 핵심 결정 — 제네릭 함수가 컨테이너에서 변수를 어떻게 꺼내나
+`solve_momentum_cpu(dom, bc, vars)`가 U,V,W,dU,dV,dW를 얻는 방식:
+| 접근 | 호출 | 안전성 | 시그니처 가시성 |
+|---|---|---|---|
+| 문자열 키 `vars.field("U")` | `f(dom,bc,vars)` 간결 | ❌ 런타임(오타) | ❌ |
+| **타입 키 enum `vars[Var::U]`** | `f(dom,bc,vars)` | ✅ 컴파일타임 | △ (본문엔 보임) |
+| 타입 멤버 `vars.U`(앱별 struct) | `f(...,vars.U,…)` | ✅ | ✅ 단 제네릭 불가 |
+
+→ "컨테이너 하나로 전달"을 원하면 **타입 키(enum)** 가 최선: 문자열 오타 없음 + 4앱 제네릭 + `f(dom,bc,vars)` 달성. 옛 `FieldRegistry`(문자열맵, rev.2서 폐기)의 **타입세이프 경량판**. 양보점은 §9.6.
+
+### 9.2 "사용자 변수" vs "솔버 내부" 구분 (중요)
+사용자가 정의하는 건 **물리 변수(U,V,W,P,T) + 상수(nu)**. 그러나 `dU,dV,dW`(증분)·`MomentumSystem/PressureSystem`(밴드·FFT 워크스페이스)는 **솔버 내부**다. → `Fields` 컨테이너엔 **물리변수+상수만**(사용자가 loop 전 정의), 증분·시스템은 **equation이 소유/생성**. 사용자가 dU/mom을 정의하게 하지 말 것.
+
+### 9.3 `Constant` 클래스 — 가치
+정당성: ① Field와 **균일 취급**(한 컨테이너) ② **nu→mu(T)** 전환이 자연 ③ GPU서 상수를 커널 인자/상수메모리로 줄 통로. nu 하나면 과할 수 있으니 **얇게**(값+이름+device 접근)만. 시간 의존 상수는 FaceBc처럼 자유함수가 매 스텝 갱신.
+
+### 9.4 CPU/GPU·수명
+- `Fields`는 `CpuField`/`GpuField` 보관 → `Fields` cpu/gpu 두 벌 또는 템플릿. `Constant`는 host 스칼라(+device 사본). `Domain`/`BoundaryCondition`은 host 단일 공유.
+- `Domain`이 전처리(grid/topo/sub) 소유, `Fields`가 필드 소유, BC 별도. `PressureSystem.engine`이 Domain/BC ref 보유 → 선언순서로 수명 보장; Domain ref-뷰는 저장 말고 즉석 생성.
+
+### 9.5 권장 형태 (요지)
+```cpp
+struct Domain { Grid grid; MpiTopology topo; Subdomain sub; };          // 전처리 소유
+struct BoundaryCondition { /* per-field FaceBc (구 Problem) */ };
+struct Fields {            // 사용자가 loop 전 등록 (쓰는 것만): CpuField들 + Constant들
+  CpuField&  field(Var v);   const Constant& constant(Const c);          // 타입 키 접근
+};
+void solve_momentum_cpu(const Domain& d, const BoundaryCondition& bc,
+                        Fields& f, MomentumSystem& mom, real_t dt);       // 내부서 f[Var::U]…
+```
+```cpp
+Domain dom = build_domain(cfg);  BoundaryCondition bc = load_bc(cfg);
+Fields f;  f.add_field("U"); …; f.add_constant("nu", nu);                 // loop 전: 무엇을 쓸지
+MomentumSystem mom; PressureSystem poi;                                   // 솔버 내부
+while (...) { dt = cfl(dom,f); assemble_momentum_cpu(dom,bc,f,mom,dt); solve_momentum_cpu(dom,bc,f,mom,dt); … }
+```
+→ "변수 정의 loop 전 한 곳", "호출은 덩이로", "전처리 유지" 모두 충족. 시스템만 별도(솔버 내부라 자연).
+
+### 9.6 남는 트레이드오프
+타입-키 컨테이너는 **시그니처만으로 "U 읽고 dU 쓴다"가 안 보임**(본문에선 보임) — 유일한 양보. 함수 이름·문서·고정 변수셋으로 실무상 충분. 이 가시성까지 원하면 §6(타입 필드 인자 + 앱 래퍼)와 양립: **Fields로 소유, 래퍼서 타입 필드 꺼내 제네릭 호출**.
+
+---
+
 ## 결론
-- **가능하다.** 단, "모든 걸 한 객체에 담아 `f(obj)`"의 **순진한 형태(A)** 는 리팩토링이 없애려던 과추상화·데이터흐름 은폐를 되살린다 — 그게 유일한 "문제".
+- **가능하다.** 단, "모든 걸 한 객체에 담아 `f(obj)`"의 **순진한 형태(A)** 는 리팩토링이 없애려던 과추상화·데이터흐름 은폐를 되살린다 — 그게 유일한 "문제". (사용자 정제안 §9는 Domain/BC/Fields 3덩이로 나눠 이를 완화 — 타입-키 컨테이너 권장.)
 - **권장(B+래퍼)**: main loop은 원하는 `step(case)` 간결함을 얻고, 그 아래 제네릭 자유함수는 `(Domain + 명시적 가변상태)`로 데이터 흐름·재사용성·"쓰는 것만 할당"을 지킨다. 포인터/혼재 인자는 사라진다.
 - 이름은 `Problem`(BC 전용) 말고 `Channel`/`Case`/`Simulation`을 쓸 것.
