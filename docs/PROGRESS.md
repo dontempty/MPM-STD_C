@@ -83,7 +83,12 @@
 
 → **모든 CPU 수치 자유함수 이식 완료** (momentum·pressure·forcing·cfl·statistics·restart, 전부 `make cpu` GREEN).
 
-**다음 (순서)**: 실제 channel main (§7 레시피) + Config→필드/그리드/BC/TdmaRegistry 배선 + Makefile에 host-single infra(config/grid/boundary/tdma) + FFTW/PaScaL 링크 추가 → **빌드·실행·Re_tau=180 회귀**(sbatch 포그라운드).
+**✅ channel main 통합 (§7 레시피) + 스모크 검증**
+- `mpmstd/apps/channel/main.cpp` — 등온 채널 §7 레시피: cfl → assemble_momentum_const_visc → solve_momentum(ADI+커플링) → update_velocity → forcing(body+mass-flow) → halo/ghost → solve_pressure(div+Poisson+project) → statistics. **T·mu 선언 안 함**(등온). restart 로드 IC.
+- Makefile `SRC_INFRA`에 host-single infra(config·logger·grid·stretching·problem·problem_loader·domain_topology·face_bc·tdma_registry·pascal_cpu) 추가; 채널 앱이 lib+FFTW+PaScaL 링크 성공.
+- **로그인 노드 스모크(16³, np=2, zero IC + mass-flow)**: pipeline 무crash, **div ~ 1e-16(기계 영점)**, Ub→1.0000 — momentum+pressure+projection 통합 정확성 검증.
+
+**다음**: 실제 Re_tau=180 난류 회귀 — 동결 난류 restart(256³) 로드 → 32랭크 실행 → 지속(div 작음, WSS→3.98e-3, 통계 KMM 일치) 확인 (sbatch 포그라운드).
 
 ---
 

@@ -1,0 +1,68 @@
+# Tiny login-node smoke for the refactored channel: zero IC + mass-flow forcing
+# develops a laminar channel. Validates the full free-function pipeline
+# (momentum solve + pressure FFT + forcing + halo/ghost) runs without NaN/crash
+# and keeps div small — BEFORE the big 32-rank Re_tau=180 restart regression.
+#   mpirun -np 2 build/cpu/mpmstd/bin/apps/channel mpmstd/apps/channel/input_smoke.toml
+
+[domain]
+Lx = 2.0
+Ly = 2.0
+Lz = 2.0
+
+[mesh]
+n1m = 16
+n2m = 16
+n3m = 16
+
+[mpi]
+np1 = 2
+np2 = 1
+np3 = 1
+
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 1
+
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 0.0
+
+[physics]
+nu = 0.01          # Re=100, laminar, stable
+
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+
+[bc.z.minus]
+ghost = "antisymmetric"
+[bc.z.plus]
+ghost = "antisymmetric"
+
+[thermal]
+enabled = 0
+
+[channel_forcing]
+mode = "mass_flow"
+target_bulk_velocity = 1.0
+target_dPdx = 0.0
+
+[time]
+t_start  = 0.0
+t_end    = 1000.0
+dt_start = 0.01
+MaxCFL   = 0.5
+n_steps  = 30
+
+[output]
+dir_stats    = "mpmstd/apps/channel/smoke_out/"
+nmonitor     = 2
+nstat_start  = 100000
+nstat        = 1
+nout_stats   = 100000
+out_stats    = 0
+continue_in  = 0
+continue_out = 0

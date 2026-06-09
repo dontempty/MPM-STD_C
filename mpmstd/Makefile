@@ -30,11 +30,24 @@ LIB_CPU_CPP := $(shell find $(LAYERS) -path '*/cpu/*' -name '*.cpp' 2>/dev/null)
 LIB_GPU_CU  := $(shell find $(LAYERS) -path '*/gpu/*' -name '*.cu'  2>/dev/null)
 LIB_AGN_CPP := $(shell find $(LAYERS) -name '*.cpp' -not -path '*/cpu/*' -not -path '*/gpu/*' 2>/dev/null)
 
-# existing host-single infra reused verbatim (rev.2: host metadata not duplicated)
+# existing host-single infra reused verbatim (rev.2: host metadata not duplicated).
+# (BC ghost/tdma-row + the numeric kernels were PORTED into mpmstd; these remaining
+#  pieces are pure host-single config/grid/topology/BC-data/TDMA-backend utilities
+#  with no ScalarField/Backend dependency.)
 SRC_INFRA := \
   parallel/mpi/mpi_context.cpp \
   parallel/mpi/mpi_topology.cpp \
-  parallel/mpi/subdomain.cpp
+  parallel/mpi/subdomain.cpp \
+  config/config.cpp \
+  config/logger.cpp \
+  grid/grid.cpp \
+  grid/stretching.cpp \
+  boundary/problem.cpp \
+  boundary/problem_loader.cpp \
+  boundary/domain_topology.cpp \
+  boundary/face_bc.cpp \
+  linear_solver/tdma/tdma_registry.cpp \
+  linear_solver/tdma/pascal_tdma_cpu_backend.cpp
 
 ifeq ($(BACKEND),cuda)
   LIB_CU     := $(LIB_GPU_CU)
