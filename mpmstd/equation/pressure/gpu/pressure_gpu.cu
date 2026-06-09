@@ -1,16 +1,13 @@
-#include "equation/pressure/assemble.hpp"
 #include "equation/pressure/solve.hpp"
 
-// P0 skeleton stubs (no-op), GPU build only. P5 ports the device kernels.
+// P0/P1 skeleton stub (no-op), GPU build only. P4 ports the cuFFT + device-TDMA
+// pencil pipeline with CUDA-aware MPI transposes (signature tracks the CPU side).
 
 namespace mpmstd::equation {
 
-void assemble_pressure_system_gpu(core::PressureSystem&, const core::GpuField&, const core::GpuField&,
-                                  const core::GpuField&, const core::Grid&, real_t) { /* TODO(P5) */ }
-
-void solve_pressure_gpu(core::PressureSystem&, core::GpuField&, const core::Subdomain&) { /* TODO(P5) */ }
-
-void project_velocity_gpu(core::GpuField&, core::GpuField&, core::GpuField&, core::GpuField&,
-                          const core::GpuField&, const core::Grid&, real_t) { /* TODO(P5) */ }
+void solve_pressure_gpu(core::PressureSystem&, real_t,
+                        core::GpuField&, core::GpuField&, core::GpuField&, core::GpuField&,
+                        const core::Grid&, const core::Boundary&,
+                        linear_solver::tdma::TdmaRegistry&, const core::Subdomain&) { /* TODO(P4) */ }
 
 } // namespace mpmstd::equation

@@ -4,6 +4,11 @@
 #include "common/direction.hpp"   // Direction, Component, to_int
 
 #include <array>
+#include <memory>
+
+// The pressure-Poisson engine (FFT/transpose/TDMA state) lives in the pressure
+// layer; PressureSystem just holds it (rev.2 §4: System holds solver state).
+namespace mpmstd::equation::pressure { class PressureSolver; }
 
 namespace mpmstd::core {
 
@@ -55,11 +60,12 @@ struct MomentumSystem {
 // the remaining axis -> Tdma.
 enum class Transform { Fft, Dct, Tdma };
 
-// Pressure-Poisson system. The wavenumber tables + transform plans + RHS buffer
-// are filled when the Poisson solver is ported (P3/P4); the spike only pins the
-// type's existence and the per-axis transform tag so the API is frozen.
+// Pressure-Poisson system. Holds the per-axis transform tags + the heavy solver
+// engine (FFTW plans, pencil buffers, wavenumbers, distributed z-TDMA), built
+// lazily on the first solve_pressure_cpu and reused thereafter.
 struct PressureSystem {
   std::array<Transform, 3> transform{Transform::Tdma, Transform::Tdma, Transform::Tdma};
+  std::shared_ptr<equation::pressure::PressureSolver> engine;   // lazy; built by solve_pressure_cpu
 };
 
 } // namespace mpmstd::core

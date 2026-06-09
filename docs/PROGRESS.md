@@ -69,7 +69,11 @@
 - `mpmstd/core/boundary_ops.*` — `apply_ghost_cpu`(Dirichlet zero/antisym·Neumann)·`modify_tdma_row_cpu`(B+=A/A=0 fold)를 **CpuField/포인터 자유함수로 이식** (기존 BoundaryApplier=ScalarField 기반 → 의존 제거)
 - `MomentumSystem` = 성분별 RHS/증분 + ADI 핑퐁 + tridiagonal 밴드 워크스페이스
 
-**다음 (순서)**: 압력(divergence + FFT/DCT/TDMA Poisson + projection — 상태있는 최대 조각) → forcing/cfl/statistics(전역 nx·ny)/restart → 실제 channel main + Config 배선 → **빌드·실행·Re_tau=180 회귀**.
+**✅ pressure (이식 완료·컴파일)**
+- `mpmstd/equation/pressure/pressure_base.*` + `pressure_engine.*` — 검증된 pencil-FFT `PressureSolver`(base + engine)를 복사 후 **필드 접촉점 3곳만 CpuField로 적응**(divergence 읽기·dP unpack·projection); 전치/FFT/분산 z-TDMA/파수/플랜은 그대로(수치 보존). FieldRegistry·ScalarField BoundaryApplier 의존 제거(BC는 `apply_ghost_cpu`)
+- `solve_pressure_cpu` (번들) — div(U*) → C→I→FFTx → I→Y→FFTy → 분산 z-TDMA → 역변환 → I→C → dP unpack → projection 한 번에. 엔진은 `PressureSystem`이 `shared_ptr`로 **지연 생성·재사용**
+
+**다음 (순서)**: forcing(dPdx+mass-flow)·cfl·statistics(전역 nx·ny)·restart IO → 실제 channel main + Config→필드/그리드/BC/TDMA 배선(+FFTW/PaScaL 링크) → **빌드·실행·Re_tau=180 회귀**.
 
 ---
 
