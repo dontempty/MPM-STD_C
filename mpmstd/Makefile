@@ -113,9 +113,10 @@ $(OBJ)/_src/%.o: $(ROOT_DIR)/src/%.cpp
 
 apps: lib $(APP_BINS)
 $(BINDIR)/apps/%: apps/%/main.cpp $(LIB)
-	@mkdir -p $(dir $@)
+	@mkdir -p $(dir $@) $(OBJ)/apps
 	@echo "  APP   $@"
-	@$(CXX) $(HOST_FLAGS) $< $(LIB) $(EXT_LIBS) -o $@
+	@$(CXX) $(HOST_FLAGS) -c $< -o $(OBJ)/apps/$*.o
+	@$(CXX) $(HOST_FLAGS) $(OBJ)/apps/$*.o $(LIB) $(EXT_LIBS) -o $@
 
 tests: lib $(TEST_BINS)
 $(BINDIR)/tests/%: $(ROOT_DIR)/tests/%.cpp $(LIB)
