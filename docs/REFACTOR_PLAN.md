@@ -106,32 +106,68 @@ Makefile / Makefile.inc       # libmpmstd(core+solve+equation+physics+post+drive
 
 ## 4. 핵심 자료구조 (core/)
 
+> **구조 재설계 반영(2026-06-09, commit 8d9db67).** time loop의 12-인자/`*tdma`/혼재 스칼라 호출을 정돈된 묶음 객체로 압축. 분석=`docs/STRUCTURE_REDESIGN.md`.
+
 ```cpp
 // C1=(b): device 데이터는 cpu/gpu 두 벌. 논리 레이아웃 동일, 메모리 위치만 다름.
 class CpuField { /* host 배열 (정렬 메모리) */ };   // field_cpu.hpp
 class GpuField { /* device 배열 (cudaMalloc)  */ };  // field_gpu.hpp
-//  Grid / MpiTopology / Boundary / Config 는 host 단일 타입 (백엔드 무관 메타).
+//  Grid / MpiTopology / Subdomain / Config 는 host 단일 타입 (백엔드 무관 메타).
+
+// ── 묶음 1: Domain = "어디서/어떻게" (격자·MPI·서브도메인·TDMA) ──  domain.hpp
+struct Domain {
+  const Grid& grid; const MpiTopology& topo; const Subdomain& sub;
+  linear_solver::tdma::TdmaRegistry& tdma;   // ⚠ 참조 — main에서 `auto& tdma=*owner;` 한 번 (호출부에 `*tdma` 없음)
+};
+
+// ── 묶음 2: BoundaryCondition = BC (Domain과 분리) ──  boundary.hpp
+using BoundaryCondition = boundary::Problem;   // [topology] + 면별 FieldBoundary(U,V,W,P,T)
+
+// ── 묶음 3: Fields = 쓰는 물리변수 + 상수, typed-key 컨테이너 ──  variables.hpp
+enum class Var   { U, V, W, P, T, Count };     // 공간변수(Field)
+enum class Const { nu, alpha_T, Count };       // 스칼라(Constant) — 향후 nu→mu(T)
+struct Constant { real_t value; };
+template<class FieldT> class FieldStore {      // fields[Var::U] ; fields.constant(Const::nu)
+  FieldT& add(Var, const Subdomain&);  void add_constant(Const, real_t);   // 루프 전 등록 (쓰는 것만)
+};
+using CpuFields = FieldStore<CpuField>;  using GpuFields = FieldStore<GpuField>;
 
 // A 밴드 (3중대각 now, 5중대각 대비). cpu/gpu 저장 분리(device 배열).
 struct Bands { int bandwidth=1;  /* lo2,lo1,diag,up1,up2, rhs (host or device) */ };
 
-// 한 방정식의 Ax=b 묶음 (cpu/gpu)
+// 한 방정식의 Ax=b 묶음 (cpu/gpu). MomentumSystem은 증분(dU,dV,dW)을 내부 소유.
 struct ScalarSystem   { Bands x,y,z; /* 방향 메타 */ };
-struct MomentumSystem { /* U,V,W 성분별 × 방향(x,y,z) Bands + 블록커플링 메타 (M2) */ };
-struct PressureSystem { /* rhs + 파수(wavenumber) + 방향별 변환종류 */ };
+template<class FieldT> struct MomentumSystemT {
+  FieldT dU, dV, dW;                 // ⚠ 증분은 momentum이 소유(사용자가 안 만듦); rhs/stage/A,B,C,D
+};
+using CpuMomentumSystem = MomentumSystemT<CpuField>;  using GpuMomentumSystem = MomentumSystemT<GpuField>;
+struct PressureSystem { /* rhs + 파수(wavenumber) + 방향별 변환종류 + engine(shared_ptr) */ };
 
 // 파라미터/후처리 타입은 각 소속 계층에서 정의:
 //   physics/: PropertyModel(properties), BuoyancyParams(buoyancy), IbmMask(ibm)
 //   post/   : Stats(statistics), Io(io)
 ```
 
+**GPU-resident 모델(사용자 최우선):** GPU 풀이 시 모든 변수를 초기에 `GpuFields`/`GpuMomentumSystem`으로 device 선언 → 모든 계산을 GPU에서만 → **fileout 때만 device→host 복사**. `FieldStore`가 field 타입에 템플릿이라 같은 레시피가 CPU/GPU 양쪽에 성립.
+
 ---
 
 ## 5. 자유함수 네이밍 규약 (명시적 `_cpu`/`_gpu`; 아래는 cpu, gpu는 동일 시그니처)
 
+> **구조 재설계로 실현된 인자 규약:** 모든 연산은 **`op(domain, [bc,] fields, system, dt)`** 형태 — 개별 `CpuField` 인자 나열 대신 §4의 묶음을 받음. 아래 스케치의 의도(자유함수·`_cpu`/`_gpu`·const/var 점성 분리·M2)는 그대로, **인자 그룹만** 바뀜. 줄임말 금지 — `domain/fields/field/grid/momentum/pressure` 풀네임. 실현된 시그니처 예:
+> ```cpp
+> void assemble_momentum_const_visc_cpu(const Domain& domain, CpuFields& fields, CpuMomentumSystem& momentum, real_t dt);
+> void solve_momentum_cpu(const Domain& domain, const BoundaryCondition& bc, CpuFields& fields, CpuMomentumSystem& momentum, real_t dt);
+> void update_velocity_cpu(CpuFields& fields, const CpuMomentumSystem& momentum);
+> void solve_pressure_cpu(const Domain& domain, const BoundaryCondition& bc, CpuFields& fields, PressureSystem& pressure, real_t dt);
+> real_t compute_cfl_dt_cpu(const Domain& domain, const CpuFields& fields, real_t max_cfl, real_t dt_cap);
+> void   sync_field_cpu(CpuFields& fields, Var, const BoundaryCondition& bc, const Subdomain& sub);  // halo+ghost 한 번에
+> ```
+> **추가 힘은 main 합성(사용자 지시):** buoyancy 등은 main에서 사용자가 명시 호출(call=on/omit=off), solve/assemble 내부에 박지 않음. momentum assemble = 점성+대류만(force-agnostic). 채널 forcing(dPdx·mass-flow)도 main 루프 호출.
+
 ```cpp
-// ── 통신 (C3): solve 직전 명시 호출 ──
-void exchange_halo_cpu(CpuField&, const MpiTopology&);   // 고스트셀 교환 (gpu는 CUDA-aware MPI)
+// ── 통신 (C3): solve 직전 명시 호출 (Field 단위 primitive; 컨테이너용 sync_field_cpu는 위 참조) ──
+void exchange_halo_cpu(CpuField&, const Subdomain&);   // 고스트셀 교환 (gpu는 CUDA-aware MPI)
 
 // ── equation/scalar ──
 void assemble_scalar_system_cpu (ScalarSystem&, const CpuField& T, const CpuField& U,V,W,
@@ -192,49 +228,41 @@ real_t compute_cfl_dt_cpu(const CpuField& U,V,W, const Grid&, const MpiTopology&
 ## 7. main 가독성 목표 (분기 없음 · 쓰는 것만 선언)
 
 ```cpp
-// ── 사례 A: 등온 채널 (T·μ 없음 → 메모리/연산 0) ──  apps/channel/main.cpp
-int main() {
-    CpuField U,V,W,P, dU,dV,dW,dP;             // 쓰는 것만 선언 (T·mu 없음)
-    MomentumSystem mom; PressureSystem poi; Stats stats;
-    while (time < t_end) {
-        dt = compute_cfl_dt_cpu(U,V,W, grid, mpi, dt_cap);
-        assemble_momentum_const_visc_cpu(mom, U,V,W,P, nu, grid,bc,dt);  // 상수점성, T 비의존, cross-stress X
-        apply_pressure_gradient_cpu     (mom, dpdx, dt);                 // 채널 forcing (physics/forcing)
-        solve_momentum_cpu              (mom, U,V,W, dU,dV,dW, mpi);     // 3성분 ADI+블록커플링 한 번에(M2); 내부 rank통신
-        update_velocity_cpu             (U,V,W, dU,dV,dW);
-        apply_mass_flow_correction_cpu  (U, 1.0, mpi, dt);              // Ub=1 유지
-        exchange_halo_cpu(U,mpi); exchange_halo_cpu(V,mpi); exchange_halo_cpu(W,mpi);  // ← 고스트 통신 명시 (C3)
-        assemble_pressure_system_cpu    (poi, U,V,W, grid,dt);
-        solve_pressure_cpu              (poi, dP, mpi);                  // FFT/DCT/TDMA (BC서 선택)
-        project_velocity_cpu            (U,V,W,P, dP, grid,dt);          // 무조건 projection + P갱신
-        exchange_halo_cpu(U,mpi); exchange_halo_cpu(V,mpi); exchange_halo_cpu(W,mpi); exchange_halo_cpu(P,mpi);
-        accumulate_statistics_cpu       (stats, U,V,W,P);
-    }
+// ── 사례 A: 등온 채널 (실현된 레시피, apps/channel/main.cpp) ──
+Domain domain{grid, topo, sub, tdma};          // 어디서/어떻게 (tdma는 ref)
+BoundaryCondition bc = load_problem_from_config(cfg);
+CpuFields fields;                              // 쓰는 것만 등록 (T·mu 없음)
+fields.add(Var::U, sub); fields.add(Var::V, sub); fields.add(Var::W, sub); fields.add(Var::P, sub);
+fields.add_constant(Const::nu, nu);
+CpuMomentumSystem momentum(sub);  PressureSystem pressure;  Stats stats;   // momentum이 dU,dV,dW 소유
+while (time < t_end) {
+    const real_t dt = compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
+    assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);        // 상수점성, T 비의존, cross-stress X
+    solve_momentum_cpu              (domain, bc, fields, momentum, dt);    // 3성분 ADI+블록커플링 한 번에(M2)
+    update_velocity_cpu             (fields, momentum);
+    sync_field_cpu(fields, Var::V, bc, sub);  sync_field_cpu(fields, Var::W, bc, sub);
+    apply_body_force_cpu            (fields, dpdx, dt);                     // ← 추가 힘: main 합성(physics/forcing)
+    apply_mass_flow_correction_cpu  (domain, fields, 1.0, dt, total_vol, dpdx);  // Ub=1 유지
+    sync_field_cpu(fields, Var::U, bc, sub);
+    solve_pressure_cpu              (domain, bc, fields, pressure, dt);     // div+Poisson+project 묶음
+    accumulate_statistics_cpu       (stats, domain, fields);
 }
 
-// ── 사례 B: NOB RBC (T·물성·부력 줄과 자료를 "추가") ──  apps/rbc/main.cpp
-int main() {
-    CpuField U,V,W,P, dU,dV,dW,dP;
-    CpuField T, mu,irho,kappa,irhocp;          // 추가 선언 (NOB일 때만)
-    ScalarSystem Tsys; MomentumSystem mom; PressureSystem poi; Stats stats;
-    while (time < t_end) {
-        dt = compute_cfl_dt_cpu(U,V,W, grid, mpi, dt_cap);
-        update_properties_cpu        (mu,irho,kappa,irhocp, T, model);   // physics: μ(T)…
-        assemble_scalar_system_cpu   (Tsys, T,U,V,W, kappa, grid,bc,dt); exchange_halo_cpu(T,mpi);
-        solve_scalar_cpu             (Tsys, T, mpi);  exchange_halo_cpu(T,mpi);
-        assemble_momentum_var_visc_cpu(mom, U,V,W,P, mu, grid,bc,dt);    // 변동점성(cross-stress)
-        add_buoyancy_force_cpu       (mom, T, buoy, dt);                 // physics: 부력
-        solve_momentum_cpu           (mom, U,V,W, dU,dV,dW, mpi);
-        update_velocity_cpu          (U,V,W, dU,dV,dW);
-        exchange_halo_cpu(U,mpi);exchange_halo_cpu(V,mpi);exchange_halo_cpu(W,mpi);
-        assemble_pressure_system_cpu (poi, U,V,W, grid,dt);  solve_pressure_cpu(poi,dP,mpi);
-        project_velocity_cpu         (U,V,W,P, dP, grid,dt);
-        exchange_halo_cpu(U,mpi);exchange_halo_cpu(V,mpi);exchange_halo_cpu(W,mpi);exchange_halo_cpu(P,mpi);
-        accumulate_statistics_cpu    (stats, U,V,W,P);
-    }
+// ── 사례 B: NOB RBC (T·물성·부력을 "추가"; P6/P7에서 실현) ──  apps/rbc/main.cpp
+CpuFields fields; /* U,V,W,P + */ fields.add(Var::T, sub);  // 추가 등록 (NOB일 때만)
+ScalarSystem Tsys; /* ... */
+while (time < t_end) {
+    const real_t dt = compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
+    update_properties_cpu        (domain, fields, model);                  // physics: μ(T)…
+    assemble_scalar_system_cpu   (domain, bc, fields, Tsys, dt);  solve_scalar_cpu(domain, fields, Tsys);
+    assemble_momentum_var_visc_cpu(domain, fields, momentum, dt);          // 변동점성(cross-stress)
+    add_buoyancy_force_cpu       (momentum, fields[Var::T], buoy, dt);     // ← 추가 힘: main 합성(physics/buoyancy)
+    solve_momentum_cpu           (domain, bc, fields, momentum, dt);  update_velocity_cpu(fields, momentum);
+    solve_pressure_cpu           (domain, bc, fields, pressure, dt);
+    accumulate_statistics_cpu    (stats, domain, fields);
 }
 ```
-→ thermal/부력/forcing/LES/IBM = 줄 넣으면 on, 빼면 off. 등온 main은 `T`/`mu` **선언조차 안 함**. **고스트셀 통신이 solve 둘레에 명시**(C3). 함수 이름만으로 흐름·물리옵션·cpu/gpu 명확.
+→ thermal/부력/forcing/LES/IBM = **줄 넣으면 on, 빼면 off**(main 합성). 등온 main은 `Var::T`/`mu` **등록조차 안 함** → 0 메모리·0 연산. 고스트셀 sync는 `sync_field_cpu`(halo+ghost)로 묶어 solve 둘레에 명시(C3). 함수 이름만으로 흐름·물리옵션·cpu/gpu 명확.
 
 ---
 
@@ -245,9 +273,10 @@ int main() {
 | **P-0.5** | **인터페이스 스파이크**(U4): `CpuField`/`GpuField`·`Bands`/`System`·`exchange_halo`·`MpiTopology(rank↔GPU)` API만 먼저 확정. 작은 PoC(필드 1개 halo, 1방정식 solve)로 시그니처 검증 | API 동결, 2-process halo 동작 |
 | **P0** | 전체 스켈레톤 일괄 생성 (디렉토리·헤더·스텁·빌드·tests 골격) | `make`로 libmpmstd+빈 apps+tests 빌드 성공 |
 | **P1** | CPU 구현 신구조 이식 (virtual Backend 제거, 자유함수화). **단위테스트 이식하며 모듈별 진행** | 기존 단위테스트 통과 + Re_tau=180 통계가 **기존 코드와 일치** |
-| **P2** | channel main 가독화 (§7 레시피) | 코드리뷰 통과 |
+| **P2** | channel main 가독화 (§7 레시피) | ✅ 완료 (`099a04c`) |
+| **구조 재설계** | §4 묶음 타입(Domain/BoundaryCondition/Fields{Field+Constant}/MomentumSystem dU 소유) + 통일 시그니처 `op(domain,[bc,]fields,system,dt)` + 풀네임 + GPU-resident | ✅ 완료 (`8d9db67`); Re_tau=180 **비트-동일**, 듀얼빌드 그린 |
 | **P3** | solve 일반화: 5중대각 hook; **BC-agnostic**(sweep/cyclic/ghost/행보정/Poisson변환을 BC서 도출). sweep order는 BC 자동(z-wall→x,y,z; y-wall→x,z,y) | 3중대각·channel 결과 불변 |
-| **P3b** | **cavity** (`apps/cavity/`, 전벽+이동벽, 주기축 X→DCT+TDMA Poisson+null-space) | Ghia et al. 기준해 일치 |
+| **P3b** | **cavity** (`apps/cavity/`, 전벽+이동벽, 주기축 X→DCT+TDMA Poisson+null-space) — ⚠ **보류 검토 중**(§8b): 유일하게 전(全)-Neumann Poisson 신설 필요, RBC/DHVC는 미사용 → skip하고 P6/P7 직행 가능성 | Ghia et al. 기준해 일치 |
 | **P4** | **GPU core + multi-GPU 통신**: `GpuField`, **CUDA-aware MPI halo(device-to-device)**, **1 rank=1 GPU(cudaSetDevice)**, 동시 빌드 | 2-GPU device halo·PTDMA 동작, `*_gpu` 실행 |
 | **P5** | GPU 커널 (assemble/solve/post `_gpu`) — 기존 `kernels_cuda.cu` 활용 | GPU가 **기존/CPU와 통계 일치** (점단위 1e-10 폐기, §10) |
 | **P6** | 에너지(T)+OB 부력 → **DHVC** (Re_δ* 진단, tanh stretch, Ra 범위, 상수물성) | **Fig 7 재현** (CPU→multi-GPU) |
@@ -257,6 +286,34 @@ int main() {
 | **P10** | IBM (`physics/ibm/`, 마스크+forcing) | 복잡형상 검증 |
 
 > ⚠ Fig 9(NOB)가 **변동점성**을 요구 → 상수점성 채널에서 미뤄둔 **cross-stress 모멘텀이 P7에서 필수**. 상수점성 채널(Re_tau=180, 검증완료)이 토대.
+
+---
+
+## 8b. cavity(P3b) 구현비용 분석 — 보류 검토 (2026-06-09)
+
+**질문(사용자):** cavity 구현이 오래 걸리면 굳이 안 하고 RBC·DHVC로 직행.
+
+**핵심 = Poisson 솔버.** 현 압력 엔진은 **X·Y 주기를 하드 요구**:
+```
+pressure_engine_cpu.cpp:41  if(!is_periodic(X)||!is_periodic(Y)) throw "X,Y must be periodic — use DctPressureSolver";
+```
+(x: batched r2c FFT, y: FFT, z: 분산 TDMA — pencil-FFT). **`DctPressureSolver`는 아직 없음.**
+
+| 사례 | 주기축 | Poisson | 신규 작업 |
+|---|---|---|---|
+| channel(검증완료) | x,y | 기존 FFT 엔진 | — |
+| **DHVC**(Fig7) | **2방향(x,y)** + z벽 | **기존 FFT 엔진 그대로** | scalar(T)+OB부력+Re_δ* (목표 경로) |
+| **RBC**(Fig9) | **수평 2방향** + z벽 | **기존 FFT 엔진 그대로** | NOB물성+cross-stress+부력 (목표 경로) |
+| cavity | **없음(전벽)** | ❌ 전-Neumann 신설 필요 | **`DctPressureSolver` 신규** |
+
+**cavity 비용(= 다른 데 안 쓰이는 신규 인프라):**
+1. `DctPressureSolver` 신설 — 기존 `PressureSolver`(엔진 200+줄: FFTW 플랜·수정파수·펜슬 transpose)와 맞먹는 규모. REDFT10/01 코사인 변환 플랜 + Neumann 수정파수 + **null-space(전-Neumann ⇒ 특이행렬 → 평균압력 고정)**.
+2. ⚠ **DCT는 균일격자에서만 라플라시안 대각화** → Ghia가 흔히 쓰는 벽근방 stretch 격자에선 대각화 실패 → **반복법(CG/멀티그리드) 필요 = 대형 작업**. 균일격자로 한정하면 DCT+TDMA 가능하나 검증 가치 축소.
+3. 이동벽 BC(소), cavity main·Ghia 비교(소).
+
+**결론 = cavity SKIP 권고.** cavity의 큰 비용(전-Neumann Poisson)은 **최종 목표(Fig7/9)가 안 씀** — DHVC/RBC는 z벽+2주기로 기존 FFT 재사용. cavity가 주려던 "임의 BC·Poisson 일반화" 검증은 우리가 안 쓸 능력에 대한 것. **P3b 건너뛰고 P6(DHVC)→P7(RBC) 직행.** BC-agnostic(sweep/ghost/행보정 BC도출, P3 경량부)은 DHVC/RBC가 다른 벽배치로 자연히 행사 → 별도 cavity 앱 불필요.
+
+**권고 순서:** P3 경량(BC도출 검증, 5중대각 hook은 NOB 전엔 불요) → **P6 DHVC**(가장 쉬움: OB·상수물성·기존 Poisson, T수송+부력만 추가) → **P7 RBC**(NOB+cross-stress) → P8 multi-GPU.
 
 ---
 
@@ -362,3 +419,4 @@ int main() {
 12. tests는 별도 디렉토리(M3); GPU 정합은 통계 기준(점단위 1e-10 폐기, M4)
 13. P-0.5 인터페이스 스파이크 후 P0 일괄 스켈레톤
 14. **최종 = P8: Fig 7(OB-DHVC)+Fig 9(NOB-RBC) multi-GPU 재현**
+15. **구조 재설계(완료)**: time loop을 §4 묶음으로 — `Domain`(격자·MPI·sub·**tdma 참조**), `BoundaryCondition`(분리), `Fields`(typed-key `Var`/`Const`; **Field=공간변수, Constant=스칼라**, 쓰는 것만 등록), `MomentumSystem`이 증분 `dU,dV,dW` 소유. 모든 연산 `op(domain,[bc,]fields,system,dt)`. **추가 힘은 main 합성**(assemble은 force-agnostic). **GPU-resident**(전부 device, fileout만 host). 줄임말 금지(풀네임).
