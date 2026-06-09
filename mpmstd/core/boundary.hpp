@@ -7,6 +7,7 @@
 #include "boundary/bc_kind.hpp"
 
 namespace mpmstd::core {
-using Boundary = boundary::Problem;   // §5 names it "Boundary"
-using BcKind   = boundary::BcKind;
+using Boundary          = boundary::Problem;   // §5 legacy name
+using BoundaryCondition = boundary::Problem;   // rev.2 redesign name (preferred)
+using BcKind            = boundary::BcKind;
 } // namespace mpmstd::core
