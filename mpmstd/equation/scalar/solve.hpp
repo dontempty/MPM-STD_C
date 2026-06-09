@@ -1,15 +1,18 @@
 #pragma once
 
+#include "core/domain.hpp"
+#include "core/boundary.hpp"
+#include "core/variables.hpp"
 #include "core/system.hpp"
-#include "core/field_cpu.hpp"
-#include "core/field_gpu.hpp"
-#include "core/mpi_topology.hpp"
 
 namespace mpmstd::equation {
 
-// Solve the assembled scalar ADI system in place (T updated): directional sweeps
-// + inter-rank communication, calling solve/ banded solvers. (rev.2 §5)
-void solve_scalar_cpu(core::ScalarSystem& sys, core::CpuField& T, const core::Subdomain& sub);
-void solve_scalar_gpu(core::ScalarSystem& sys, core::GpuField& T, const core::Subdomain& sub);
+// Solve the assembled scalar ADI system: 3-sweep ADI (sweep order from BC,
+// distributed (P)TDMA via Domain::tdma, wall rows via modify_tdma_row_cpu) then
+// add the increment back into Fields[Var::T]. Caller syncs T afterward. (rev.2 §5)
+void solve_scalar_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+                      core::CpuFields& fields, core::CpuScalarSystem& scalar_system, real_t dt);
+void solve_scalar_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+                      core::GpuFields& fields, core::GpuScalarSystem& scalar_system, real_t dt);
 
 } // namespace mpmstd::equation

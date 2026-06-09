@@ -23,4 +23,10 @@ void write_statistics_cpu(const Stats& s, const std::string& path, int step, dou
 
 void accumulate_statistics_gpu(Stats& s, const core::Domain& domain, const core::GpuFields& fields);
 
+// DHVC shear Reynolds number Re_δ* = U_max·δ*/ν (PaScaL_TCS Fig 7). Uses the
+// mean streamwise profile U_m(z) (= <u>_{x,y,t}); δ* = ∫₀^δmax (1−U/U_max) dz
+// with δmax the wall-normal distance to U_max. Gathers the global profile via
+// MPI; returns the value on every rank. (streamwise = x, wall-normal = z.)
+double compute_re_delta_star_cpu(const Stats& s, double nu, const core::Domain& domain);
+
 } // namespace mpmstd::post

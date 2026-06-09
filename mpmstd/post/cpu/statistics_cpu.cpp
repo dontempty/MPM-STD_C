@@ -105,4 +105,29 @@ void write_statistics_cpu(const Stats& s, const std::string& path, int step, dou
   std::fclose(fp);
 }
 
+double compute_re_delta_star_cpu(const Stats& s, double nu, const core::Domain& domain) {
+  const int nz = s.nz_global;
+  if (nz <= 0 || s.n == 0) return 0.0;
+
+  // Gather the global mean streamwise profile U(z) = <u>_{x,y,t}.
+  std::vector<double> send(nz, 0.0), U(nz, 0.0);
+  for (int kl = 0; kl < s.nz_local; ++kl) send[s.kstart + kl] = s.U_m[kl];
+  MPI_Allreduce(send.data(), U.data(), nz, MPI_DOUBLE, MPI_SUM, domain.sub.topology().cart_comm());
+
+  // U_max = positive jet peak (near the hot wall) + its wall-normal index.
+  int kmax = 0; double u_max = U[0];
+  for (int k = 0; k < nz; ++k) if (U[k] > u_max) { u_max = U[k]; kmax = k; }
+  if (u_max <= 0.0) return 0.0;
+
+  // δ* = ∫₀^{z[kmax]} (1 − U/U_max) dz  (trapezoid incl. the no-slip wall z=0,U=0).
+  double dstar = 0.0, z_prev = 0.0, f_prev = 1.0;   // wall: 1 − 0/U_max = 1
+  for (int k = 0; k <= kmax; ++k) {
+    const double z = s.zc_global[k];
+    const double f = 1.0 - U[k] / u_max;
+    dstar += 0.5 * (f_prev + f) * (z - z_prev);
+    z_prev = z; f_prev = f;
+  }
+  return u_max * dstar / nu;
+}
+
 } // namespace mpmstd::post

@@ -22,12 +22,28 @@ namespace mpmstd::core {
 //            consumes it. (rev.2 §4)
 // =============================================================================
 
-// One scalar transport equation: a Bands per sweep direction (3-stage ADI).
-struct ScalarSystem {
-  Bands x, y, z;
-  Bands&       along(Direction d)       { return d == Direction::X ? x : (d == Direction::Y ? y : z); }
-  const Bands& along(Direction d) const { return d == Direction::X ? x : (d == Direction::Y ? y : z); }
+// One scalar transport equation (T): explicit CN RHS → 3-stage ADI. Like
+// MomentumSystemT but single-component and no block coupling; the increment is
+// added straight back into T, so the system just owns the RHS/ping-pong/band
+// workspace, sized from the subdomain. Templated on field type for Cpu/Gpu
+// symmetry (workspace is host for now; device workspace lands with P5).
+template <class FieldT>
+struct ScalarSystemT {
+  std::vector<real_t> rhs, stage;   // explicit RHS → running increment, ADI ping-pong
+  std::vector<real_t> A, B, C, D;   // tridiagonal bands [n_row × n_sys]
+  std::array<int, 3>  n_total{}, n_interior{};
+
+  explicit ScalarSystemT(const Subdomain& sub)
+    : n_total(sub.n_total()), n_interior(sub.n_interior()) {
+    const std::size_t nf  = static_cast<std::size_t>(n_total[0]) * n_total[1] * n_total[2];
+    const std::size_t nin = static_cast<std::size_t>(n_interior[0]) * n_interior[1] * n_interior[2];
+    rhs.assign(nf, 0); stage.assign(nf, 0);
+    A.assign(nin, 0); B.assign(nin, 0); C.assign(nin, 0); D.assign(nin, 0);
+  }
 };
+
+using CpuScalarSystem = ScalarSystemT<CpuField>;
+using GpuScalarSystem = ScalarSystemT<GpuField>;
 
 // Momentum (rev.2 M2 + structural redesign): solve_momentum does U,V,W + the
 // block lower-triangular coupling in one. The system OWNS the increments
