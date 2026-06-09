@@ -86,7 +86,7 @@ void BoundaryApplier::fill_face_dirichlet_(field::ScalarField& phi,
   const int n2 = phi.n_total(Direction::Y);
   const int n3 = phi.n_total(Direction::Z);
 
-  const real_t v_wall = bc.value(0.0, 0.0, 0.0, t);
+  const real_t v_wall = bc.value;
   const bool antisymm = (bc.ghost_policy == GhostPolicy::Antisymmetric);
 
   if (d == Direction::X) {
@@ -133,7 +133,7 @@ void BoundaryApplier::fill_face_neumann_(field::ScalarField& phi,
   const int n2 = phi.n_total(Direction::Y);
   const int n3 = phi.n_total(Direction::Z);
 
-  const real_t v = bc.value(0.0, 0.0, 0.0, t);
+  const real_t v = bc.value;
 
   auto copy_face = [&](int ghost_i, int interior_i, Direction axis) {
     const real_t sign = (s == Side::Minus) ? -1.0 : +1.0;

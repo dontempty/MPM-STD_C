@@ -24,7 +24,7 @@ bool is_global_boundary(const Subdomain& sub, Direction d, Side s) {
 // ghost=2*v_wall-interior (velocity uses ZeroGhost; T uses antisymmetric).
 void fill_dirichlet(CpuField& phi, Direction d, Side s, const FaceBc& bc, real_t t) {
   const int n1 = phi.n_total(Direction::X), n2 = phi.n_total(Direction::Y), n3 = phi.n_total(Direction::Z);
-  const real_t vw = bc.value(0, 0, 0, t);
+  const real_t vw = bc.value;
   const bool anti = (bc.ghost_policy == GhostPolicy::Antisymmetric);
   if (d == Direction::X) {
     const int g = (s == Side::Minus) ? 0 : n1 - 1, in = (s == Side::Minus) ? kHaloWidth : n1 - 1 - kHaloWidth;
@@ -44,7 +44,7 @@ void fill_dirichlet(CpuField& phi, Direction d, Side s, const FaceBc& bc, real_t
 // Cell-centered Neumann: ghost = interior_first +/- v (sign by side).
 void fill_neumann(CpuField& phi, Direction d, Side s, const FaceBc& bc, real_t t) {
   const int n1 = phi.n_total(Direction::X), n2 = phi.n_total(Direction::Y), n3 = phi.n_total(Direction::Z);
-  const real_t v = bc.value(0, 0, 0, t);
+  const real_t v = bc.value;
   const real_t sgn = (s == Side::Minus) ? real_t{-1} : real_t{1};
   if (d == Direction::X) {
     const int g = (s == Side::Minus) ? 0 : n1 - 1, in = (s == Side::Minus) ? kHaloWidth : n1 - 1 - kHaloWidth;

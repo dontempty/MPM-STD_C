@@ -93,7 +93,8 @@
 - **통계 = 난류 DNS 일치**: U⁺ 로그-법칙(중심선 U=1.24), **u_rms⁺ 피크 ≈ 2.7**(KMM 2.65), Reynolds 전단 -uw~u_tau², **Re_tau ≈ 167**(21샘플; →180 근접)
 - → 검증된 기존 솔버와 동일 거동. **신구조 자유함수 채널이 수치적으로 정확.**
 
-⚠ **알려진 이슈(toolchain, P4에서 해결)**: 컴퓨트 노드는 nvhpc(HPC-X)만 있고 시스템 OpenMPI가 없음. nvhpc **nvc++ 23.7이 `boundary/problem.cpp`(FaceBc의 std::function)에서 ICE**(signal 6, lower_dynamic_init) → `make BACKEND=cuda`(GPU/컴퓨트노드 빌드)가 현재 막힘. CPU 회귀는 **로그인 노드 시스템-OpenMPI 빌드로 우회**(48코어로 256³ 32랭크 수용). P4(GPU)에서 ICE 우회 필요(infra를 g++로 컴파일 / FaceBc 리팩토링 / 신 nvhpc).
+**✅ nvc++ ICE 해결 (FaceBc 리팩토링, 방안 b)**: `FaceBc`의 `std::function` 값(BcValueFn)을 **POD `real_t value`로 교체**(미사용 함수형 오버로드 제거). 시간 의존 BC는 콜백 저장이 아니라 **자유함수가 매 스텝 `value`를 갱신**(rev.2 "데이터=struct, 연산=자유함수"; GPU 커널에서 std::function 평가 불가 문제도 해소). 결과: `make BACKEND=cuda`가 **gpu01에서 lib+apps 전부 빌드 성공**(BUILD_EXIT=0, lower_dynamic_init ICE 0건) → **듀얼빌드 복구**. CPU 동작 **비트-동일 보존**(스모크 div~5e-16, Re_tau=180 회귀 동일).
+- 참고(환경): 컴퓨트 노드(cpu/gpu)는 nvhpc(HPC-X)만, **시스템 OpenMPI 없음** → 시스템-OpenMPI 바이너리는 login01(48코어)에서만 실행. CPU 단독 회귀는 login01에서 256³ 32랭크 수용.
 
 ---
 
@@ -115,4 +116,4 @@ make -C tests/spike cpu && mpirun -np 2 build/cpu/spike/halo_poc
 ---
 
 ## 다음 (P2)
-channel main 가독화(§7 레시피 정리; 현재도 레시피지만 assemble/solve/project 분리 등 정돈) + 코드리뷰. 이후 P3/P3b(BC-agnostic·cavity). **P4(GPU) 착수 시 nvc++ ICE(problem.cpp) 우회 먼저 해결**(위 알려진 이슈).
+channel main 가독화(§7 레시피 정리; assemble/solve/project 분리 등) + 코드리뷰. 이후 P3/P3b(BC-agnostic·cavity), P4 GPU. (nvc++ ICE는 FaceBc 리팩토링으로 이미 해결 → 듀얼빌드 그린.)

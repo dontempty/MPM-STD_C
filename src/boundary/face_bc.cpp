@@ -2,30 +2,17 @@
 
 namespace mpmstd::boundary {
 
-BcValueFn FaceBc::constant(real_t v) {
-  return [v](real_t, real_t, real_t, real_t) { return v; };
-}
-
 FaceBc FaceBc::periodic() {
-  return FaceBc{BcKind::Periodic, constant(0.0)};
+  return FaceBc{BcKind::Periodic, real_t{0}, GhostPolicy::ZeroGhost};
 }
 FaceBc FaceBc::dirichlet(real_t v) {
-  return FaceBc{BcKind::Dirichlet, constant(v), GhostPolicy::ZeroGhost};
-}
-FaceBc FaceBc::dirichlet(BcValueFn f) {
-  return FaceBc{BcKind::Dirichlet, std::move(f), GhostPolicy::ZeroGhost};
+  return FaceBc{BcKind::Dirichlet, v, GhostPolicy::ZeroGhost};
 }
 FaceBc FaceBc::dirichlet_antisymm(real_t v) {
-  return FaceBc{BcKind::Dirichlet, constant(v), GhostPolicy::Antisymmetric};
-}
-FaceBc FaceBc::dirichlet_antisymm(BcValueFn f) {
-  return FaceBc{BcKind::Dirichlet, std::move(f), GhostPolicy::Antisymmetric};
+  return FaceBc{BcKind::Dirichlet, v, GhostPolicy::Antisymmetric};
 }
 FaceBc FaceBc::neumann(real_t v) {
-  return FaceBc{BcKind::Neumann, constant(v)};
-}
-FaceBc FaceBc::neumann(BcValueFn f) {
-  return FaceBc{BcKind::Neumann, std::move(f)};
+  return FaceBc{BcKind::Neumann, v, GhostPolicy::ZeroGhost};
 }
 
 } // namespace mpmstd::boundary
