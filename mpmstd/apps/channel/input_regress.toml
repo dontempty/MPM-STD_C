@@ -1,0 +1,70 @@
+# P1e regression: load the FROZEN Re_tau=180 turbulent field (validated old run,
+# apps/channel/restart_in/) into the refactored free-function channel and confirm
+# it SUSTAINS turbulence (div small, Ub~1, WSS/stats stable) over a short run.
+# Same grid/BC/forcing/nu as input_restart.toml; only the run length + IO cadence
+# are shortened for a quick regression.
+#   mpirun -np 32 build/cpu/mpmstd/bin/apps/channel mpmstd/apps/channel/input_regress.toml
+
+[domain]
+Lx = 12.56637061436
+Ly = 6.28318530718
+Lz = 2.0
+
+[mesh]
+n1m = 256
+n2m = 256
+n3m = 256
+
+[mpi]
+np1 = 4
+np2 = 4
+np3 = 2
+
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 1.5
+
+[physics]
+nu = 3.5035035035035e-4
+
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+
+[bc.z.minus]
+ghost = "antisymmetric"
+[bc.z.plus]
+ghost = "antisymmetric"
+
+[thermal]
+enabled = 0
+
+[channel_forcing]
+mode = "mass_flow"
+target_bulk_velocity = 1.0
+target_dPdx = 0.0
+
+[time]
+t_start  = 0.0
+t_end    = 100000.0
+dt_start = 0.05
+MaxCFL   = 1.0
+n_steps  = 30         # short sustain check
+
+[output]
+dir_restart  = "apps/channel/restart_in/"
+dir_stats    = "mpmstd/apps/channel/regress_out/"
+nmonitor     = 10
+nstat_start  = 10
+nstat        = 1
+nout_stats   = 100
+out_stats    = 1
+continue_in  = 1
+continue_out = 0

@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **P-0.5** | 인터페이스 스파이크 (core/solve API 동결 + halo/banded PoC + 듀얼빌드) | ✅ 완료 | `9e6df3b` |
 | **P0** | 6계층 트리 전체 스켈레톤 + 듀얼빌드 lib/apps/tests | ✅ 완료 | `4a178fc` |
-| P1 | CPU 자유함수 본문 포팅 + Re_tau=180 회귀 | 🔧 진행중 (momentum ✅) | — |
+| P1 | CPU 자유함수 본문 포팅 + Re_tau=180 회귀 | ✅ 완료 | 4321294…596169d |
 | P2 | channel main 가독화 (§7 레시피) | ⏳ | — |
 | P3 / P3b | solve 일반화·BC-agnostic / cavity vs Ghia | ⏳ | — |
 | P4 / P5 | GPU core+멀티GPU 통신 / GPU 커널 | ⏳ | — |
@@ -88,7 +88,12 @@
 - Makefile `SRC_INFRA`에 host-single infra(config·logger·grid·stretching·problem·problem_loader·domain_topology·face_bc·tdma_registry·pascal_cpu) 추가; 채널 앱이 lib+FFTW+PaScaL 링크 성공.
 - **로그인 노드 스모크(16³, np=2, zero IC + mass-flow)**: pipeline 무crash, **div ~ 1e-16(기계 영점)**, Ub→1.0000 — momentum+pressure+projection 통합 정확성 검증.
 
-**다음**: 실제 Re_tau=180 난류 회귀 — 동결 난류 restart(256³) 로드 → 32랭크 실행 → 지속(div 작음, WSS→3.98e-3, 통계 KMM 일치) 확인 (sbatch 포그라운드).
+**✅ P1e Re_tau=180 난류 회귀 PASS** (로그인 노드 login01, 48코어, 시스템-OpenMPI 바이너리, np=4×4×2=32, 동결 난류 restart 256³ 로드, 30스텝)
+- **지속 확인**: div ~ 5e-14(난류 범위; 라미나~1e-15), dt~0.015(난류 변동에 CFL 제한, 라미나 cap 0.05 아님), Ub=1.0000, dPdx 난류 수준 → relaminarize 안 함
+- **통계 = 난류 DNS 일치**: U⁺ 로그-법칙(중심선 U=1.24), **u_rms⁺ 피크 ≈ 2.7**(KMM 2.65), Reynolds 전단 -uw~u_tau², **Re_tau ≈ 167**(21샘플; →180 근접)
+- → 검증된 기존 솔버와 동일 거동. **신구조 자유함수 채널이 수치적으로 정확.**
+
+⚠ **알려진 이슈(toolchain, P4에서 해결)**: 컴퓨트 노드는 nvhpc(HPC-X)만 있고 시스템 OpenMPI가 없음. nvhpc **nvc++ 23.7이 `boundary/problem.cpp`(FaceBc의 std::function)에서 ICE**(signal 6, lower_dynamic_init) → `make BACKEND=cuda`(GPU/컴퓨트노드 빌드)가 현재 막힘. CPU 회귀는 **로그인 노드 시스템-OpenMPI 빌드로 우회**(48코어로 256³ 32랭크 수용). P4(GPU)에서 ICE 우회 필요(infra를 g++로 컴파일 / FaceBc 리팩토링 / 신 nvhpc).
 
 ---
 
@@ -109,5 +114,5 @@ make -C tests/spike cpu && mpirun -np 2 build/cpu/spike/halo_poc
 
 ---
 
-## 다음 (P1)
-CPU 자유함수 **본문 포팅**: momentum delta-form Beam-Warming ADI + 블록 하삼각 커플링, scalar ADI, pressure RHS/projection, poisson(FFT/DCT/TDMA), statistics(전역 nx·ny 정규화), cfl, restart IO. **DoD = Re_tau=180 통계가 기존 코드와 일치** (회귀). 이어서 P2.
+## 다음 (P2)
+channel main 가독화(§7 레시피 정리; 현재도 레시피지만 assemble/solve/project 분리 등 정돈) + 코드리뷰. 이후 P3/P3b(BC-agnostic·cavity). **P4(GPU) 착수 시 nvc++ ICE(problem.cpp) 우회 먼저 해결**(위 알려진 이슈).

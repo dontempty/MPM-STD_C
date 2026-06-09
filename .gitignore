@@ -21,3 +21,10 @@ apps/*/statistics/
 # editor / misc
 *~
 .DS_Store
+
+# refactored-tree run outputs
+mpmstd/apps/*/regress_out/
+mpmstd/apps/*/smoke_out/
+mpmstd/apps/*/statistics/
+mpmstd/apps/*/restart_*/
+mpmstd/apps/*/instant/

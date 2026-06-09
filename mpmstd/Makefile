@@ -18,6 +18,13 @@
 include ../Makefile.inc        # CXX, ALL_CXXFLAGS, ALL_CUFLAGS, BACKEND, EXT_LIBS, ROOT_DIR, INCS
 
 INC    := -I"$(ROOT_DIR)/mpmstd"     # so #include "core/..." resolves (-I src is already in INCS)
+
+# The pressure engine uses host FFTW even in the GPU build, but Makefile.inc's
+# cuda EXT_LIBS omits -lfftw3 (it only has cufft). Add it so a cuda-compiled
+# channel (nvc++ host code + FFTW Poisson) links on the compute nodes.
+ifeq ($(BACKEND),cuda)
+  EXT_LIBS += -L$(FFTW3_LIB) -lfftw3
+endif
 BUILD  := $(ROOT_DIR)/build/$(BACKEND)/mpmstd
 OBJ    := $(BUILD)/obj
 LIB    := $(BUILD)/lib/libmpmstd.a
@@ -51,13 +58,14 @@ SRC_INFRA := \
 
 ifeq ($(BACKEND),cuda)
   LIB_CU     := $(LIB_GPU_CU)
-  # In the GPU build EVERY TU goes through nvc++ with -cuda (= ALL_CUFLAGS): host
-  # cpu/ .cpp too. Two reasons: (1) nvc++ rejects GCC-only WARN/-MP that live in
-  # ALL_CXXFLAGS; (2) macros.hpp pulls <cuda_runtime.h> under -DMPMSTD_BACKEND_CUDA,
-  # whose include path nvc++ only adds with -cuda. Compiling pure-host .cpp with
-  # -cuda is harmless (no device code) and is exactly what the P-0.5 spike proved.
-  # (Shared Makefile.inc is untouched, so the validated CPU baseline is unaffected.)
-  HOST_FLAGS := $(ALL_CUFLAGS) $(INC)
+  # rev.2 dual model: cpu/ .cpp are the CPU backend (compiled by nvc++ as PLAIN
+  # HOST C++ — NO -cuda, -DMPMSTD_BACKEND_CPU), gpu/ .cu are the CUDA backend
+  # (-cuda, -DMPMSTD_BACKEND_CUDA). Compiling host .cpp WITH -cuda made nvc++ ICE
+  # (signal 6, lower_dynamic_init) on dynamic-init code (e.g. boundary/problem.cpp
+  # std::function tables); and -DMPMSTD_BACKEND_CPU stops macros.hpp pulling
+  # <cuda_runtime.h>, so no -cuda is needed for host TUs. Strip the GCC-only
+  # WARN/-MP that nvc++ rejects. (Shared Makefile.inc untouched → CPU baseline safe.)
+  HOST_FLAGS := $(CXXFLAGS) -DOMPI_SKIP_MPICXX -DMPMSTD_BACKEND_CPU $(INCS) $(INC)
   DEV_FLAGS  := $(ALL_CUFLAGS) $(INC)
 else
   LIB_CU     :=
