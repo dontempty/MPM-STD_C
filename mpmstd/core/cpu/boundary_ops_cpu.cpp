@@ -1,4 +1,5 @@
 #include "core/boundary_ops.hpp"
+#include "core/halo.hpp"            // exchange_halo_cpu (for sync_field_cpu)
 #include "common/macros.hpp"        // kHaloWidth
 #include "boundary/bc_kind.hpp"     // bc_kind_name
 
@@ -110,6 +111,11 @@ void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
 
   if (owns_lower) fold_lower(fbc.face(wall_axis, Side::Minus));
   if (owns_upper) fold_upper(fbc.face(wall_axis, Side::Plus));
+}
+
+void sync_field_cpu(CpuField& f, const FieldBoundary& fbc, const Subdomain& sub, real_t t) {
+  exchange_halo_cpu(f, sub);       // neighbour-rank halos
+  apply_ghost_cpu(f, fbc, sub, t); // global-boundary ghost
 }
 
 } // namespace mpmstd::core

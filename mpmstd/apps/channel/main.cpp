@@ -158,9 +158,8 @@ int main(int argc, char** argv) {
     MPI_Bcast(&step, 1, MPI_INT, 0, topo.cart_comm());
   }
   zero_w_wall(W, sub);
-  for (auto* f : {&U, &V, &W, &P}) core::exchange_halo_cpu(*f, sub);
-  core::apply_ghost_cpu(U, problem.U, sub); core::apply_ghost_cpu(V, problem.V, sub);
-  core::apply_ghost_cpu(W, problem.W, sub); core::apply_ghost_cpu(P, problem.P, sub);
+  core::sync_field_cpu(U, problem.U, sub); core::sync_field_cpu(V, problem.V, sub);
+  core::sync_field_cpu(W, problem.W, sub); core::sync_field_cpu(P, problem.P, sub);
 
   if (mpi.is_root())
     std::printf("[channel] start step=%d time=%.4g  nu=%.4e  mode=%s  np=%dx%dx%d  n=%dx%dx%d\n",
@@ -169,24 +168,29 @@ int main(int argc, char** argv) {
   // ── time loop (rev.2 §7 recipe) ────────────────────────────────────────────
   const int step0 = step;
   while (time < t_end && (step - step0) < n_steps) {
+    // (1) CFL-limited time step
     real_t dt = driver::compute_cfl_dt_cpu(U, V, W, g, sub, max_cfl, dt_cap);
 
+    // (2) momentum: explicit RHS → 3-sweep ADI + block coupling → U += dU
     equation::assemble_momentum_const_visc_cpu(mom, U, V, W, g, static_cast<real_t>(nu), dt);
     equation::solve_momentum_cpu(mom, U, V, W, dU, dV, dW, g, problem, *tdma, sub, static_cast<real_t>(nu), dt);
     equation::update_velocity_cpu(U, V, W, dU, dV, dW);
+    core::sync_field_cpu(V, problem.V, sub);    // update_velocity changed interiors → refresh V,W
+    core::sync_field_cpu(W, problem.W, sub);
 
-    core::exchange_halo_cpu(V, sub); core::apply_ghost_cpu(V, problem.V, sub);
-    core::exchange_halo_cpu(W, sub); core::apply_ghost_cpu(W, problem.W, sub);
-
+    // (3) channel forcing: mean pressure gradient + (mass-flow) bulk correction
     physics::apply_body_force_cpu(U, static_cast<real_t>(dpdx), dt);
     if (mass_flow) physics::apply_mass_flow_correction_cpu(U, target_Ub, g, sub, dt, total_vol, dpdx);
-    core::exchange_halo_cpu(U, sub); core::apply_ghost_cpu(U, problem.U, sub);
+    core::sync_field_cpu(U, problem.U, sub);     // U changed by forcing → refresh
+    zero_w_wall(W, sub);                          // MAC: enforce W=0 on z-wall faces
 
-    zero_w_wall(W, sub);
+    // (4) pressure: div(U*) → Poisson → project U,V,W divergence-free (P updated)
     equation::solve_pressure_cpu(poi, dt, U, V, W, P, g, problem, *tdma, sub);
 
     time += static_cast<double>(dt);
     ++step;
+
+    // (5) post: statistics + monitor
 
     if (out_stats && (step - step0) >= nstat_start && ((step - step0) % nstat_int == 0))
       post::accumulate_statistics_cpu(stats, U, V, W, P, sub);

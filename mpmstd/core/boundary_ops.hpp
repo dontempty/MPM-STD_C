@@ -28,4 +28,11 @@ void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
                          real_t* A, real_t* B, real_t* C, real_t* D,
                          int n_sys, int n_row);
 
+// Make a field consistent across rank interfaces AND domain boundaries in one
+// step = exchange_halo_cpu (neighbour halos) + apply_ghost_cpu (global-boundary
+// ghost). This is the "sync after a solve" the recipe does around every field;
+// folding the pair keeps the main loop readable and prevents a forgotten ghost.
+void sync_field_cpu(CpuField& f, const FieldBoundary& fbc, const Subdomain& sub,
+                    real_t t = real_t{0});
+
 } // namespace mpmstd::core

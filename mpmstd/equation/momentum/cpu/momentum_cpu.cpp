@@ -102,9 +102,9 @@ void solve_momentum_cpu(core::MomentumSystem& mom,
   adi_component(mom, mom.rhs_w, Wp, Up, Vp, Wp, true,  problem.W, grid, problem, tdma, sub, nu, dt, dW.data());
 
   // increments need halos+ghosts before the block-coupling stencil
-  core::exchange_halo_cpu(dU, sub); core::apply_ghost_cpu(dU, problem.U, sub);
-  core::exchange_halo_cpu(dV, sub); core::apply_ghost_cpu(dV, problem.V, sub);
-  core::exchange_halo_cpu(dW, sub); core::apply_ghost_cpu(dW, problem.W, sub);
+  core::sync_field_cpu(dU, problem.U, sub);
+  core::sync_field_cpu(dV, problem.V, sub);
+  core::sync_field_cpu(dW, problem.W, sub);
 
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
 
@@ -113,7 +113,7 @@ void solve_momentum_cpu(core::MomentumSystem& mom,
                       grid.dx_ptr(Direction::Y), grid.dmx_ptr(Direction::Y),
                       grid.dx_ptr(Direction::Z), grid.dmx_ptr(Direction::Z),
                       n1, n2, n3, dt);
-  core::exchange_halo_cpu(dV, sub); core::apply_ghost_cpu(dV, problem.V, sub);
+  core::sync_field_cpu(dV, problem.V, sub);
 
   // (3) blockLdU: dU -= dt*0.25*(dV·∂U/∂y + dW·∂U/∂z)  (uses corrected dV)
   mk::block_couple_dU(dU.data(), dV.data(), dW.data(), U.data(),

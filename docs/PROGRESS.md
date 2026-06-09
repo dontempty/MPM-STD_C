@@ -11,7 +11,7 @@
 | **P-0.5** | 인터페이스 스파이크 (core/solve API 동결 + halo/banded PoC + 듀얼빌드) | ✅ 완료 | `9e6df3b` |
 | **P0** | 6계층 트리 전체 스켈레톤 + 듀얼빌드 lib/apps/tests | ✅ 완료 | `4a178fc` |
 | P1 | CPU 자유함수 본문 포팅 + Re_tau=180 회귀 | ✅ 완료 | 4321294…596169d |
-| P2 | channel main 가독화 (§7 레시피) | ⏳ | — |
+| P2 | channel main 가독화 (§7 레시피) | ✅ 완료 | — |
 | P3 / P3b | solve 일반화·BC-agnostic / cavity vs Ghia | ⏳ | — |
 | P4 / P5 | GPU core+멀티GPU 통신 / GPU 커널 | ⏳ | — |
 | P6 / P7 | DHVC(Fig 7) / NOB RBC(Fig 9) | ⏳ | — |
@@ -95,6 +95,13 @@
 
 **✅ nvc++ ICE 해결 (FaceBc 리팩토링, 방안 b)**: `FaceBc`의 `std::function` 값(BcValueFn)을 **POD `real_t value`로 교체**(미사용 함수형 오버로드 제거). 시간 의존 BC는 콜백 저장이 아니라 **자유함수가 매 스텝 `value`를 갱신**(rev.2 "데이터=struct, 연산=자유함수"; GPU 커널에서 std::function 평가 불가 문제도 해소). 결과: `make BACKEND=cuda`가 **gpu01에서 lib+apps 전부 빌드 성공**(BUILD_EXIT=0, lower_dynamic_init ICE 0건) → **듀얼빌드 복구**. CPU 동작 **비트-동일 보존**(스모크 div~5e-16, Re_tau=180 회귀 동일).
 - 참고(환경): 컴퓨트 노드(cpu/gpu)는 nvhpc(HPC-X)만, **시스템 OpenMPI 없음** → 시스템-OpenMPI 바이너리는 login01(48코어)에서만 실행. CPU 단독 회귀는 login01에서 256³ 32랭크 수용.
+
+---
+
+## P2 — channel main 가독화 (§7 레시피) ✅
+- **`core::sync_field_cpu(field, fbc, sub)`** 추가 = `exchange_halo_cpu` + `apply_ghost_cpu` 한 번에("solve 후 이 필드를 이웃·경계와 일치"). 채널 루프·IC·`solve_momentum` 증분의 halo+ghost 쌍을 전부 한 줄로 접음 → ghost 누락 방지 + 잡음 제거.
+- 채널 루프를 §7 단계 주석((1) CFL → (2) momentum → (3) forcing → (4) pressure → (5) post)로 정리. 과한 추상화(컨텍스트 번들 등)는 의도적으로 안 함 — 명시 인자가 데이터 흐름을 그대로 드러냄(교수님 "이름으로 기능이 드러나게").
+- **동작 비트-동일 보존**(스모크 div 6.09e-16; Re_tau=180 회귀 div 4.63e-14, u_rms 0.1717, U_c 1.2448 — 변화 없음).
 
 ---
 
