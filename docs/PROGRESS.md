@@ -77,7 +77,13 @@
 - `physics/forcing/` — `apply_body_force_cpu`(U+=-dt·dPdx)·`channel_total_volume_cpu`·`channel_bulk_velocity_cpu`·`apply_mass_flow_correction_cpu`(dPdx 진화). dP/dx 상태는 main이 보유, 자유함수가 명시적 read/update
 - `driver/cfl/` — `compute_cfl_dt_cpu` (speed=global-max(|u|/dx+…), dt=min(MaxCFL/speed, cap))
 
-**다음 (순서)**: statistics(전역 nx·ny)·restart IO → 실제 channel main + Config→필드/그리드/BC/TDMA 배선(+FFTW/PaScaL 링크) → **빌드·실행·Re_tau=180 회귀**.
+**✅ statistics + restart (이식 완료·컴파일)**
+- `post/statistics` — `Stats` + `init`/`accumulate_statistics_cpu`(전역 nx·ny 정규화, Welford)/`write_statistics_cpu`(Allreduce + rank0 Tecplot)
+- `post/io` — `write_restart_cpu`/`read_restart_cpu` (MPI-IO 글로벌 C-order; 기존 채널과 동일 포맷 → 동결 난류 필드 직접 로드)
+
+→ **모든 CPU 수치 자유함수 이식 완료** (momentum·pressure·forcing·cfl·statistics·restart, 전부 `make cpu` GREEN).
+
+**다음 (순서)**: 실제 channel main (§7 레시피) + Config→필드/그리드/BC/TdmaRegistry 배선 + Makefile에 host-single infra(config/grid/boundary/tdma) + FFTW/PaScaL 링크 추가 → **빌드·실행·Re_tau=180 회귀**(sbatch 포그라운드).
 
 ---
 
