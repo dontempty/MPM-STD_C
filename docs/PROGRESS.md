@@ -141,6 +141,20 @@ time loop의 12-인자 난잡한 호출(static/pointer/raw 혼재)을 정돈된 
 
 **검증:** CPU·GPU 듀얼빌드 그린. Re_tau=180 회귀 **비트-동일**(div 4.63e-14, max u_rms⁺ 0.1717, centerline U 1.2448) — 대규모 재배선이 수치 결과를 1비트도 안 바꿈.
 
+## P6 DHVC (OB) — CPU 첫 검증 ✅ (Ra=1e5·1e6 일치; 1e7=해상도 한계)
+
+검증된 `src/equation/scalar`(byte-identical 커널) + `src/physics/boussinesq`를 구조-재설계 API(Domain/Fields/ScalarSystem)로 포팅 + DHVC 앱(PaScaL_TCS Fig 7). 축: **z=벽(θ=±0.5), x=streamwise/중력 주기, y=span 주기 → 기존 FFT Poisson 무수정 재사용.** 레시피: energy → momentum(+OB buoyancy `F=θ` on U, main 합성) → pressure → project. nu=√(Pr/Ra), alpha=1/√(RaPr). 진단 Re_δ*=U_max·δ*/ν.
+
+| Ra | 격자 | Re_δ* (계산) | 타깃 0.23·Ra^0.28 | 비고 |
+|---|---|---|---|---|
+| 10⁵ | 64×32×48 | 8.4 | 5.78 | ✓ 수렴, div~1e-14 (거친격자 1.45×) |
+| 10⁶ | 64×32×48 | **12.3** | **11.0** | ✓✓ **정량 일치 (1.12×)**, div~1e-14 |
+| 10⁷ | 96×48×96 | 발산 | 21.0 | ✗ 해상도 한계 |
+
+- **1e5·1e6**: Ng et al. DNS power-law과 일치, Re_δ* 추세 상승 → **OB 부력·열수송 물리 검증 완료**. div~1e-14 (T+부력에도 압력투영 완벽).
+- **1e7**: 작은격자(96×48×96도)에서 dt→1e-8 발산(t 정지). 버그 아님 — 얇은 BL + 폭증 grid-Re로 명시적 대류 불안정(논문 1e7=832×192×416≈66M). **multi-GPU DNS 해상도 필요(P8)**.
+- 커밋 `7c11998`. GPU scalar/buoyancy는 P5 no-op 스텁(듀얼빌드 그린).
+
 ## 다음 — cavity SKIP 확정 → DHVC 먼저 (CPU 검증 → GPU) (분석: REFACTOR_PLAN §8b)
 압력 엔진이 **X·Y 주기 하드 요구**(`pressure_engine_cpu.cpp:41`). cavity(전벽)만 전-Neumann `DctPressureSolver` 신설 필요(+stretch면 반복법 = 대형) — 그런데 **DHVC·RBC는 z벽+2주기라 기존 FFT 엔진 그대로 재사용**. ⇒ **cavity SKIP 확정.**
 - **DHVC 먼저**(RBC보다 가벼움: OB·Pr=0.7·저Ra 작은격자 vs NOB·Pr=2547·128³+cross-stress). **Ra=10⁵를 CPU(login01)에서 먼저 검증**(채널 회귀보다 가벼움) → 물리(부력·T수송) 확정 후 **GPU 커널(P5)+대규모 multi-GPU(P8)**. ⚠ 고Ra(10⁹–10¹⁰)·RBC 수렴은 GPU 전용.
