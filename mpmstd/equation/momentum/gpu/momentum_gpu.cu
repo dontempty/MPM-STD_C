@@ -1,21 +1,14 @@
 #include "equation/momentum/assemble.hpp"
 #include "equation/momentum/solve.hpp"
 
-// P0/P1 skeleton stubs (no-op), GPU build only. P5 ports the device kernels.
-// Signatures track the CPU side (assemble: T-independent, no P/Boundary).
+// P1/P5 skeleton stubs (no-op), GPU build only. Signatures track the CPU side
+// (Domain + GpuFields + GpuMomentumSystem). Real device kernels land in P5.
 
 namespace mpmstd::equation {
 
-void assemble_momentum_const_visc_gpu(core::MomentumSystem&, const core::GpuField&, const core::GpuField&,
-                                      const core::GpuField&, const core::Grid&, real_t, real_t) { /* TODO(P5) */ }
-
-void assemble_momentum_var_visc_gpu(core::MomentumSystem&, const core::GpuField&, const core::GpuField&,
-                                    const core::GpuField&, const core::GpuField&, const core::Grid&, real_t) { /* TODO(P5/P7) */ }
-
-void solve_momentum_gpu(core::MomentumSystem&, const core::GpuField&, const core::GpuField&, const core::GpuField&,
-                        core::GpuField&, core::GpuField&, core::GpuField&, const core::Subdomain&) { /* TODO(P5) */ }
-
-void update_velocity_gpu(core::GpuField&, core::GpuField&, core::GpuField&,
-                         const core::GpuField&, const core::GpuField&, const core::GpuField&) { /* TODO(P5) */ }
+void assemble_momentum_const_visc_gpu(const core::Domain&, core::GpuFields&, core::GpuMomentumSystem&, real_t) {}
+void assemble_momentum_var_visc_gpu  (const core::Domain&, core::GpuFields&, core::GpuMomentumSystem&, real_t) {}
+void solve_momentum_gpu(const core::Domain&, const core::BoundaryCondition&, core::GpuFields&, core::GpuMomentumSystem&, real_t) {}
+void update_velocity_gpu(core::GpuFields&, const core::GpuMomentumSystem&) {}
 
 } // namespace mpmstd::equation

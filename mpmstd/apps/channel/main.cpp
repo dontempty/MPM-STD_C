@@ -1,16 +1,13 @@
-// apps/channel — isothermal turbulent channel (rev.2 §7 case A), free-function
-// recipe on CpuField. Faithful port of the validated apps/channel time loop:
-//   cfl -> assemble_momentum_const_visc -> solve_momentum (ADI+block coupling) ->
-//   update_velocity -> channel forcing (dPdx + mass-flow) -> halo/ghost ->
-//   solve_pressure (div+Poisson+project) -> statistics.
-// Isothermal: NO T / mu declared (zero compute, zero memory).
+// apps/channel — isothermal turbulent channel (rev.2 §7 recipe), structural
+// redesign: the loop drives a Domain (geometry/parallel/tdma) + a BoundaryCondition
+// + a Fields container (the in-use physical variables + constants, registered
+// before the loop). Momentum owns its own increments. No per-field arg clutter,
+// no pointer derefs in the loop.
 
-#include "core/field_cpu.hpp"
-#include "core/grid.hpp"
+#include "core/domain.hpp"
 #include "core/boundary.hpp"
-#include "core/mpi_topology.hpp"
-#include "core/halo.hpp"
-#include "core/boundary_ops.hpp"
+#include "core/boundary_ops.hpp"    // sync_field_cpu
+#include "core/variables.hpp"
 #include "core/system.hpp"
 #include "core/config.hpp"
 
@@ -38,7 +35,7 @@ using namespace mpmstd;
 
 namespace {
 
-// Enforce W=0 on global z-wall faces (MAC stagger; matches the validated loop).
+// Enforce W=0 on global z-wall faces (MAC stagger).
 void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
   const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
@@ -50,24 +47,23 @@ void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
 }
 
 // Global max |div(U*)| (solver-health monitor).
-double div_max(const core::CpuField& U, const core::CpuField& V, const core::CpuField& W,
-               const core::Grid& g, const core::Subdomain& sub) {
-  const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+double div_max(const core::Domain& d, const core::CpuFields& fields) {
+  const auto nt = d.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
-  const real_t* u = U.data(); const real_t* v = V.data(); const real_t* w = W.data();
-  const real_t* dx1 = g.dx_ptr(Direction::X), *dx2 = g.dx_ptr(Direction::Y), *dx3 = g.dx_ptr(Direction::Z);
+  const real_t* u = fields[core::Var::U].data(); const real_t* v = fields[core::Var::V].data(); const real_t* w = fields[core::Var::W].data();
+  const real_t* dx1 = d.grid.dx_ptr(Direction::X), *dx2 = d.grid.dx_ptr(Direction::Y), *dx3 = d.grid.dx_ptr(Direction::Z);
   double local = 0.0;
   for (int i = h; i < n1 - h; ++i)
     for (int j = h; j < n2 - h; ++j)
       for (int k = h; k < n3 - h; ++k) {
-        const double d = (double(u[((i + 1) * n2 + j) * n3 + k]) - double(u[(i * n2 + j) * n3 + k])) / dx1[i]
-                       + (double(v[(i * n2 + j + 1) * n3 + k]) - double(v[(i * n2 + j) * n3 + k])) / dx2[j]
-                       + (double(w[(i * n2 + j) * n3 + k + 1]) - double(w[(i * n2 + j) * n3 + k])) / dx3[k];
-        local = std::max(local, std::fabs(d));
+        const double dv = (double(u[((i + 1) * n2 + j) * n3 + k]) - double(u[(i * n2 + j) * n3 + k])) / dx1[i]
+                        + (double(v[(i * n2 + j + 1) * n3 + k]) - double(v[(i * n2 + j) * n3 + k])) / dx2[j]
+                        + (double(w[(i * n2 + j) * n3 + k + 1]) - double(w[(i * n2 + j) * n3 + k])) / dx3[k];
+        local = std::max(local, std::fabs(dv));
       }
-  double global = local;
-  MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_MAX, sub.topology().cart_comm());
-  return global;
+  double grid = local;
+  MPI_Allreduce(&local, &grid, 1, MPI_DOUBLE, MPI_MAX, d.sub.topology().cart_comm());
+  return grid;
 }
 
 } // anonymous namespace
@@ -78,7 +74,7 @@ int main(int argc, char** argv) {
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/channel/input.toml";
   auto cfg = config::Config::load(input_path);
 
-  // ── topology / subdomain / grid / BC / TDMA ──────────────────────────────
+  // ── preprocessing: topology / subdomain / grid / BC / tdma ────────────────
   auto is_per = [](const std::string& s) { return s == "periodic"; };
   std::array<int, 3>  dims     = {cfg.get<int>("mpi", "np1"), cfg.get<int>("mpi", "np2"), cfg.get<int>("mpi", "np3")};
   std::array<bool, 3> periodic = {is_per(cfg.get_or<std::string>("topology", "x", "periodic")),
@@ -95,30 +91,35 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>("domain", std::string("L") + char('x' + a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid g(sub, axes);
+  core::Grid grid(sub, axes);
+  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  bc.validate();
+  auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
+  auto& tdma       = *tdma_owner;                       // unwrap once — no `*` in the loop
 
-  core::Boundary problem = boundary::load_problem_from_config(cfg);
-  problem.validate();
-  auto tdma = linear_solver::tdma::TdmaRegistry::make_default(topo);
+  core::Domain domain{grid, topo, sub, tdma};                 // the "where/how" context
 
-  // ── fields (isothermal: no T/mu) + systems ───────────────────────────────
-  core::CpuField U(sub, "U"), V(sub, "V"), W(sub, "W"), P(sub, "P");
-  core::CpuField dU(sub, "dU"), dV(sub, "dV"), dW(sub, "dW");
-  core::MomentumSystem mom;
-  core::PressureSystem poi;
-  post::Stats stats;
-  post::init_statistics_cpu(stats, g, sub);
+  // ── variables: register what this (isothermal) case uses, before the loop ─
+  core::CpuFields fields;
+  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
+  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
 
   // ── physics params + forcing ──────────────────────────────────────────────
   const double nu = cfg.has("physics", "nu") ? cfg.get<double>("physics", "nu")
                     : std::sqrt(cfg.get<double>("physics", "Pr") / cfg.get<double>("physics", "Ra"));
+  fields.add_constant(core::Const::nu, static_cast<real_t>(nu));
   const std::string fmode = cfg.get_or<std::string>("channel_forcing", "mode", "pressure_gradient");
   const bool   mass_flow  = (fmode == "mass_flow");
   const double target_Ub  = cfg.get_or<double>("channel_forcing", "target_bulk_velocity", 1.0);
-  const double target_dpdx= cfg.get_or<double>("channel_forcing", "target_dPdx",
-                              cfg.get_or<double>("source", "U_force", 3.0 * nu));
-  const double total_vol  = physics::channel_total_volume_cpu(g, sub);
-  double dpdx = mass_flow ? -(3.0 * nu) : -target_dpdx;   // -ve drives +x; F_lam=3nu seed
+  const double target_dpdx= cfg.get_or<double>("channel_forcing", "target_dPdx", cfg.get_or<double>("source", "U_force", 3.0 * nu));
+  const double total_vol  = physics::channel_total_volume_cpu(domain);
+  double dpdx = mass_flow ? -(3.0 * nu) : -target_dpdx;
+
+  // ── solver state (momentum owns its increments) ───────────────────────────
+  core::CpuMomentumSystem momentum(sub);
+  core::PressureSystem    pressure;
+  post::Stats             stats;
+  post::init_statistics_cpu(stats, domain);
 
   // ── time / IO config ──────────────────────────────────────────────────────
   const double t_end    = cfg.get_or<double>("time", "t_end", 1000.0);
@@ -137,16 +138,15 @@ int main(int argc, char** argv) {
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
   MPI_Barrier(topo.cart_comm());
 
-  // ── initial condition: load frozen turbulent restart ──────────────────────
-  U.fill(0); V.fill(0); W.fill(0); P.fill(0);
+  // ── initial condition: load frozen turbulent restart into Fields ──────────
   double time = cfg.get_or<double>("time", "t_start", 0.0);
   int    step = 0;
   if (continue_in) {
     if (mpi.is_root()) std::printf("[channel] restart from '%s'\n", dir_restart.c_str());
-    post::read_restart_cpu(U, sub, dir_restart + "U.bin");
-    post::read_restart_cpu(V, sub, dir_restart + "V.bin");
-    post::read_restart_cpu(W, sub, dir_restart + "W.bin");
-    post::read_restart_cpu(P, sub, dir_restart + "P.bin");
+    post::read_restart_cpu(fields[core::Var::U], sub, dir_restart + "U.bin");
+    post::read_restart_cpu(fields[core::Var::V], sub, dir_restart + "V.bin");
+    post::read_restart_cpu(fields[core::Var::W], sub, dir_restart + "W.bin");
+    post::read_restart_cpu(fields[core::Var::P], sub, dir_restart + "P.bin");
     if (mpi.is_root()) {
       FILE* mf = std::fopen((dir_restart + "meta.txt").c_str(), "r");
       if (mf) { double dtd, dpd; int st;
@@ -155,11 +155,11 @@ int main(int argc, char** argv) {
     }
     MPI_Bcast(&time, 1, MPI_DOUBLE, 0, topo.cart_comm());
     MPI_Bcast(&dpdx, 1, MPI_DOUBLE, 0, topo.cart_comm());
-    MPI_Bcast(&step, 1, MPI_INT, 0, topo.cart_comm());
+    MPI_Bcast(&step, 1, MPI_INT,    0, topo.cart_comm());
   }
-  zero_w_wall(W, sub);
-  core::sync_field_cpu(U, problem.U, sub); core::sync_field_cpu(V, problem.V, sub);
-  core::sync_field_cpu(W, problem.W, sub); core::sync_field_cpu(P, problem.P, sub);
+  zero_w_wall(fields[core::Var::W], sub);
+  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
+  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
 
   if (mpi.is_root())
     std::printf("[channel] start step=%d time=%.4g  nu=%.4e  mode=%s  np=%dx%dx%d  n=%dx%dx%d\n",
@@ -168,47 +168,41 @@ int main(int argc, char** argv) {
   // ── time loop (rev.2 §7 recipe) ────────────────────────────────────────────
   const int step0 = step;
   while (time < t_end && (step - step0) < n_steps) {
-    // (1) CFL-limited time step
-    real_t dt = driver::compute_cfl_dt_cpu(U, V, W, g, sub, max_cfl, dt_cap);
+    const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    // (2) momentum: explicit RHS → 3-sweep ADI + block coupling → U += dU
-    equation::assemble_momentum_const_visc_cpu(mom, U, V, W, g, static_cast<real_t>(nu), dt);
-    equation::solve_momentum_cpu(mom, U, V, W, dU, dV, dW, g, problem, *tdma, sub, static_cast<real_t>(nu), dt);
-    equation::update_velocity_cpu(U, V, W, dU, dV, dW);
-    core::sync_field_cpu(V, problem.V, sub);    // update_velocity changed interiors → refresh V,W
-    core::sync_field_cpu(W, problem.W, sub);
+    // (2) momentum: RHS → 3-sweep ADI + block coupling → U += dU
+    equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::update_velocity_cpu(fields, momentum);
+    core::sync_field_cpu(fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(fields, core::Var::W, bc, sub);
 
-    // (3) channel forcing: mean pressure gradient + (mass-flow) bulk correction
-    physics::apply_body_force_cpu(U, static_cast<real_t>(dpdx), dt);
-    if (mass_flow) physics::apply_mass_flow_correction_cpu(U, target_Ub, g, sub, dt, total_vol, dpdx);
-    core::sync_field_cpu(U, problem.U, sub);     // U changed by forcing → refresh
-    zero_w_wall(W, sub);                          // MAC: enforce W=0 on z-wall faces
+    // (3) channel forcing: mean dP/dx + (mass-flow) bulk correction
+    physics::apply_body_force_cpu(fields, static_cast<real_t>(dpdx), dt);
+    if (mass_flow) physics::apply_mass_flow_correction_cpu(domain, fields, target_Ub, dt, total_vol, dpdx);
+    core::sync_field_cpu(fields, core::Var::U, bc, sub);
+    zero_w_wall(fields[core::Var::W], sub);
 
-    // (4) pressure: div(U*) → Poisson → project U,V,W divergence-free (P updated)
-    equation::solve_pressure_cpu(poi, dt, U, V, W, P, g, problem, *tdma, sub);
+    // (4) pressure: div → Poisson → project U,V,W (P updated)
+    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
 
     time += static_cast<double>(dt);
     ++step;
 
     // (5) post: statistics + monitor
-
     if (out_stats && (step - step0) >= nstat_start && ((step - step0) % nstat_int == 0))
-      post::accumulate_statistics_cpu(stats, U, V, W, P, sub);
-
+      post::accumulate_statistics_cpu(stats, domain, fields);
     if (step % nmonitor == 0) {
-      const double dv = div_max(U, V, W, g, sub);
-      const double ub = physics::channel_bulk_velocity_cpu(U, g, sub, total_vol);
+      const double dv = div_max(domain, fields);
+      const double ub = physics::channel_bulk_velocity_cpu(domain, fields, total_vol);
       if (mpi.is_root())
-        std::printf("step=%d time=%.4g dt=%.3g div=%.3e Ub=%.4f dPdx=%.4e\n",
-                    step, time, double(dt), dv, ub, dpdx);
+        std::printf("step=%d time=%.4g dt=%.3g div=%.3e Ub=%.4f dPdx=%.4e\n", step, time, double(dt), dv, ub, dpdx);
     }
     if (out_stats && step % nout_stats == 0)
-      post::write_statistics_cpu(stats, dir_stats + "stats_" + std::to_string(step) + ".dat",
-                                 step, nu, sub, g);
+      post::write_statistics_cpu(stats, dir_stats + "stats_" + std::to_string(step) + ".dat", step, nu, domain);
   }
 
-  if (out_stats)
-    post::write_statistics_cpu(stats, dir_stats + "stats_final.dat", step, nu, sub, g);
+  if (out_stats) post::write_statistics_cpu(stats, dir_stats + "stats_final.dat", step, nu, domain);
   if (mpi.is_root()) std::printf("[channel] done step=%d time=%.4g\n", step, time);
   return 0;
 }

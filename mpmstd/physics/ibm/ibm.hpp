@@ -15,8 +15,8 @@ struct IbmMask {
 };
 
 void build_ibm_mask_cpu  (IbmMask& mask, const core::Grid& grid);
-void apply_ibm_forcing_cpu(core::MomentumSystem& mom, const IbmMask& mask);
+void apply_ibm_forcing_cpu(core::CpuMomentumSystem& mom, const IbmMask& mask);
 void build_ibm_mask_gpu  (IbmMask& mask, const core::Grid& grid);
-void apply_ibm_forcing_gpu(core::MomentumSystem& mom, const IbmMask& mask);
+void apply_ibm_forcing_gpu(core::GpuMomentumSystem& mom, const IbmMask& mask);
 
 } // namespace mpmstd::physics

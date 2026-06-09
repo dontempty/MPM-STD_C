@@ -14,7 +14,7 @@ struct BuoyancyParams {
   real_t T_ref        = 0;
 };
 
-void add_buoyancy_force_cpu(core::MomentumSystem& mom, const core::CpuField& T, const BuoyancyParams& p, real_t dt);
-void add_buoyancy_force_gpu(core::MomentumSystem& mom, const core::GpuField& T, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_cpu(core::CpuMomentumSystem& mom, const core::CpuField& T, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_gpu(core::GpuMomentumSystem& mom, const core::GpuField& T, const BuoyancyParams& p, real_t dt);
 
 } // namespace mpmstd::physics

@@ -2,6 +2,8 @@
 
 #include "core/field_cpu.hpp"
 #include "core/mpi_topology.hpp"        // Subdomain, CartComm1D (via parallel::mpi)
+#include "core/variables.hpp"           // Var, CpuFields
+#include "core/boundary.hpp"            // BoundaryCondition (= boundary::Problem)
 #include "common/direction.hpp"
 #include "boundary/field_boundary.hpp"  // FieldBoundary, FaceBc, BcKind, GhostPolicy (host-single)
 
@@ -32,7 +34,13 @@ void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
 // step = exchange_halo_cpu (neighbour halos) + apply_ghost_cpu (global-boundary
 // ghost). This is the "sync after a solve" the recipe does around every field;
 // folding the pair keeps the main loop readable and prevents a forgotten ghost.
-void sync_field_cpu(CpuField& f, const FieldBoundary& fbc, const Subdomain& sub,
+void sync_field_cpu(CpuField& field, const FieldBoundary& fbc, const Subdomain& sub,
                     real_t t = real_t{0});
+
+// The per-field FieldBoundary for a variable (bc.U for Var::U, bc.V for V, …).
+const FieldBoundary& face_bc_for(const BoundaryCondition& bc, Var v);
+
+// Container convenience: sync Fields[v] (halo + that variable's BC ghost) in one.
+void sync_field_cpu(CpuFields& fields, Var v, const BoundaryCondition& bc, const Subdomain& sub);
 
 } // namespace mpmstd::core

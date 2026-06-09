@@ -22,7 +22,7 @@ namespace mpmstd::core {
 // Faces only (no edges/corners) — matches the underlying Subdomain routine;
 // extend there if a cross-derivative stencil ever needs corners.
 // =============================================================================
-void exchange_halo_cpu(CpuField& f, const Subdomain& sub);
-void exchange_halo_gpu(GpuField& f, const Subdomain& sub);
+void exchange_halo_cpu(CpuField& field, const Subdomain& sub);
+void exchange_halo_gpu(GpuField& field, const Subdomain& sub);
 
 } // namespace mpmstd::core

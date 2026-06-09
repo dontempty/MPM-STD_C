@@ -2,25 +2,27 @@
 
 #include "core/grid.hpp"          // Grid
 #include "core/mpi_topology.hpp"  // MpiTopology, Subdomain
+#include "linear_solver/tdma/tdma_registry.hpp"
 
 namespace mpmstd::core {
 
 // =============================================================================
 // Domain — geometry + parallel preprocessing context (rev.2 structural redesign).
 // -----------------------------------------------------------------------------
-// Bundles the "where/how" the MPI/topology/subdomain/grid preprocessing produces.
-// Host-single, app-agnostic, fixed for the whole run, and carries NO mutable
-// physics state (it is NOT a god-object). A lightweight ref-view: the caller
-// owns the grid/topology/subdomain (built once in main) and they outlive Domain.
+// Bundles the "where/how" the MPI/topology/subdomain/grid preprocessing produces,
+// plus the distributed TDMA registry. Host-single, app-agnostic, fixed for the
+// whole run; carries NO mutable physics state. A lightweight ref-view: the caller
+// owns grid/topology/subdomain/tdma (built once in main) and they outlive Domain.
 // Equation/physics/post free functions take `const Domain&` as their single
-// "context" argument, replacing the scattered grid/sub/topo/tdma args.
+// context argument, replacing the scattered grid/sub/topo/tdma args.
 //
-// (TdmaRegistry is held separately — it is mutable solver machinery, not pure
-//  geometry — and passed where a distributed solve needs it.)
+// `tdma` is a reference (the unique_ptr from make_default is unwrapped ONCE in
+// main: `TdmaRegistry& tdma = *owner;`) so call sites never see a `*`.
 struct Domain {
-  const Grid&        grid;
-  const MpiTopology& topo;
-  const Subdomain&   sub;
+  const Grid&                        grid;
+  const MpiTopology&                 topo;
+  const Subdomain&                   sub;
+  linear_solver::tdma::TdmaRegistry& tdma;
 };
 
 } // namespace mpmstd::core

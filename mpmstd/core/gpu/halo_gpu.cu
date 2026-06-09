@@ -8,11 +8,11 @@
 
 namespace mpmstd::core {
 
-void exchange_halo_gpu(GpuField& f, const Subdomain& sub) {
+void exchange_halo_gpu(GpuField& field, const Subdomain& sub) {
   // CUDA-aware MPI (rev.2 C2): hand the DEVICE pointer straight to the same
   // Subdomain::exchange_halo routine — no host staging. The underlying
   // MPI_Sendrecv operates device-to-device when the MPI is CUDA-aware.
-  sub.exchange_halo(f.data());
+  sub.exchange_halo(field.data());
 }
 
 void bind_gpu_to_local_rank_gpu(const MpiContext& ctx) {

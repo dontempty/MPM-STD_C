@@ -5,18 +5,17 @@
 #include <algorithm>
 #include <cmath>
 
-// P1 — convective CFL dt (faithful port of channel max_cfl_impl).
-
 namespace mpmstd::driver {
 
-real_t compute_cfl_dt_cpu(const core::CpuField& U, const core::CpuField& V, const core::CpuField& W,
-                          const core::Grid& grid, const core::Subdomain& sub, real_t max_cfl, real_t dt_cap) {
-  const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+real_t compute_cfl_dt_cpu(const core::Domain& domain, const core::CpuFields& fields, real_t max_cfl, real_t dt_cap) {
+  const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
-  const real_t* u = U.data(); const real_t* v = V.data(); const real_t* w = W.data();
-  const real_t* dx1 = grid.dx_ptr(Direction::X);
-  const real_t* dx2 = grid.dx_ptr(Direction::Y);
-  const real_t* dx3 = grid.dx_ptr(Direction::Z);
+  const real_t* u = fields[core::Var::U].data();
+  const real_t* v = fields[core::Var::V].data();
+  const real_t* w = fields[core::Var::W].data();
+  const real_t* dx1 = domain.grid.dx_ptr(Direction::X);
+  const real_t* dx2 = domain.grid.dx_ptr(Direction::Y);
+  const real_t* dx3 = domain.grid.dx_ptr(Direction::Z);
 
   double local = 1e-30;
   for (int i = h; i < n1 - h; ++i)
@@ -28,7 +27,7 @@ real_t compute_cfl_dt_cpu(const core::CpuField& U, const core::CpuField& V, cons
         if (c > local) local = c;
       }
   double speed = local;
-  MPI_Allreduce(&local, &speed, 1, MPI_DOUBLE, MPI_MAX, sub.topology().cart_comm());
+  MPI_Allreduce(&local, &speed, 1, MPI_DOUBLE, MPI_MAX, domain.sub.topology().cart_comm());
 
   if (speed > 1e-14)
     return static_cast<real_t>(std::min(double(max_cfl) / speed, double(dt_cap)));

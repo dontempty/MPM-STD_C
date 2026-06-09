@@ -11,7 +11,8 @@
 | **P-0.5** | 인터페이스 스파이크 (core/solve API 동결 + halo/banded PoC + 듀얼빌드) | ✅ 완료 | `9e6df3b` |
 | **P0** | 6계층 트리 전체 스켈레톤 + 듀얼빌드 lib/apps/tests | ✅ 완료 | `4a178fc` |
 | P1 | CPU 자유함수 본문 포팅 + Re_tau=180 회귀 | ✅ 완료 | 4321294…596169d |
-| P2 | channel main 가독화 (§7 레시피) | ✅ 완료 | — |
+| P2 | channel main 가독화 (§7 레시피) | ✅ 완료 | `099a04c` |
+| **구조 재설계** | Domain/BoundaryCondition/Fields(Field+Constant)/MomentumSystem 그룹화 + 시그니처 통일 + 풀네임 | ✅ 완료 | — |
 | P3 / P3b | solve 일반화·BC-agnostic / cavity vs Ghia | ⏳ | — |
 | P4 / P5 | GPU core+멀티GPU 통신 / GPU 커널 | ⏳ | — |
 | P6 / P7 | DHVC(Fig 7) / NOB RBC(Fig 9) | ⏳ | — |
@@ -122,5 +123,23 @@ make -C tests/spike cpu && mpirun -np 2 build/cpu/spike/halo_poc
 
 ---
 
-## 다음 (P2)
-channel main 가독화(§7 레시피 정리; assemble/solve/project 분리 등) + 코드리뷰. 이후 P3/P3b(BC-agnostic·cavity), P4 GPU. (nvc++ ICE는 FaceBc 리팩토링으로 이미 해결 → 듀얼빌드 그린.)
+## 구조 재설계 (Structural Redesign) — 완료 ✅
+
+time loop의 12-인자 난잡한 호출(static/pointer/raw 혼재)을 정돈된 그룹 객체로 묶음. 설계 분석 = [STRUCTURE_REDESIGN.md](STRUCTURE_REDESIGN.md).
+
+**핵심 타입 (core/):**
+- `Domain{ const Grid&, const MpiTopology&, const Subdomain&, TdmaRegistry& tdma }` — "어디서/어떻게"(격자·MPI·서브도메인·TDMA). tdma는 **참조**(main에서 `*owner`를 한 번 풀어 보관 → 호출부에 `*` 없음).
+- `BoundaryCondition`(= boundary::Problem) — BC를 Domain과 분리한 별도 객체.
+- `FieldStore<FieldT>`(typed-key) — `fields[Var::U]` 접근, `CpuFields`/`GpuFields`. **Field**=공간변수, **Constant**=스칼라(nu 등)를 한 컨테이너에서 관리(`fields.constant(Const::nu)`). 쓸 변수만 루프 전에 등록.
+- `MomentumSystemT<FieldT>` — 증분 `dU,dV,dW`를 **모멘텀이 내부 소유**(`CpuMomentumSystem`/`GpuMomentumSystem`).
+
+**연산 시그니처 통일:** `op(domain, [bc,] fields, system, dt)` 형태로 모든 레이어(momentum/pressure/forcing/cfl/statistics) 재배선. 줄임말 제거 — `domain/fields/field/grid/momentum/pressure` 풀네임.
+
+**추가 힘 = main 합성(사용자 지시):** buoyancy 등 추가 force는 main에서 사용자가 명시 호출(call=on/omit=off), solve/assemble 내부에 박지 않음. momentum assemble = 점성+대류만(force-agnostic). 채널 forcing(dPdx·mass-flow)도 main 루프 호출.
+
+**GPU-resident 모델(최우선):** GPU 풀이 시 모든 변수 초기에 GPU 선언 → 계산은 GPU에서만 → fileout 때만 CPU로. `GpuFields`/`GpuMomentumSystem` 템플릿 nvc++ 인스턴스화 확인.
+
+**검증:** CPU·GPU 듀얼빌드 그린. Re_tau=180 회귀 **비트-동일**(div 4.63e-14, max u_rms⁺ 0.1717, centerline U 1.2448) — 대규모 재배선이 수치 결과를 1비트도 안 바꿈.
+
+## 다음
+P3/P3b: BC-agnostic 검증 + cavity(vs Ghia). 이후 P4/P5 GPU 커널(현재 GPU 경로는 no-op 스텁; nvc++ ICE는 FaceBc 리팩토링으로 해결됨). P6/P7(DHVC/RBC), P8 multi-GPU.

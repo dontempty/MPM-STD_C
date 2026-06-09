@@ -6,44 +6,39 @@
 #include <cmath>
 #include <cstdio>
 
-// P1 — channel z-profile statistics (faithful port of ChannelStats). GLOBAL
-// nx*ny xy-plane normalization (16x-bug guard).
+// P1 channel z-profile statistics rewired to Domain + Fields. GLOBAL nx*ny
+// xy-plane normalization (16x-bug guard).
 
 namespace mpmstd::post {
 
-void init_statistics_cpu(Stats& s, const core::Grid& grid, const core::Subdomain& sub) {
-  s.nz_global = sub.n_global()[2];
-  s.nz_local  = sub.n_interior()[2];
-  s.kstart    = sub.global_offset()[2];
+void init_statistics_cpu(Stats& s, const core::Domain& domain) {
+  s.nz_global = domain.sub.n_global()[2];
+  s.nz_local  = domain.sub.n_interior()[2];
+  s.kstart    = domain.sub.global_offset()[2];
   s.n         = 0;
-
   s.U_m.assign(s.nz_local, 0.0);  s.U2_m.assign(s.nz_local, 0.0);
   s.V_m.assign(s.nz_local, 0.0);  s.V2_m.assign(s.nz_local, 0.0);
   s.Wc_m.assign(s.nz_local, 0.0); s.Wc2_m.assign(s.nz_local, 0.0);
   s.UWc_m.assign(s.nz_local, 0.0); s.P_m.assign(s.nz_local, 0.0);
 
-  // global z-centers via Allreduce(MAX) over the cart comm
-  const auto& zc = grid.xc(Direction::Z);
+  const auto& zc = domain.grid.xc(Direction::Z);
   std::vector<double> tmp(s.nz_global, 0.0);
   for (int kl = 0; kl < s.nz_local; ++kl)
     tmp[s.kstart + kl] = static_cast<double>(zc[kHaloWidth + kl]);
   s.zc_global.assign(s.nz_global, 0.0);
-  MPI_Allreduce(tmp.data(), s.zc_global.data(), s.nz_global, MPI_DOUBLE, MPI_MAX,
-                sub.topology().cart_comm());
+  MPI_Allreduce(tmp.data(), s.zc_global.data(), s.nz_global, MPI_DOUBLE, MPI_MAX, domain.sub.topology().cart_comm());
 }
 
-void accumulate_statistics_cpu(Stats& s, const core::CpuField& U, const core::CpuField& V,
-                               const core::CpuField& W, const core::CpuField& P, const core::Subdomain& sub) {
+void accumulate_statistics_cpu(Stats& s, const core::Domain& domain, const core::CpuFields& fields) {
   ++s.n;
   const double inv_n = 1.0 / static_cast<double>(s.n);
-
   const int h  = kHaloWidth;
-  const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-  const int nx = sub.n_global()[0], ny = sub.n_global()[1];   // GLOBAL (16x-bug guard)
+  const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const int nx = domain.sub.n_global()[0], ny = domain.sub.n_global()[1];   // GLOBAL (16x-bug guard)
   const double inv_NxNy = 1.0 / static_cast<double>(nx * ny);
 
-  const real_t* u = U.data(); const real_t* v = V.data();
-  const real_t* w = W.data(); const real_t* p = P.data();
+  const real_t* u = fields[core::Var::U].data(); const real_t* v = fields[core::Var::V].data();
+  const real_t* w = fields[core::Var::W].data(); const real_t* p = fields[core::Var::P].data();
 
   for (int kl = 0; kl < s.nz_local; ++kl) {
     const int k = kl + h;
@@ -68,26 +63,25 @@ void accumulate_statistics_cpu(Stats& s, const core::CpuField& U, const core::Cp
   }
 }
 
-void write_statistics_cpu(const Stats& s, const std::string& path, int step, double nu,
-                          const core::Subdomain& sub, const core::Grid& /*grid*/) {
+void write_statistics_cpu(const Stats& s, const std::string& path, int step, double nu, const core::Domain& domain) {
   constexpr int NF = 8;
   std::vector<double> send(static_cast<std::size_t>(NF) * s.nz_global, 0.0);
   std::vector<double> recv(static_cast<std::size_t>(NF) * s.nz_global, 0.0);
-  auto row = [&](int f) { return send.data() + static_cast<std::size_t>(f) * s.nz_global; };
+  auto row = [&](int fi) { return send.data() + static_cast<std::size_t>(fi) * s.nz_global; };
   const std::vector<const std::vector<double>*> locals =
       {&s.U_m, &s.U2_m, &s.V_m, &s.V2_m, &s.Wc_m, &s.Wc2_m, &s.UWc_m, &s.P_m};
-  for (int f = 0; f < NF; ++f)
+  for (int fi = 0; fi < NF; ++fi)
     for (int kl = 0; kl < s.nz_local; ++kl)
-      row(f)[s.kstart + kl] = (*locals[f])[kl];
+      row(fi)[s.kstart + kl] = (*locals[fi])[kl];
 
   MPI_Allreduce(send.data(), recv.data(), static_cast<int>(send.size()),
-                MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+                MPI_DOUBLE, MPI_SUM, domain.sub.topology().cart_comm());
 
   int rank = 0;
-  MPI_Comm_rank(sub.topology().cart_comm(), &rank);
+  MPI_Comm_rank(domain.sub.topology().cart_comm(), &rank);
   if (rank != 0 || s.n == 0) return;
 
-  auto col = [&](int f, int k) { return recv[static_cast<std::size_t>(f) * s.nz_global + k]; };
+  auto col = [&](int fi, int k) { return recv[static_cast<std::size_t>(fi) * s.nz_global + k]; };
   const double tau_w = nu * std::fabs(col(0, 0)) / s.zc_global[0];
   const double u_tau = std::sqrt(std::max(tau_w, 0.0));
   const double inv_nu = 1.0 / nu;

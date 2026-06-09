@@ -113,9 +113,20 @@ void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
   if (owns_upper) fold_upper(fbc.face(wall_axis, Side::Plus));
 }
 
-void sync_field_cpu(CpuField& f, const FieldBoundary& fbc, const Subdomain& sub, real_t t) {
-  exchange_halo_cpu(f, sub);       // neighbour-rank halos
-  apply_ghost_cpu(f, fbc, sub, t); // global-boundary ghost
+void sync_field_cpu(CpuField& field, const FieldBoundary& fbc, const Subdomain& sub, real_t t) {
+  exchange_halo_cpu(field, sub);       // neighbour-rank halos
+  apply_ghost_cpu(field, fbc, sub, t); // global-boundary ghost
+}
+
+const FieldBoundary& face_bc_for(const BoundaryCondition& bc, Var v) {
+  switch (v) {
+    case Var::U: return bc.U; case Var::V: return bc.V; case Var::W: return bc.W;
+    case Var::P: return bc.P; case Var::T: return bc.T; default: return bc.U;
+  }
+}
+
+void sync_field_cpu(CpuFields& fields, Var v, const BoundaryCondition& bc, const Subdomain& sub) {
+  sync_field_cpu(fields[v], face_bc_for(bc, v), sub);
 }
 
 } // namespace mpmstd::core
