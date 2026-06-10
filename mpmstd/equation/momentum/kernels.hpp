@@ -145,4 +145,25 @@ void block_couple_dU(real_t*       dU,
                      int n1_tot, int n2_tot, int n3_tot,
                      real_t dt);
 
+// ── NOB transpose viscous stress (cross-stress), component i ─────────────────
+//   T_i = Σ_j ∂_j(μ ∂_i u_j)  — the ∇u^T half of ∇·(μ(∇u+∇u^T)). Added to the
+// component RHS as dt·Cmu·invRho·T_i. At μ=const it is ∂_i(∇·u) ≈ 0 (so it does
+// not perturb the μ≡1/OB validation), and combined with the diagonal own term
+// it doubles the own direction (matching the reference 2× factor). This is the
+// piece the diagonal-only var-μ RHS dropped; it is required for the strong
+// glycerol viscosity contrast (NOB_RBC_SPEC.md §3). μ is volume-weighted to the
+// edge between the component's face and the cross face; z = wall-normal staggered.
+void add_transpose_stress_u_cpu(real_t* rhs_u, const real_t* U, const real_t* V, const real_t* W,
+    const real_t* mu, const real_t* invrho,
+    const real_t* dx1, const real_t* dmx1, const real_t* dx2, const real_t* dmx2,
+    const real_t* dx3, const real_t* dmx3, int n1, int n2, int n3, real_t Cmu, real_t dt);
+void add_transpose_stress_v_cpu(real_t* rhs_v, const real_t* U, const real_t* V, const real_t* W,
+    const real_t* mu, const real_t* invrho,
+    const real_t* dx1, const real_t* dmx1, const real_t* dx2, const real_t* dmx2,
+    const real_t* dx3, const real_t* dmx3, int n1, int n2, int n3, real_t Cmu, real_t dt);
+void add_transpose_stress_w_cpu(real_t* rhs_w, const real_t* U, const real_t* V, const real_t* W,
+    const real_t* mu, const real_t* invrho,
+    const real_t* dx1, const real_t* dmx1, const real_t* dx2, const real_t* dmx2,
+    const real_t* dx3, const real_t* dmx3, int n1, int n2, int n3, real_t Cmu, real_t dt);
+
 } // namespace mpmstd::equation::momentum::kernels

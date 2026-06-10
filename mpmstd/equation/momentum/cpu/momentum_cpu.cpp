@@ -57,6 +57,15 @@ void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields&
                              dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, false, conv);
   mk::compute_mpmstd_rhs_var(mom.rhs_w.data(), wp, up, vp, wp, mu, irho,
                              dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, true,  conv);
+
+  // NOB transpose viscous stress (cross-stress): T_i = Σ_j ∂_j(μ ∂_i u_j). ≈0 at
+  // μ≡1 (∂_i div u), supplies the ∇μ stress that stabilises the glycerol contrast.
+  mk::add_transpose_stress_u_cpu(mom.rhs_u.data(), up, vp, wp, mu, irho,
+                                 dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
+  mk::add_transpose_stress_v_cpu(mom.rhs_v.data(), up, vp, wp, mu, irho,
+                                 dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
+  mk::add_transpose_stress_w_cpu(mom.rhs_w.data(), up, vp, wp, mu, irho,
+                                 dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
 }
 
 // ---- one component: 3-sweep ADI (rhs_buf → out increment) -------------------
