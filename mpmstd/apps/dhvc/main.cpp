@@ -28,6 +28,7 @@
 #include "equation/scalar/solve.hpp"
 #include "equation/pressure/solve.hpp"
 #include "physics/buoyancy/buoyancy.hpp"
+#include "physics/forcing/forcing.hpp"   // channel_total_volume_cpu, apply_mass_flow_correction_cpu (zero-net-flux)
 #include "driver/cfl.hpp"
 #include "post/statistics.hpp"
 
@@ -178,6 +179,12 @@ int main(int argc, char** argv) {
     std::printf("[dhvc] Ra=%.2e Pr=%.3g  nu=%.4e alpha=%.4e  n=%dx%dx%d (x stream, y span, z wall)\n",
                 Ra, Pr, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
+  // Closed DHVC has ZERO net streamwise flux: the periodic streamwise direction
+  // has no pressure gradient to balance the net buoyancy force (∫θ dz drifts off
+  // zero once symmetry breaks), so a spurious net flow would otherwise accumulate
+  // and swamp the antisymmetric shear jet. Enforce <U>=0 each step.
+  const double total_vol = physics::channel_total_volume_cpu(domain);
+
   // ── time loop ──────────────────────────────────────────────────────────────
   double time = 0.0; int step = 0;
   while (time < t_end && step < n_steps) {
@@ -193,6 +200,10 @@ int main(int argc, char** argv) {
     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);
     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
+    // zero net streamwise flux (closed DHVC): subtract the bulk U the net
+    // buoyancy would drive in the periodic streamwise direction.
+    double net_dpdx = 0.0;
+    physics::apply_mass_flow_correction_cpu(domain, fields, 0.0, dt, total_vol, net_dpdx);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
