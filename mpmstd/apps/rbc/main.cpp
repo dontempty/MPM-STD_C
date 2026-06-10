@@ -31,6 +31,7 @@
 #include "equation/scalar/solve.hpp"
 #include "equation/pressure/solve.hpp"
 #include "physics/buoyancy/buoyancy.hpp"
+#include "physics/properties/properties.hpp"   // NOB glycerol properties (var-μ path)
 #include "driver/cfl.hpp"
 #include "post/statistics.hpp"
 
@@ -145,6 +146,14 @@ int main(int argc, char** argv) {
   // RBC: gravity along z (wall-normal, vertical), F = θ on W, coeff = 1 (OB).
   physics::BuoyancyParams buoy; buoy.gravity_axis = 2; buoy.coeff = 1; buoy.T_ref = 0;
 
+  // NOB (variable-property) path: nob=1 → variable-μ momentum driven by the
+  // glycerol property fields. DeltaT sets the polynomial nonlinearity; DeltaT=0
+  // ⇒ properties≡1, so nob=1/DeltaT=0 validates the var path against const-visc.
+  const bool   nob    = cfg.get_or<int>("physics", "nob", 0) != 0;
+  const double DeltaT = cfg.get_or<double>("physics", "DeltaT", 0.0);
+  physics::CpuPropertyFields  props(sub);
+  const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+
   const double t_end    = cfg.get_or<double>("time", "t_end", 400.0);
   const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.02));
   const real_t max_cfl  = static_cast<real_t>(cfg.get_or<double>("time", "MaxCFL", 0.5));
@@ -194,13 +203,17 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
+    if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
+
+    equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);   // (var-κ energy: P7-next)
     equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);   // F=θ on W
-    equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
+    else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);   // F=θ on W (NOB θ² term: P7-next)
+    if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
+    else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);

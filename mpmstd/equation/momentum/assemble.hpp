@@ -15,11 +15,13 @@ namespace mpmstd::equation {
 void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
                                       core::CpuMomentumSystem& mom, real_t dt);
 void assemble_momentum_var_visc_cpu  (const core::Domain& domain, core::CpuFields& fields,
+                                      const core::CpuField& mu, const core::CpuField& inv_rho,
                                       core::CpuMomentumSystem& mom, real_t dt);
 
 void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuFields& fields,
                                       core::GpuMomentumSystem& mom, real_t dt);
 void assemble_momentum_var_visc_gpu  (const core::Domain& domain, core::GpuFields& fields,
+                                      const core::GpuField& mu, const core::GpuField& inv_rho,
                                       core::GpuMomentumSystem& mom, real_t dt);
 
 } // namespace mpmstd::equation

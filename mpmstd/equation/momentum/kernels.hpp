@@ -26,6 +26,39 @@ void compute_mpmstd_rhs(real_t*       rhs,
                          bool z_staggered = false,
                          real_t conv_factor = real_t{0.25});
 
+// ── Variable-viscosity (NOB) RHS ─────────────────────────────────────────────
+// Same structure as compute_mpmstd_rhs, but the viscous term uses a face-
+// interpolated μ field and a 1/ρ̂ prefactor: rhs = invrho·Cmu·∂(μ ∂q) + conv.
+// With μ≡1, invrho≡1, Cmu=ν it reduces EXACTLY to compute_mpmstd_rhs (the
+// const-visc validation hook). Cross-stress terms are added separately by the
+// caller (they vanish for constant μ via continuity). Cmu = √(Pr/Ra).
+void compute_mpmstd_rhs_var(real_t*       rhs,
+                            const real_t* q,
+                            const real_t* U, const real_t* V, const real_t* W,
+                            const real_t* mu, const real_t* invrho,
+                            const real_t* dx1, const real_t* dmx1,
+                            const real_t* dx2, const real_t* dmx2,
+                            const real_t* dx3, const real_t* dmx3,
+                            int n1_tot, int n2_tot, int n3_tot,
+                            real_t Cmu, real_t dt,
+                            bool z_staggered = false,
+                            real_t conv_factor = real_t{0.25});
+
+// Variable-viscosity ADI bands: face-μ + 1/ρ̂ in the viscous coefficient.
+// With μ≡1, invrho≡1, Cmu=ν it reduces EXACTLY to build_adi_bands.
+void build_adi_bands_var(Direction      d,
+                         real_t*        A, real_t* B, real_t* C, real_t* D,
+                         const real_t*  src,
+                         const real_t*  q,
+                         const real_t*  q_adv,
+                         const real_t*  mu, const real_t* invrho,
+                         const real_t*  dx_along, const real_t* dmx_along,
+                         int            n1_tot, int n2_tot, int n3_tot,
+                         int            n1_int,  int n2_int,  int n3_int,
+                         real_t         Cmu, real_t dt,
+                         real_t         visc_factor = real_t{0.5},
+                         bool           z_staggered = false);
+
 // ── Explicit source accumulation ─────────────────────────────────────────────
 // rhs[c] += dt * src[c]  (interior only)
 void add_source_rhs(real_t*       rhs,
