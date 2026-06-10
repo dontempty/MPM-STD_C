@@ -153,6 +153,10 @@ int main(int argc, char** argv) {
   const double DeltaT = cfg.get_or<double>("physics", "DeltaT", 0.0);
   physics::CpuPropertyFields  props(sub);
   const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  // NOB buoyancy nonlinearity: a12pera11 = a12/a11 of the density polynomial
+  // (NOB_RBC_SPEC.md §5); guarded so OB (a12=0) and DeltaT=0 both give F = θ.
+  buoy.a12pera11 = (std::fabs(pmodel.a[2]) < static_cast<real_t>(1e-14)) ? 0 : pmodel.a[2] / pmodel.a[1];
+  buoy.delta_T   = static_cast<real_t>(DeltaT);
 
   const double t_end    = cfg.get_or<double>("time", "t_end", 400.0);
   const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.02));
@@ -205,13 +209,19 @@ int main(int argc, char** argv) {
 
     if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);   // (var-κ energy: P7-next)
-    equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
+    if (nob) {
+      equation::assemble_scalar_var_diff_cpu(domain, fields, props.kappa, props.inv_rhocp, scalar_system, dt);
+      equation::solve_scalar_var_cpu(domain, bc, fields, props.kappa, props.inv_rhocp, scalar_system, dt);
+    } else {
+      equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
+      equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
+    }
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
     if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
     else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);   // F=θ on W (NOB θ² term: P7-next)
+    if (nob) physics::add_buoyancy_force_nob_cpu(momentum, fields[core::Var::T], props.inv_rho, buoy, dt);  // F=invRho·(θ+a12pera11·θ²·Δ)
+    else     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);                     // OB: F=θ on W
     if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
     else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);

@@ -71,4 +71,67 @@ void solve_scalar_cpu(const core::Domain& domain, const core::BoundaryCondition&
   sk::add_increment(fields[core::Var::T].data(), in, n1, n2, n3);
 }
 
+// =============================================================================
+//  Variable-conductivity (NOB) twins — face-κ̂ + 1/(ρ̂Ĉp) prefactor, Ct=alpha_T.
+//  With κ̂≡1, invρĈp≡1 these reproduce the const versions bit-for-bit. The wall
+//  BC fold (modify_tdma_row_cpu) is unchanged: T walls are Dirichlet so the
+//  increment δT_wall=0 and the fold just drops the actual (var) wall coupling.
+// =============================================================================
+void assemble_scalar_var_diff_cpu(const core::Domain& domain, core::CpuFields& fields,
+                                  const core::CpuField& kappa, const core::CpuField& inv_rhocp,
+                                  core::CpuScalarSystem& scalar_system, real_t dt) {
+  const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const real_t* T  = fields[core::Var::T].data();
+  const real_t  Ct = fields.constant(core::Const::alpha_T);   // = 1/√(Ra·Pr)
+
+  // (1) explicit variable-κ̂ Laplacian: rhs = Ct*dt*(1/ρ̂Ĉp)·∇·(κ̂∇T)
+  sk::laplacian_explicit_rhs_var(scalar_system.rhs.data(), T, kappa.data(), inv_rhocp.data(),
+      domain.grid.dx_ptr(Direction::X), domain.grid.dmx_ptr(Direction::X),
+      domain.grid.dx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Y),
+      domain.grid.dx_ptr(Direction::Z), domain.grid.dmx_ptr(Direction::Z),
+      n1, n2, n3, Ct, dt);
+
+  // (1b) convection: rhs += -dt * u·∇T (identical to the const path)
+  sk::add_convection_rhs(scalar_system.rhs.data(), T,
+      fields[core::Var::U].data(), fields[core::Var::V].data(), fields[core::Var::W].data(),
+      domain.grid.dx_ptr(Direction::X), domain.grid.dx_ptr(Direction::Y), domain.grid.dx_ptr(Direction::Z),
+      n1, n2, n3, -dt);
+}
+
+void solve_scalar_var_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+                          core::CpuFields& fields, const core::CpuField& kappa, const core::CpuField& inv_rhocp,
+                          core::CpuScalarSystem& sys, real_t dt) {
+  const auto nt = sys.n_total; const auto ni = sys.n_interior;
+  const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const int i1 = ni[0], i2 = ni[1], i3 = ni[2];
+  const real_t Ct = fields.constant(core::Const::alpha_T);
+  const boundary::FieldBoundary& fbc = bc.T;
+
+  real_t* in   = sys.rhs.data();
+  real_t* outb = sys.stage.data();
+  for (Direction d : bc.topology.sweep_order()) {
+    sk::build_adi_bands_var(d, sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
+                            in, kappa.data(), inv_rhocp.data(),
+                            domain.grid.dx_ptr(d), domain.grid.dmx_ptr(d),
+                            n1, n2, n3, i1, i2, i3, Ct, dt);
+
+    int n_row = 0, n_sys = 0;
+    switch (d) {
+      case Direction::X: n_row = i1; n_sys = i2 * i3; break;
+      case Direction::Y: n_row = i2; n_sys = i1 * i3; break;
+      case Direction::Z: n_row = i3; n_sys = i1 * i2; break;
+    }
+    if (bc.topology.is_periodic(d)) {
+      domain.tdma.get(d).solve_many_cyclic(sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
+    } else {
+      core::modify_tdma_row_cpu(d, fbc, domain.sub.topology().axis(d),
+                                sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
+      domain.tdma.get(d).solve_many(sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
+    }
+    sk::scatter_from_tdma(d, outb, sys.D.data(), n1, n2, n3, i1, i2, i3);
+    std::swap(in, outb);
+  }
+  sk::add_increment(fields[core::Var::T].data(), in, n1, n2, n3);
+}
+
 } // namespace mpmstd::equation

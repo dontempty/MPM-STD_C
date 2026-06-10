@@ -12,9 +12,20 @@ struct BuoyancyParams {
   int    gravity_axis = 2;   // wall/gravity axis is case-dependent (channel z, DHVC streamwise, RBC vertical)
   real_t coeff        = 0;   // Ra/Pr-derived scaling (set per case)
   real_t T_ref        = 0;
+  // NOB density-nonlinearity (RBC glycerol, NOB_RBC_SPEC.md §5):
+  //   F = invRho · (θ + a12pera11·θ²·DeltaT),  Cmt=1, no T_ref (θ already centred).
+  // a12pera11 = a12/a11 of the density polynomial; 0 ⇒ OB (then F = invRho·θ).
+  real_t a12pera11    = 0;
+  real_t delta_T      = 0;
 };
 
+// OB Boussinesq: F = coeff·(T − T_ref) on the gravity-axis component.
 void add_buoyancy_force_cpu(core::CpuMomentumSystem& mom, const core::CpuField& T, const BuoyancyParams& p, real_t dt);
 void add_buoyancy_force_gpu(core::GpuMomentumSystem& mom, const core::GpuField& T, const BuoyancyParams& p, real_t dt);
+
+// NOB (variable density): F = invRho·(θ + a12pera11·θ²·DeltaT). With invRho≡1,
+// a12pera11=0 this is F = θ — i.e. the OB form with coeff=1, T_ref=0.
+void add_buoyancy_force_nob_cpu(core::CpuMomentumSystem& mom, const core::CpuField& T, const core::CpuField& inv_rho, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_nob_gpu(core::GpuMomentumSystem& mom, const core::GpuField& T, const core::GpuField& inv_rho, const BuoyancyParams& p, real_t dt);
 
 } // namespace mpmstd::physics

@@ -91,6 +91,38 @@ void build_adi_bands(Direction      d,
 
 
 // -----------------------------------------------------------------------------
+//  Variable-conductivity (NOB) twins — same structure as the const versions but
+//  with a face-interpolated conductivity κ̂ and a cell-centred 1/(ρ̂Ĉp) prefactor
+//  (NOB_RBC_SPEC.md): the operator is  (1/(ρ̂Ĉp)) ∇·(κ̂ ∇θ),  scaled by Ct=1/√(RaPr).
+//
+//  Face conductivity:  κ̂_{i+1/2} = 0.5 (κ̂_i + κ̂_{i+1})  (likewise each axis).
+//
+//  With κ̂≡1, invρĈp≡1, Ct=alpha these reduce EXACTLY to the const kernels above
+//  (face-interp of a constant = the constant; cell prefactor = 1) — the OB limit.
+//  No dκ̂ product-rule linearisation here (that is the stiff-Pr stability
+//  refinement); this is the leading variable-κ̂ diffusion. Because κ̂ and 1/(ρ̂Ĉp)
+//  vary per cell, the ADI bands are filled per (row,sys), not per row.
+// -----------------------------------------------------------------------------
+void laplacian_explicit_rhs_var(real_t*       rhs,
+                                const real_t* phi,
+                                const real_t* kappa, const real_t* inv_rhocp,
+                                const real_t* dx1, const real_t* dmx1,
+                                const real_t* dx2, const real_t* dmx2,
+                                const real_t* dx3, const real_t* dmx3,
+                                int n1_tot, int n2_tot, int n3_tot,
+                                real_t Ct, real_t dt);
+
+void build_adi_bands_var(Direction      d,
+                         real_t*        A, real_t* B, real_t* C, real_t* D,
+                         const real_t*  src,
+                         const real_t*  kappa, const real_t* inv_rhocp,
+                         const real_t*  dx_along, const real_t* dmx_along,
+                         int            n1_tot, int n2_tot, int n3_tot,
+                         int            n1_int, int n2_int, int n3_int,
+                         real_t         Ct, real_t dt);
+
+
+// -----------------------------------------------------------------------------
 //  (3) Scatter the TDMA solution back into a flat n_total^3 array.
 //
 //      Reverses the (sys, row) -> (i, j, k) mapping used by build_adi_bands.
