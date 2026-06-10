@@ -1,0 +1,48 @@
+# RBC OB sanity test — validate geometry + convection + Θ_c diagnostic.
+#   x,y horizontal (periodic), z vertical/gravity (wall): hot bottom θ=+0.5,
+#   cold top θ=−0.5. Moderate Pr/Ra + small grid for a quick check (Θ_c→0 for OB).
+[domain]
+Lx = 2.0
+Ly = 2.0
+Lz = 1.0
+[mesh]
+n1m = 64
+n2m = 64
+n3m = 48
+[mpi]
+np1 = 2
+np2 = 2
+np3 = 2
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.0
+[physics]
+nob = 1
+DeltaT = 60.0
+Ra = 1.0e5
+Pr = 7.0
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5      # hot bottom (z=0)
+[bc.z.plus]
+T = -0.5     # cold top (z=Lz)
+[time]
+t_start  = 0.0
+t_end    = 300.0
+dt_start = 0.02
+MaxCFL   = 0.1
+n_steps  = 30000
+[init]
+perturb = 0.02
+[output]
+dir_stats   = "apps/rbc/stats_sw60b/"
+nmonitor    = 500
+nstat_start = 5000

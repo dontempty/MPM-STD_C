@@ -1,455 +1,252 @@
-// =============================================================================
-//  apps/rbc/main.cpp  —  Rayleigh-Bénard / DHVC convection
+// apps/rbc — Rayleigh-Bénard convection (PaScaL_TCS Fig 9).
 //
-//  Run with:
-//      mpirun -np 1 build/cpu/bin/rbc apps/rbc/input.toml
-// =============================================================================
+// Stage 1 = OB (constant properties): validates the RBC geometry + the central-
+// temperature diagnostic before NOB (P7). Reuses the validated DHVC physics with
+// the gravity axis rotated to the wall-normal:
+//   x, y = horizontal (periodic, Lx = Ly = Γ·H)
+//   z    = vertical / wall-normal / gravity (wall, Lz = H)
+//          hot bottom θ=+0.5 at z=0, cold top θ=−0.5 at z=Lz; no-slip U,V,W.
+// Buoyancy F = θ on W (z-momentum). Gravity is in the BOUNDED z, so there is no
+// periodic net-flux runaway (unlike DHVC) → no zero-net-flux correction.
+// OB free-fall nondim: nu = √(Pr/Ra), alpha = 1/√(Ra·Pr).
+// Recipe each step: energy → momentum(+buoyancy on W) → pressure → project.
+// Diagnostic: central temperature Θ_c = <θ>_{x,y,t} at z = Lz/2. OB ⇒ Θ_c ≈ 0;
+// NOB (P7) ⇒ Θ_c > 0 (Fig 9). NOB properties/cross-stress land in P7.
 
-#include "boundary/main.hpp"
-#include "common/main.hpp"
-#include "config/main.hpp"
-#include "equation/main.hpp"
-#include "equation/pressure/pressure_solver_factory.hpp"
-#include "field/main.hpp"
-#include "grid/main.hpp"
-#include "linear_solver/tdma/main.hpp"
-#include "parallel/main.hpp"
-#include "post/main.hpp"
+#include "core/domain.hpp"
+#include "core/boundary.hpp"
+#include "core/boundary_ops.hpp"
+#include "core/variables.hpp"
+#include "core/system.hpp"
+#include "core/config.hpp"
 
-#include <algorithm>
+#include "config/logger.hpp"
+#include "boundary/problem_loader.hpp"
+#include "grid/grid.hpp"
+#include "linear_solver/tdma/tdma_registry.hpp"
+
+#include "equation/momentum/assemble.hpp"
+#include "equation/momentum/solve.hpp"
+#include "equation/scalar/assemble.hpp"
+#include "equation/scalar/solve.hpp"
+#include "equation/pressure/solve.hpp"
+#include "physics/buoyancy/buoyancy.hpp"
+#include "physics/properties/properties.hpp"   // NOB glycerol properties (var-μ path)
+#include "driver/cfl.hpp"
+#include "post/statistics.hpp"
+
+#include <mpi.h>
 #include <array>
 #include <cmath>
-#include <iostream>
-#include <limits>
+#include <cstdio>
+#include <filesystem>
 #include <string>
 
 using namespace mpmstd;
 
+namespace {
+
+void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
+  const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const int h = kHaloWidth;
+  real_t* w = W.data();
+  if (sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL)
+    for (int i = 0; i < n1; ++i) for (int j = 0; j < n2; ++j) w[(i * n2 + j) * n3 + h] = 0;
+  if (sub.topology().axis(Direction::Z).east_rank == MPI_PROC_NULL)
+    for (int i = 0; i < n1; ++i) for (int j = 0; j < n2; ++j) w[(i * n2 + j) * n3 + (n3 - h)] = 0;
+}
+
+double div_max(const core::Domain& d, const core::CpuFields& f) {
+  const auto nt = d.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const int h = kHaloWidth;
+  const real_t* u = f[core::Var::U].data(); const real_t* v = f[core::Var::V].data(); const real_t* w = f[core::Var::W].data();
+  const real_t* dx1 = d.grid.dx_ptr(Direction::X), *dx2 = d.grid.dx_ptr(Direction::Y), *dx3 = d.grid.dx_ptr(Direction::Z);
+  double local = 0.0;
+  for (int i = h; i < n1 - h; ++i)
+    for (int j = h; j < n2 - h; ++j)
+      for (int k = h; k < n3 - h; ++k) {
+        const double dv = (double(u[((i + 1) * n2 + j) * n3 + k]) - double(u[(i * n2 + j) * n3 + k])) / dx1[i]
+                        + (double(v[(i * n2 + j + 1) * n3 + k]) - double(v[(i * n2 + j) * n3 + k])) / dx2[j]
+                        + (double(w[(i * n2 + j) * n3 + k + 1]) - double(w[(i * n2 + j) * n3 + k])) / dx3[k];
+        local = std::max(local, std::fabs(dv));
+      }
+  double g = local;
+  MPI_Allreduce(&local, &g, 1, MPI_DOUBLE, MPI_MAX, d.sub.topology().cart_comm());
+  return g;
+}
+
+// Global x,y-plane mean of θ at the centre z-plane (z = Lz/2). Θ_c diagnostic.
+double center_temp(const core::Domain& d, const core::CpuFields& f) {
+  const auto nt = d.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const int h = kHaloWidth;
+  const int nz_g = d.sub.n_global()[2], kc_g = nz_g / 2;
+  const int kstart = d.sub.global_offset()[2], nz_loc = d.sub.n_interior()[2];
+  const real_t* T = f[core::Var::T].data();
+  double local = 0.0;
+  if (kc_g >= kstart && kc_g < kstart + nz_loc) {
+    const int kc = kc_g - kstart + h;
+    for (int i = h; i < n1 - h; ++i)
+      for (int j = h; j < n2 - h; ++j) local += double(T[(i * n2 + j) * n3 + kc]);
+  }
+  double g = 0.0;
+  MPI_Allreduce(&local, &g, 1, MPI_DOUBLE, MPI_SUM, d.sub.topology().cart_comm());
+  const int nx = d.sub.n_global()[0], ny = d.sub.n_global()[1];
+  return g / (static_cast<double>(nx) * ny);
+}
+
+} // anonymous namespace
 
 int main(int argc, char** argv) {
-
-  // -------------------------------------------------------------------------
-  //  (1)  MPI startup.
-  // -------------------------------------------------------------------------
-  parallel::mpi::MpiContext mpi(&argc, &argv);
-
-
-  // -------------------------------------------------------------------------
-  //  (2)  Logger + config file.
-  // -------------------------------------------------------------------------
+  core::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
-
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
-  config::Logger::info("loaded config from '%s'", cfg.source_path().c_str());
 
+  auto is_per = [](const std::string& s) { return s == "periodic"; };
+  std::array<int, 3>  dims     = {cfg.get<int>("mpi", "np1"), cfg.get<int>("mpi", "np2"), cfg.get<int>("mpi", "np3")};
+  std::array<bool, 3> periodic = {is_per(cfg.get_or<std::string>("topology", "x", "periodic")),
+                                  is_per(cfg.get_or<std::string>("topology", "y", "periodic")),
+                                  is_per(cfg.get_or<std::string>("topology", "z", "wall"))};
+  core::MpiTopology topo(mpi, dims, periodic);
+  std::array<int, 3> n_global = {cfg.get<int>("mesh", "n1m"), cfg.get<int>("mesh", "n2m"), cfg.get<int>("mesh", "n3m")};
+  core::Subdomain sub(topo, n_global);
 
-  // -------------------------------------------------------------------------
-  //  (3)  Cartesian MPI topology.
-  // -------------------------------------------------------------------------
-  std::array<int, 3> dims = {
-    cfg.get<int>("mpi", "np1"),
-    cfg.get<int>("mpi", "np2"),
-    cfg.get<int>("mpi", "np3"),
-  };
-  auto axis_to_periodic = [](const std::string& s) -> bool {
-    return s == "periodic";
-  };
-  std::array<bool, 3> periodic = {
-    axis_to_periodic(cfg.get_or<std::string>("topology", "x", "periodic")),
-    axis_to_periodic(cfg.get_or<std::string>("topology", "y", "periodic")),
-    axis_to_periodic(cfg.get_or<std::string>("topology", "z", "periodic")),
-  };
-  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
-
-
-  // -------------------------------------------------------------------------
-  //  (4)  Subdomain decomposition.
-  // -------------------------------------------------------------------------
-  std::array<int, 3> n_global = {
-    cfg.get<int>("mesh", "n1m"),
-    cfg.get<int>("mesh", "n2m"),
-    cfg.get<int>("mesh", "n3m"),
-  };
-  parallel::mpi::Subdomain sub(topo, n_global);
-
-
-  // -------------------------------------------------------------------------
-  //  (5)  Grid (per-axis coordinates + metrics).
-  // -------------------------------------------------------------------------
   std::array<grid::AxisConfig, 3> axes;
   for (int a = 0; a < 3; ++a) {
-    const std::string gamma_key = "gamma"   + std::to_string(a + 1);
-    const std::string uni_key   = "uniform" + std::to_string(a + 1);
-    const std::string len_key   = std::string("L") + char('x' + a);
-
-    const int    is_uniform = cfg.get_or<int>("uniform_mesh",  uni_key,   1);
-    const double gamma      = cfg.get_or<double>("mesh_stretch", gamma_key, 0.0);
-    const double L          = cfg.get<double>("domain", len_key);
-
-    axes[a] = grid::AxisConfig{
-      /*.n_global=*/ n_global[a],
-      /*.length  =*/ L,
-      /*.stretch =*/ is_uniform ? grid::StretchKind::Uniform
-                                : grid::StretchKind::Tanh,
-      /*.gamma   =*/ gamma,
-    };
+    const int    is_uni = cfg.get_or<int>("uniform_mesh", "uniform" + std::to_string(a + 1), 1);
+    const double gamma  = cfg.get_or<double>("mesh_stretch", "gamma" + std::to_string(a + 1), 0.0);
+    const double L      = cfg.get<double>("domain", std::string("L") + char('x' + a));
+    axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  grid::Grid g(sub, axes);
+  core::Grid grid(sub, axes);
+  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  bc.validate();
+  auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
+  auto& tdma       = *tdma_owner;
+  core::Domain domain{grid, topo, sub, tdma};
 
+  core::CpuFields fields;
+  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
+  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
+  fields.add(core::Var::T, sub);
 
-  // -------------------------------------------------------------------------
-  //  (6)  Problem  =  Topology + per-field BC table.
-  // -------------------------------------------------------------------------
-  boundary::Problem problem = boundary::load_problem_from_config(cfg);
-  problem.validate();
-
-
-  // -------------------------------------------------------------------------
-  //  (7)  Backend.
-  // -------------------------------------------------------------------------
-  auto backend = parallel::make_default_backend();
-
-
-  // -------------------------------------------------------------------------
-  //  (8)  FieldRegistry.
-  // -------------------------------------------------------------------------
-  field::FieldRegistry fields(sub, *backend);
-  auto& U  = fields.add_scalar("U");
-  auto& V  = fields.add_scalar("V");
-  auto& W  = fields.add_scalar("W");
-  auto& dU = fields.add_scalar("dU");
-  auto& dV = fields.add_scalar("dV");
-  auto& dW = fields.add_scalar("dW");
-  auto& P  = fields.add_scalar("P");
-  auto& dP = fields.add_scalar("dP");
-  auto& T  = fields.add_scalar("T");
-
-
-  // -------------------------------------------------------------------------
-  //  (9)  BoundaryApplier.
-  // -------------------------------------------------------------------------
-  boundary::BoundaryApplier bc(problem);
-
-
-  // -------------------------------------------------------------------------
-  //  (10) TdmaRegistry.
-  // -------------------------------------------------------------------------
-  auto tdma = linear_solver::tdma::TdmaRegistry::make_default(topo);
-
-
-  // -------------------------------------------------------------------------
-  //  (11) Physics constants.
-  // -------------------------------------------------------------------------
   const double Ra      = cfg.get<double>("physics", "Ra");
   const double Pr      = cfg.get<double>("physics", "Pr");
-  const double nu      = std::sqrt(Pr  / Ra);
-  const double alpha_T = std::sqrt(1.0 / (Ra * Pr));
+  const double nu      = std::sqrt(Pr / Ra);
+  const double alpha_T = 1.0 / std::sqrt(Ra * Pr);
+  fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
+  fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
+  core::CpuMomentumSystem momentum(sub);
+  core::CpuScalarSystem   scalar_system(sub);
+  core::PressureSystem    pressure;
+  post::Stats             stats;
+  post::init_statistics_cpu(stats, domain);
 
-  // -------------------------------------------------------------------------
-  //  (12) Initial conditions.
-  //
-  //  [init] u_ic_dhvc = 1: start from analytical DHVC steady state.
-  //  Bypasses the O(n²) CN transient from U=0 for spatial EOC studies.
-  // -------------------------------------------------------------------------
-  U.fill_host(0.0);   V.fill_host(0.0);   W.fill_host(0.0);
-  dU.fill_host(0.0);  dV.fill_host(0.0);  dW.fill_host(0.0);
-  P.fill_host(0.0);
-  dP.fill_host(0.0);
+  // RBC: gravity along z (wall-normal, vertical), F = θ on W, coeff = 1 (OB).
+  physics::BuoyancyParams buoy; buoy.gravity_axis = 2; buoy.coeff = 1; buoy.T_ref = 0;
 
-  if (cfg.get_or<int>("init", "u_ic_dhvc", 0)) {
-    const double Lz_ = cfg.get<double>("domain", "Lz");
-    const auto&  zc_ = g.xc(Direction::Z);
-    const int n1_ = sub.n_total()[0];
-    const int n2_ = sub.n_total()[1];
-    const int n3_ = sub.n_total()[2];
-    for (int i = 0; i < n1_; ++i)
-      for (int j = 0; j < n2_; ++j)
-        for (int k = 0; k < n3_; ++k) {
-          const double z_ = zc_[k];
-          U.host_at(i, j, k) = static_cast<real_t>(
-              z_ * (2.0*z_/Lz_ - 1.0) * (z_/Lz_ - 1.0) / (12.0 * nu));
-        }
-  }
+  // NOB (variable-property) path: nob=1 → variable-μ momentum driven by the
+  // glycerol property fields. DeltaT sets the polynomial nonlinearity; DeltaT=0
+  // ⇒ properties≡1, so nob=1/DeltaT=0 validates the var path against const-visc.
+  const bool   nob    = cfg.get_or<int>("physics", "nob", 0) != 0;
+  const double DeltaT = cfg.get_or<double>("physics", "DeltaT", 0.0);
+  physics::CpuPropertyFields  props(sub);
+  const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  // NOB buoyancy nonlinearity: a12pera11 = a12/a11 of the density polynomial
+  // (NOB_RBC_SPEC.md §5); guarded so OB (a12=0) and DeltaT=0 both give F = θ.
+  buoy.a12pera11 = (std::fabs(pmodel.a[2]) < static_cast<real_t>(1e-14)) ? 0 : pmodel.a[2] / pmodel.a[1];
+  buoy.delta_T   = static_cast<real_t>(DeltaT);
 
-  // Linear conductive temperature profile.
+  const double t_end    = cfg.get_or<double>("time", "t_end", 400.0);
+  const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.02));
+  const real_t max_cfl  = static_cast<real_t>(cfg.get_or<double>("time", "MaxCFL", 0.5));
+  const int    n_steps  = cfg.get_or<int>("time", "n_steps", 200000);
+  const int    nmonitor    = cfg.get_or<int>("output", "nmonitor", 200);
+  const int    nstat_start = cfg.get_or<int>("output", "nstat_start", 20000);
+  const std::string dir_stats = cfg.get_or<std::string>("output", "dir_stats", "apps/rbc/statistics/");
+  if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
+  MPI_Barrier(topo.cart_comm());
+
+  // ── IC: linear conductive T(z) (hot bottom → cold top) + multi-mode
+  //    perturbation to seed convection; fluid starts from rest (U=V=W=0). ─────
   {
-    const double Lz      = cfg.get<double>("domain", "Lz");
-    const double T_minus = problem.T.face(Direction::Z, Side::Minus).value(0, 0, 0, 0);
-    const double T_plus  = problem.T.face(Direction::Z, Side::Plus ).value(0, 0, 0, 0);
-    const auto&  zc      = g.xc(Direction::Z);
-
-    const int n1 = sub.n_total()[0];
-    const int n2 = sub.n_total()[1];
-    const int n3 = sub.n_total()[2];
+    const double Lx = cfg.get<double>("domain", "Lx");
+    const double Ly = cfg.get<double>("domain", "Ly");
+    const double Lz = cfg.get<double>("domain", "Lz");
+    const double T_lo = bc.T.face(Direction::Z, Side::Minus).value;   // hot (+0.5) at z=0
+    const double T_hi = bc.T.face(Direction::Z, Side::Plus ).value;   // cold (−0.5) at z=Lz
+    const double amp  = cfg.get_or<double>("init", "perturb", 0.02);
+    const auto& xc = grid.xc(Direction::X); const auto& yc = grid.xc(Direction::Y); const auto& zc = grid.xc(Direction::Z);
+    const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+    real_t* W = fields[core::Var::W].data(); real_t* T = fields[core::Var::T].data();
     for (int i = 0; i < n1; ++i)
       for (int j = 0; j < n2; ++j)
         for (int k = 0; k < n3; ++k) {
-          const double frac = zc[k] / Lz;
-          T.host_at(i, j, k) = T_minus + (T_plus - T_minus) * frac;
+          const int c = (i * n2 + j) * n3 + k;
+          const double z = zc[k], x = xc[i], y = yc[j];
+          T[c] = static_cast<real_t>(T_lo + (T_hi - T_lo) * (z / Lz));
+          const double env = std::sin(M_PI * z / Lz);   // 0 at walls
+          W[c] += static_cast<real_t>(amp * env * (std::sin(2.0 * M_PI * x / Lx) * std::cos(2.0 * M_PI * y / Ly)
+                                                  + std::cos(2.0 * M_PI * x / Lx) * std::sin(2.0 * M_PI * y / Ly)
+                                                  + std::sin(4.0 * M_PI * x / Lx) * std::sin(4.0 * M_PI * y / Ly)));
         }
   }
+  zero_w_wall(fields[core::Var::W], sub);
+  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
+  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
+  core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
+  if (mpi.is_root())
+    std::printf("[rbc] OB  Ra=%.2e Pr=%.4g  nu=%.4e alpha=%.4e  n=%dx%dx%d (x,y periodic, z wall=gravity)\n",
+                Ra, Pr, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
-  // -------------------------------------------------------------------------
-  //  (13) Halo exchange + boundary fill.
-  // -------------------------------------------------------------------------
-  U.exchange_halo();  bc.apply_ghost(U, problem.U);
-  V.exchange_halo();  bc.apply_ghost(V, problem.V);
-  W.exchange_halo();  bc.apply_ghost(W, problem.W);
-  P.exchange_halo();  bc.apply_ghost(P, problem.P);
-  T.exchange_halo();  bc.apply_ghost(T, problem.T);
-
-
-  // -------------------------------------------------------------------------
-  //  Setup summary (root rank only).
-  // -------------------------------------------------------------------------
-  if (mpi.is_root()) {
-    auto wax = problem.topology.wall_axis();
-    auto so  = problem.topology.sweep_order();
-
-    std::cout << "\n=== MPM-STD RBC setup complete ===\n"
-              << "  ranks      : " << mpi.world_size() << "\n"
-              << "  proc grid  : " << dims[0] << " x " << dims[1] << " x " << dims[2] << "\n"
-              << "  mesh (n_m) : " << n_global[0] << " x " << n_global[1]
-                                   << " x " << n_global[2] << "\n"
-              << "  domain L   : " << cfg.get<double>("domain", "Lx") << " x "
-                                   << cfg.get<double>("domain", "Ly") << " x "
-                                   << cfg.get<double>("domain", "Lz") << "\n"
-              << "  Ra / Pr    : " << Ra << " / " << Pr << "\n"
-              << "  nu / alpha : " << nu << " / " << alpha_T << "\n"
-              << "  T walls    : "
-              << problem.T.face(Direction::Z, Side::Minus).value(0,0,0,0) << " (-z) , "
-              << problem.T.face(Direction::Z, Side::Plus ).value(0,0,0,0) << " (+z)\n"
-              << "  U.kind ±z  : "
-              << boundary::bc_kind_name(problem.U.face(Direction::Z, Side::Minus).kind) << " / "
-              << boundary::bc_kind_name(problem.U.face(Direction::Z, Side::Plus ).kind) << "\n"
-              << "  wall axis  : "
-              << (wax ? direction_name(wax.value()) : "(ambiguous)") << "\n"
-              << "  sweep ord  : "
-              << direction_name(so[0]) << " -> "
-              << direction_name(so[1]) << " -> "
-              << direction_name(so[2]) << "\n\n";
-  }
-
-
-  // -------------------------------------------------------------------------
-  //  TIME LOOP
-  //
-  //  DHVC free-fall scaling: ν = sqrt(Pr/Ra), α_T = 1/sqrt(Ra·Pr)
-  //  Boussinesq buoyancy on U:  f_x = T
-  // -------------------------------------------------------------------------
-  const double t_start = cfg.get_or<double>("time", "t_start",  0.0);
-  const double t_end   = cfg.get<double>("time", "t_end");
-  const double MaxCFL  = cfg.get_or<double>("time", "MaxCFL",   1.0);
-  const int    n_steps = cfg.get_or<int>   ("time", "n_steps",  std::numeric_limits<int>::max());
-
-  // --- Thermal equation ------------------------------------------------
-  equation::scalar::ScalarTraits T_traits;
-  T_traits.name            = "T";
-  T_traits.diffusivity     = static_cast<real_t>(alpha_T);
-  T_traits.with_convection = true;
-
-  equation::scalar::ScalarEquation thermal_eq(
-      T_traits, g, sub, fields, problem, problem.T, *tdma, bc);
-
-  // --- Momentum equations (U, V, W) ------------------------------------
-  equation::momentum::MomentumTraits U_traits, V_traits, W_traits;
-  U_traits.name            = "U";
-  U_traits.viscosity       = static_cast<real_t>(nu);
-  U_traits.with_convection = true;
-  U_traits.source_name     = "T";   // Boussinesq buoyancy: f_x = T
-
-  V_traits.name            = "V";
-  V_traits.viscosity       = static_cast<real_t>(nu);
-  V_traits.with_convection = true;
-
-  W_traits.name            = "W";
-  W_traits.viscosity       = static_cast<real_t>(nu);
-  W_traits.with_convection = true;
-
-  equation::momentum::MomentumEquation mom_U(
-      U_traits, g, sub, fields, problem, problem.U, *tdma, bc);
-  equation::momentum::MomentumEquation mom_V(
-      V_traits, g, sub, fields, problem, problem.V, *tdma, bc);
-  equation::momentum::MomentumEquation mom_W(
-      W_traits, g, sub, fields, problem, problem.W, *tdma, bc);
-
-  // --- Pressure solver -------------------------------------------------
-  auto pressure_solver = equation::pressure::make_pressure_solver(
-      g, sub, fields, problem, *tdma, bc);
-
-  // --- CFL helper ------------------------------------------------------
-  auto compute_max_cfl = [&](real_t dt) -> double {
-    const int h  = kHaloWidth;
-    const int n1 = sub.n_total()[0];
-    const int n2 = sub.n_total()[1];
-    const int n3 = sub.n_total()[2];
-
-    const real_t* u   = fields.scalar("U").host_ptr();
-    const real_t* v   = fields.scalar("V").host_ptr();
-    const real_t* w   = fields.scalar("W").host_ptr();
-    const real_t* dx1 = g.dx_ptr(Direction::X);
-    const real_t* dx2 = g.dx_ptr(Direction::Y);
-    const real_t* dx3 = g.dx_ptr(Direction::Z);
-
-    double local_max = 1e-20;
-    for (int i = h; i < n1 - h; ++i)
-      for (int j = h; j < n2 - h; ++j)
-        for (int k = h; k < n3 - h; ++k) {
-          const int p = (i * n2 + j) * n3 + k;
-          const double c = (std::abs(static_cast<double>(u[p])) / dx1[i]
-                          + std::abs(static_cast<double>(v[p])) / dx2[j]
-                          + std::abs(static_cast<double>(w[p])) / dx3[k]);
-          if (c > local_max) local_max = c;
-        }
-
-    double global_max = local_max;
-    MPI_Allreduce(&local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX,
-                  topo.cart_comm());
-    return global_max * static_cast<double>(dt);
-  };
-
-  // --- Divergence check ------------------------------------------------
-  auto max_divergence = [&]() -> double {
-    const int h  = kHaloWidth;
-    const int n1 = sub.n_total()[0];
-    const int n2 = sub.n_total()[1];
-    const int n3 = sub.n_total()[2];
-
-    const real_t* u   = fields.scalar("U").host_ptr();
-    const real_t* v   = fields.scalar("V").host_ptr();
-    const real_t* w   = fields.scalar("W").host_ptr();
-    const real_t* dx1 = g.dx_ptr(Direction::X);
-    const real_t* dx2 = g.dx_ptr(Direction::Y);
-    const real_t* dx3 = g.dx_ptr(Direction::Z);
-
-    double local_max = 0.0;
-    for (int i = h; i < n1 - h; ++i)
-      for (int j = h; j < n2 - h; ++j)
-        for (int k = h; k < n3 - h; ++k) {
-          const int p   = (i * n2 + j) * n3 + k;
-          const int pip = ((i+1)*n2 + j) * n3 + k;
-          const int pjp = (i * n2 + j+1) * n3 + k;
-          const int pkp = (i * n2 + j) * n3 + k+1;
-          const double div = (u[pip] - u[p]) / dx1[i]
-                           + (v[pjp] - v[p]) / dx2[j]
-                           + (w[pkp] - w[p]) / dx3[k];
-          const double adiv = std::abs(div);
-          if (adiv > local_max) local_max = adiv;
-        }
-
-    double global_max = local_max;
-    MPI_Allreduce(&local_max, &global_max, 1, MPI_DOUBLE, MPI_MAX,
-                  topo.cart_comm());
-    return global_max;
-  };
-
-  // --- Time loop -------------------------------------------------------
-  real_t dt   = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.05));
-  double time = t_start;
-  int    step = 0;
-
-  if (mpi.is_root()) {
-    std::cout << "=== time loop start  t_end=" << t_end
-              << "  n_steps=" << n_steps << " ===\n" << std::flush;
-  }
-
+  // ── time loop ──────────────────────────────────────────────────────────────
+  double tc_sum = 0.0; long tc_n = 0;   // running mean of central temperature
+  double time = 0.0; int step = 0;
   while (time < t_end && step < n_steps) {
+    const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    // 1. Thermal: T^n → T^{n+1}
-    thermal_eq.step(dt);
+    if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    // 2. Momentum predictor
-    mom_U.step(dt);
-    mom_V.step(dt);
-    mom_W.step(dt);
-
-    // W wall face at interior index k=h: enforce no-penetration explicitly.
-    {
-      const int n1t = sub.n_total()[0], n2t = sub.n_total()[1], n3t = sub.n_total()[2];
-      const int h   = kHaloWidth;
-      real_t* w = fields.scalar("W").host_ptr();
-      const bool lower_wall = (sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL);
-      const bool upper_wall = (sub.topology().axis(Direction::Z).east_rank == MPI_PROC_NULL);
-      if (lower_wall)
-        for (int i = 0; i < n1t; ++i)
-          for (int j = 0; j < n2t; ++j)
-            w[(i * n2t + j) * n3t + h] = real_t{0};
-      if (upper_wall)
-        for (int i = 0; i < n1t; ++i)
-          for (int j = 0; j < n2t; ++j)
-            w[(i * n2t + j) * n3t + (n3t - h)] = real_t{0};
+    if (nob) {
+      equation::assemble_scalar_var_diff_cpu(domain, fields, props.kappa, props.inv_rhocp, scalar_system, dt);
+      equation::solve_scalar_var_cpu(domain, bc, fields, props.kappa, props.inv_rhocp, scalar_system, dt);
+    } else {
+      equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
+      equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
     }
+    core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    // 3. Pressure + projection
-    pressure_solver->solve(dt, fields.scalar("U"), fields.scalar("V"),
-                                fields.scalar("W"), fields.scalar("P"));
+    if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
+    else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    if (nob) physics::add_buoyancy_force_nob_cpu(momentum, fields[core::Var::T], props.inv_rho, buoy, dt);  // F=invRho·(θ+a12pera11·θ²·Δ)
+    else     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);                     // OB: F=θ on W
+    if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
+    else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::update_velocity_cpu(fields, momentum);
+    core::sync_field_cpu(fields, core::Var::U, bc, sub);
+    core::sync_field_cpu(fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(fields, core::Var::W, bc, sub);
+    zero_w_wall(fields[core::Var::W], sub);
+
+    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
 
     time += static_cast<double>(dt);
     ++step;
 
-    // 4. Diagnostics
-    if (mpi.is_root()) {
-      const double div = max_divergence();
-      const double cfl = compute_max_cfl(dt);
-      std::cout << "  step " << step
-                << "  t=" << time
-                << "  dt=" << static_cast<double>(dt)
-                << "  CFL=" << cfl
-                << "  div=" << div
-                << "\n" << std::flush;
-    }
-
-    // 5. CFL-based dt update (20% growth cap)
-    {
-      const double speed_sum = compute_max_cfl(real_t{1.0});
-      if (speed_sum > 1e-14) {
-        const real_t dt_cfl = static_cast<real_t>(MaxCFL / speed_sum);
-        dt = std::min(dt_cfl, static_cast<real_t>(1.2) * dt);
-      }
+    if (step >= nstat_start) { tc_sum += center_temp(domain, fields); ++tc_n; }
+    if (step % nmonitor == 0) {
+      const double dv = div_max(domain, fields);
+      const double tc = (tc_n > 0) ? tc_sum / static_cast<double>(tc_n) : center_temp(domain, fields);
+      if (mpi.is_root())
+        std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f (OB->0)\n",
+                    step, time, double(dt), dv, tc);
     }
   }
 
-  if (mpi.is_root()) {
-    std::cout << "\n=== time loop complete: " << step << " steps, t=" << time << " ===\n\n";
-  }
-
-  // Binary dump for PaScaL_TCS / EOC comparison.
-  // Layout: outer=stream(X), middle=wall(Z), inner=span(Y)
-  if (mpi.is_root()) {
-    const int h   = kHaloWidth;
-    const int n2t = sub.n_total()[1];
-    const int n3t = sub.n_total()[2];
-    const int n1m = sub.n_interior()[0];
-    const int n2m = sub.n_interior()[1];
-    const int n3m = sub.n_interior()[2];
-
-    const real_t* t = fields.scalar("T").host_ptr();
-    FILE* f = std::fopen("dump_mpm_T.bin", "wb");
-    for (int ii = 0; ii < n1m; ++ii)
-      for (int kk = 0; kk < n3m; ++kk)
-        for (int jj = 0; jj < n2m; ++jj) {
-          double v = static_cast<double>(
-              t[(ii + h) * n2t * n3t + (jj + h) * n3t + (kk + h)]);
-          std::fwrite(&v, sizeof(double), 1, f);
-        }
-    std::fclose(f);
-    std::cout << "Wrote dump_mpm_T.bin  (" << n1m << "x" << n3m << "x" << n2m << " doubles)\n";
-
-    const real_t* u = fields.scalar("U").host_ptr();
-    FILE* fu = std::fopen("dump_mpm_U.bin", "wb");
-    for (int ii = 0; ii < n1m; ++ii)
-      for (int kk = 0; kk < n3m; ++kk)
-        for (int jj = 0; jj < n2m; ++jj) {
-          double v = static_cast<double>(
-              u[(ii + h) * n2t * n3t + (jj + h) * n3t + (kk + h)]);
-          std::fwrite(&v, sizeof(double), 1, fu);
-        }
-    std::fclose(fu);
-    std::cout << "Wrote dump_mpm_U.bin  (" << n1m << "x" << n3m << "x" << n2m << " doubles)\n";
-  }
-
+  const double theta_c = (tc_n > 0) ? tc_sum / static_cast<double>(tc_n) : center_temp(domain, fields);
+  if (mpi.is_root())
+    std::printf("[rbc] done: OB Ra=%.2e Pr=%.4g  Theta_c=%.5f  (OB reference -> 0)\n", Ra, Pr, theta_c);
   return 0;
 }

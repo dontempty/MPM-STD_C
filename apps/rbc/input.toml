@@ -1,64 +1,46 @@
-# =============================================================================
-#  DHVC (Differentially Heated Vertical Convection) — matches PaScaL_TCS setup
-#  x = vertical/streamwise (periodic, buoyancy direction)
-#  y = spanwise (periodic)
-#  z = horizontal wall-normal (hot wall at z=0, cold wall at z=Lz)
-#  Buoyancy in U (x-momentum):  f_x = T
-#  Analytical steady solution (Ra=100, Pr=1, Lz=1):
-#    T(z) = 0.5 - z
-#    U(z) = z*(2z-1)*(z-1) / (12*nu),  nu = sqrt(Pr/Ra) = 0.1
-#  Run with: mpirun -np <N> ./build/cpu/bin/rbc apps/rbc/input.toml
-# =============================================================================
-
+# RBC OB sanity test — validate geometry + convection + Θ_c diagnostic.
+#   x,y horizontal (periodic), z vertical/gravity (wall): hot bottom θ=+0.5,
+#   cold top θ=−0.5. Moderate Pr/Ra + small grid for a quick check (Θ_c→0 for OB).
 [domain]
-Lx = 4.0
+Lx = 2.0
 Ly = 2.0
 Lz = 1.0
-
 [mesh]
-n1m = 32
-n2m = 32
-n3m = 16
-
+n1m = 64
+n2m = 64
+n3m = 48
 [mpi]
-np1 = 1
-np2 = 1
-np3 = 1
-
+np1 = 2
+np2 = 2
+np3 = 2
 [uniform_mesh]
 uniform1 = 1
 uniform2 = 1
 uniform3 = 0
-
 [mesh_stretch]
 gamma1 = 0.0
 gamma2 = 0.0
-gamma3 = 2.6
-
+gamma3 = 2.0
 [physics]
-Ra     = 100.0
-Pr     = 1.0
-DeltaT = 1.0
-
+Ra = 1.0e5
+Pr = 1.0
 [topology]
 x = "periodic"
 y = "periodic"
 z = "wall"
-
 [bc.z.minus]
-T = 0.5     # hot wall
-
+T = 0.5      # hot bottom (z=0)
 [bc.z.plus]
-T = -0.5    # cold wall
-
+T = -0.5     # cold top (z=Lz)
 [time]
 t_start  = 0.0
-t_end    = 30.0
-dt_start = 0.05
+t_end    = 300.0
+dt_start = 0.02
 MaxCFL   = 0.5
 n_steps  = 10000
-
 [init]
-# Initialize U from analytical DHVC steady state (1=yes, 0=no).
-# Set to 1 for EOC studies: avoids O(n²) transient stiffness from U=0 start.
-u_ic_dhvc = 0
+perturb = 0.02
+[output]
+dir_stats   = "apps/rbc/stats_ob/"
+nmonitor    = 500
+nstat_start = 5000

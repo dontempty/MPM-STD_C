@@ -1,0 +1,9 @@
+=== node cpu03 running mpmstd/apps/dhvc/input_cpu_1e7b.toml (32 ranks, nvhpc-cpu) ===
+[dhvc] Ra=1.00e+07 Pr=0.7  nu=2.6458e-04 alpha=3.7796e-04  n=256x128x192 (x stream, y span, z wall)
+step=500 t=0.206 dt=0.000409 div=1.39e-13 Re_dstar=0.000 (target~20.976)
+step=1000 t=0.292 dt=4.83e-05 div=1.36e-12 Re_dstar=0.000 (target~20.976)
+step=1500 t=0.314 dt=4.06e-05 div=1.82e-12 Re_dstar=0.000 (target~20.976)
+step=2000 t=0.332 dt=3.2e-05 div=3.64e-12 Re_dstar=0.000 (target~20.976)
+step=2500 t=0.344 dt=1.79e-05 div=2.73e-12 Re_dstar=0.000 (target~20.976)
+step=3000 t=0.352 dt=1.52e-05 div=5.46e-12 Re_dstar=0.000 (target~20.976)
+slurmstepd: error: *** JOB 29108 ON cpu03 CANCELLED AT 2026-06-10T10:45:59 ***
