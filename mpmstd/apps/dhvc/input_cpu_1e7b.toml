@@ -1,13 +1,13 @@
-# DHVC Ra=1e5 — PaScaL_TCS Table 1 resolution (paper Nx×Ny×Nz=384×96×192,
-# my axes x=stream, y=span, z=wall → 384×192×96). Validation-grade.
+# DHVC Ra=1e5 — FFT-friendly grid (x,y powers of 2 for fast FFTW; wall z=96 =
+# paper resolution, the BL direction that sets Re_δ*). np 8x4x2=64 (1 node).
 [domain]
 Lx = 8.0
 Ly = 4.0
 Lz = 1.0
 [mesh]
-n1m = 384
-n2m = 192
-n3m = 96
+n1m = 256
+n2m = 128
+n3m = 192
 [mpi]
 np1 = 4
 np2 = 4
@@ -21,7 +21,7 @@ gamma1 = 0.0
 gamma2 = 0.0
 gamma3 = 2.6
 [physics]
-Ra = 1.0e6
+Ra = 1.0e7
 Pr = 0.7
 [topology]
 x = "periodic"
@@ -40,7 +40,7 @@ n_steps  = 100000
 [init]
 perturb = 0.05
 [output]
-dir_stats   = "mpmstd/apps/dhvc/stats_dns_1e6/"
-nmonitor    = 1000
-nstat_start = 25000
-nstat       = 20
+dir_stats   = "mpmstd/apps/dhvc/stats_cpu_1e7b/"
+nmonitor    = 500
+nstat_start = 50000
+nstat       = 10

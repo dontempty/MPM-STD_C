@@ -36,11 +36,11 @@ t_start  = 0.0
 t_end    = 500.0
 dt_start = 0.02
 MaxCFL   = 0.4
-n_steps  = 12000
+n_steps  = 30000
 [init]
 perturb = 0.05
 [output]
 dir_stats   = "mpmstd/apps/dhvc/stats_cpu_1e6/"
 nmonitor    = 500
-nstat_start = 6000
+nstat_start = 15000
 nstat       = 10

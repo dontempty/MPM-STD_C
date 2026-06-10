@@ -1,0 +1,12 @@
+=== node cpu02 running mpmstd/apps/dhvc/input_cpu_1e6b.toml (32 ranks, nvhpc-cpu) ===
+[dhvc] Ra=1.00e+06 Pr=0.7  nu=8.3666e-04 alpha=1.1952e-03  n=256x128x96 (x stream, y span, z wall)
+step=500 t=0.647 dt=0.00128 div=6.17e-14 Re_dstar=0.000 (target~11.008)
+step=1000 t=0.96 dt=0.000252 div=2.27e-13 Re_dstar=0.000 (target~11.008)
+step=1500 t=1.08 dt=0.00028 div=1.71e-13 Re_dstar=0.000 (target~11.008)
+step=2000 t=1.22 dt=0.000278 div=1.71e-13 Re_dstar=0.000 (target~11.008)
+step=2500 t=1.35 dt=0.000342 div=1.77e-13 Re_dstar=0.000 (target~11.008)
+step=3000 t=1.52 dt=0.000267 div=1.99e-13 Re_dstar=0.000 (target~11.008)
+step=3500 t=1.68 dt=0.000278 div=2.21e-13 Re_dstar=0.000 (target~11.008)
+step=4000 t=1.82 dt=0.000285 div=2.42e-13 Re_dstar=0.000 (target~11.008)
+step=4500 t=1.94 dt=0.000248 div=2.48e-13 Re_dstar=0.000 (target~11.008)
+step=5000 t=2.05 dt=0.000244 div=1.71e-13 Re_dstar=0.000 (target~11.008)
