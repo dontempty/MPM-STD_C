@@ -147,13 +147,17 @@ time loop의 12-인자 난잡한 호출(static/pointer/raw 혼재)을 정돈된 
 
 | Ra | 격자 | Re_δ* (계산) | 타깃 0.23·Ra^0.28 | 비고 |
 |---|---|---|---|---|
-| 10⁵ | 64×32×48 | 8.4 | 5.78 | ✓ 수렴, div~1e-14 (거친격자 1.45×) |
-| 10⁶ | 64×32×48 | **12.3** | **11.0** | ✓✓ **정량 일치 (1.12×)**, div~1e-14 |
-| 10⁷ | 96×48×96 | 발산 | 21.0 | ✗ 해상도 한계 |
+| 10⁵ | 64×32×48 | 8.4 | 5.78 | 거친격자 1.45× |
+| 10⁵ | **256×128×96** | **≈5.5** | **5.78** | ✓✓ **벽해상도 96(논문급) → ~5% 이내**, div~6e-14 |
+| 10⁶ | 64×32×48 | 12.3 | 11.0 | ✓ 1.12× |
+| 10⁶ | 256×128×96 | (진행) | 11.0 | cpu02 |
+| 10⁷ | 96×48×96 | 발산 | 21.0 | 거친격자 grid-Re 불안정 |
+| 10⁷ | 512×256×192 | (진행) | 21.0 | cpu03, 벽 z=192=논문 |
 
-- **1e5·1e6**: Ng et al. DNS power-law과 일치, Re_δ* 추세 상승 → **OB 부력·열수송 물리 검증 완료**. div~1e-14 (T+부력에도 압력투영 완벽).
-- **1e7**: 작은격자(96×48×96도)에서 dt→1e-8 발산(t 정지). 버그 아님 — 얇은 BL + 폭증 grid-Re로 명시적 대류 불안정(논문 1e7=832×192×416≈66M). **multi-GPU DNS 해상도 필요(P8)**.
-- 커밋 `7c11998`. GPU scalar/buoyancy는 P5 no-op 스텁(듀얼빌드 그린).
+- **1e5 고해상도 검증 (2026-06-10)**: 256×128×96(벽 z=96=논문 Ny)에서 **Re_δ*≈5.5 vs Ng et al. 5.78 (~5%)**. 러닝평균 step9000→11000 = 5.13/5.48/5.63/5.64/5.55, div~6e-14, t=42 발달. 거친 64³(8.4)에서 벽해상도를 논문급으로 올리니 DNS power-law에 정합. 1e6·1e7은 cpu 노드에서 진행 중.
+- **계산노드 인프라 (핵심)**: cpu 빌드(g++/system-OpenMPI)는 login01 전용. cpu01-06(전용 64코어, nvhpc HPC-X)에서 돌리려면 **nvhpc-CPU 빌드**: `make -C mpmstd cpu CXX=mpic++ CXXFLAGS="-std=c++17 -O2 -DMPMSTD_BACKEND_CPU -DOMPI_SKIP_MPICXX" WARN= DEPFLAGS=` (module load nvhpc/23.7 후; `.cu` 제외, fftw3 링크). ⚠ cuda 빌드(gpu 노드)는 시간루프가 진행 안 됨(미해결; nvc++ `-fast`의 FFT 최적화 의심) → CPU는 nvhpc-CPU on cpu 노드 사용. cpu 노드는 GPU 드라이버 없어 cuda 바이너리 로드 불가.
+- **성능**: 압력 pencil-FFT all-to-all이 **고랭크 통신 병목**(64랭크 >1s/step). **np 4×4×2=32(z 분산)가 sweet spot**; np3=1/4은 진행 안 됨. ⚠ 앱빌드 레이스 버그 수정(`-jN`에서 공용 main.o 충돌; dhvc가 채널 실행) — 유니크 오브젝트, 커밋 `27501b9`.
+- 커밋 `7c11998`(P6) `0394da4`(coarse).
 
 ## 다음 — cavity SKIP 확정 → DHVC 먼저 (CPU 검증 → GPU) (분석: REFACTOR_PLAN §8b)
 압력 엔진이 **X·Y 주기 하드 요구**(`pressure_engine_cpu.cpp:41`). cavity(전벽)만 전-Neumann `DctPressureSolver` 신설 필요(+stretch면 반복법 = 대형) — 그런데 **DHVC·RBC는 z벽+2주기라 기존 FFT 엔진 그대로 재사용**. ⇒ **cavity SKIP 확정.**
