@@ -1,0 +1,45 @@
+# Momentum validation vs PaScaL_TCS ground-truth (CASE_SPEC.md) — FAITHFUL var path.
+# Axis map: my X=stream(x1), my Y=span(x3), my Z=wall(x2). Serial, uniform, fixed dt.
+[domain]
+Lx = 2.0    # stream  (ref L1=Aspect1=2)
+Ly = 2.0    # span    (ref L3=Aspect3=2)
+Lz = 1.0    # wall    (ref L2=H=1)
+[mesh]
+n1m = 32    # X stream (ref n1m)
+n2m = 32    # Y span   (ref n3m)
+n3m = 48    # Z wall   (ref n2m)
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 1
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 1
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 0.0
+[physics]
+Ra = 2.0e3
+Pr = 1.0
+faithful = 0
+DeltaT = 0.0
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+[bc.z.plus]
+T = -0.5
+[time]
+t_start  = 0.0
+dt_start = 4.0e-3
+MaxCFL   = 1.0e8
+n_steps  = 200
+[init]
+perturb = 0.05
+[output]
+nmonitor    = 20
+dump_prefix = "dump_mpm_current"

@@ -80,7 +80,7 @@ LIB_OBJS := $(patsubst %.cpp,$(OBJ)/%.o,$(LIB_CPP)) \
             $(patsubst %.cpp,$(OBJ)/_src/%.o,$(SRC_INFRA))
 
 # ---- apps + tests -----------------------------------------------------------
-APPS      := channel cavity dhvc rbc
+APPS      := channel cavity dhvc rbc validate
 APP_BINS  := $(patsubst %,$(BINDIR)/apps/%,$(APPS))
 TEST_CPP  := $(shell find $(ROOT_DIR)/tests/unit $(ROOT_DIR)/tests/integration $(ROOT_DIR)/tests/regression -name '*.cpp' 2>/dev/null)
 TEST_BINS := $(patsubst $(ROOT_DIR)/tests/%.cpp,$(BINDIR)/tests/%,$(TEST_CPP))

@@ -50,22 +50,15 @@ void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields&
   const real_t* dx1 = domain.grid.dx_ptr(Direction::X), *dmx1 = domain.grid.dmx_ptr(Direction::X);
   const real_t* dx2 = domain.grid.dx_ptr(Direction::Y), *dmx2 = domain.grid.dmx_ptr(Direction::Y);
   const real_t* dx3 = domain.grid.dx_ptr(Direction::Z), *dmx3 = domain.grid.dmx_ptr(Direction::Z);
-  const real_t conv = real_t{1};
+  // FAITHFUL per-component stage-1 residual (own×2 diffusion + skew-conv split +
+  // weight-2 cross-stress, ref solvedU/W/V). Cross-stress is already folded in
+  // (weight 2) → do NOT call add_transpose_stress_* on this path.
   mk::compute_mpmstd_rhs_var(mom.rhs_u.data(), up, up, vp, wp, mu, irho,
-                             dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, false, conv);
+                             dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, Direction::X);
   mk::compute_mpmstd_rhs_var(mom.rhs_v.data(), vp, up, vp, wp, mu, irho,
-                             dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, false, conv);
+                             dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, Direction::Y);
   mk::compute_mpmstd_rhs_var(mom.rhs_w.data(), wp, up, vp, wp, mu, irho,
-                             dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, true,  conv);
-
-  // NOB transpose viscous stress (cross-stress): T_i = Σ_j ∂_j(μ ∂_i u_j). ≈0 at
-  // μ≡1 (∂_i div u), supplies the ∇μ stress that stabilises the glycerol contrast.
-  mk::add_transpose_stress_u_cpu(mom.rhs_u.data(), up, vp, wp, mu, irho,
-                                 dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
-  mk::add_transpose_stress_v_cpu(mom.rhs_v.data(), up, vp, wp, mu, irho,
-                                 dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
-  mk::add_transpose_stress_w_cpu(mom.rhs_w.data(), up, vp, wp, mu, irho,
-                                 dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
+                             dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, Direction::Z, true);
 }
 
 // ---- one component: 3-sweep ADI (rhs_buf → out increment) -------------------
@@ -108,10 +101,10 @@ void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
   std::copy(in, in + static_cast<std::size_t>(n1) * n2 * n3, out);
 }
 
-// variable-viscosity twin (build_adi_bands_var with face-μ + 1/ρ̂)
+// variable-viscosity twin (faithful per-component build_adi_bands_var)
 void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
                        const real_t* qf, const real_t* Up, const real_t* Vp, const real_t* Wp,
-                       const real_t* mu, const real_t* irho, bool z_stag,
+                       const real_t* mu, const real_t* irho, Direction own_dir, bool z_stag,
                        const boundary::FieldBoundary& fbc, const core::Domain& domain,
                        const core::BoundaryCondition& bc, real_t Cmu, real_t dt, real_t* out) {
   const auto nt = mom.n_total; const auto ni = mom.n_interior;
@@ -124,8 +117,8 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
     const real_t* dmxa = domain.grid.dmx_ptr(dir);
     const real_t* qadv = (dir == Direction::X) ? Up : (dir == Direction::Y) ? Vp : Wp;
     const bool    zs   = (dir == Direction::Z) && z_stag;
-    mk::build_adi_bands_var(dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
-                            in, qf, qadv, mu, irho, dxa, dmxa, n1, n2, n3, i1, i2, i3, Cmu, dt, real_t{0.5}, zs);
+    mk::build_adi_bands_var(dir, own_dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
+                            in, qf, qadv, mu, irho, dxa, dmxa, n1, n2, n3, i1, i2, i3, Cmu, dt, zs);
     int n_row = 0, n_sys = 0;
     switch (dir) {
       case Direction::X: n_row = i1; n_sys = i2 * i3; break;
@@ -182,24 +175,28 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
   const real_t* Vp = fields[core::Var::V].data();
   const real_t* Wp = fields[core::Var::W].data();
   const real_t* mu = mu_field.data(); const real_t* irho = inv_rho_field.data();
+  const real_t* dx1 = domain.grid.dx_ptr(Direction::X), *dmx1 = domain.grid.dmx_ptr(Direction::X);
+  const real_t* dx2 = domain.grid.dx_ptr(Direction::Y), *dmx2 = domain.grid.dmx_ptr(Direction::Y);
+  const real_t* dx3 = domain.grid.dx_ptr(Direction::Z), *dmx3 = domain.grid.dmx_ptr(Direction::Z);
 
-  adi_component_var(mom, mom.rhs_u, Up, Up, Vp, Wp, mu, irho, false, bc.U, domain, bc, Cmu, dt, mom.dU.data());
-  adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
-  adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, true,  bc.W, domain, bc, Cmu, dt, mom.dW.data());
+  // Faithful component own directions: dU→X, dV→Y(span), dW→Z(wall, staggered).
+  adi_component_var(mom, mom.rhs_u, Up, Up, Vp, Wp, mu, irho, Direction::X, false, bc.U, domain, bc, Cmu, dt, mom.dU.data());
+  adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, Direction::Y, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
+  adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, Direction::Z, true,  bc.W, domain, bc, Cmu, dt, mom.dW.data());
 
   core::sync_field_cpu(mom.dU, bc.U, domain.sub);
   core::sync_field_cpu(mom.dV, bc.V, domain.sub);
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
 
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-  // block coupling: const-visc convective part (variable-μ cross coupling is a refinement)
-  mk::block_couple_dV(mom.dV.data(), mom.dW.data(), fields[core::Var::V].data(),
-                      domain.grid.dx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Y),
-                      domain.grid.dx_ptr(Direction::Z), domain.grid.dmx_ptr(Direction::Z), n1, n2, n3, dt);
-  core::sync_field_cpu(mom.dV, bc.V, domain.sub);
-  mk::block_couple_dU(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(),
-                      domain.grid.dx_ptr(Direction::X), domain.grid.dmx_ptr(Direction::X),
-                      domain.grid.dmx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Z), n1, n2, n3, dt);
+  // FAITHFUL block coupling (full variable-μ cross-stress). Reference order:
+  // blockLdV corrects the WALL increment (my dW) using the span increment (my dV),
+  // THEN blockLdU corrects dU using the span (dV) + corrected wall (dW) increments.
+  mk::block_couple_dW_var(mom.dW.data(), mom.dV.data(), fields[core::Var::W].data(), mu, irho,
+                          dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
+  core::sync_field_cpu(mom.dW, bc.W, domain.sub);
+  mk::block_couple_dU_var(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(), mu, irho,
+                          dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
 }
 
 // ---- pseudo-update: q += dq (interior; caller syncs U,V,W) ------------------
