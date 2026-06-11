@@ -91,35 +91,68 @@ void build_adi_bands(Direction      d,
 
 
 // -----------------------------------------------------------------------------
-//  Variable-conductivity (NOB) twins — same structure as the const versions but
-//  with a face-interpolated conductivity κ̂ and a cell-centred 1/(ρ̂Ĉp) prefactor
-//  (NOB_RBC_SPEC.md): the operator is  (1/(ρ̂Ĉp)) ∇·(κ̂ ∇θ),  scaled by Ct=1/√(RaPr).
+//  Variable-κ̂ (NOB) ENERGY kernels — FAITHFUL port of PaScaL_TCS
+//  module_solve_thermal.f90 (mpi_thermal_solver). This REPLACES the earlier
+//  simple variable-κ̂ twins; the difference is the reference's full scheme:
 //
-//  Face conductivity:  κ̂_{i+1/2} = 0.5 (κ̂_i + κ̂_{i+1})  (likewise each axis).
+//    Delta-form 3-factor ADI for δθ (θⁿ⁺¹ = θⁿ + δθ).  The energy equation is
+//        ∂θ/∂t = −u·∇θ + Ct·(1/(ρ̂Ĉp)) ∇·(κ̂ ∇θ),     Ct = 1/√(Ra·Pr).
 //
-//  With κ̂≡1, invρĈp≡1, Ct=alpha these reduce EXACTLY to the const kernels above
-//  (face-interp of a constant = the constant; cell prefactor = 1) — the OB limit.
-//  No dκ̂ product-rule linearisation here (that is the stiff-Pr stability
-//  refinement); this is the leading variable-κ̂ diffusion. Because κ̂ and 1/(ρ̂Ĉp)
-//  vary per cell, the ADI bands are filled per (row,sys), not per row.
+//    explicit residual R   (ref 256-299): −0.5·u·∇θ (0.5-skew ADVECTIVE, face
+//                          vel direct) + 0.5·Ct·invρĈp·∇·(κ̂∇θ) with dκ̂
+//                          product-rule linearization − 0.5·Ct·dinvρĈp·θ·∇·(κ̂∇θ)
+//    implicit band M_d     (ref 316-339): diffusion_d + dκ̂_d linearization
+//                          + 0.25 conservative-face SEMI-IMPLICIT convection_d
+//                          (vel DIRECT, NOT averaged like momentum)
+//    stage-1 RHS pack      (ref 342-358): D = dt·(R − (Mx+My+Mz)·θⁿ + dirc·θⁿ·div)
+//
+//  Faithful quirks reproduced: the prefactor-linearization diagonal term uses
+//  dinvRhoCpCt_half in stage 1 (ref 352) but invRhoCpCt_half in stages 2/3
+//  (ref 418, 493) — a genuine reference asymmetry, kept verbatim.
+//
+//  WALL: the reference uses jem/jep masks + ebc injection. This port instead
+//  keeps the VALIDATED mpmstd wall wiring (antisymmetric Dirichlet ghost on θ
+//  + modify_tdma_row_cpu fold), identical to the const path — so NO jem/jep
+//  masks here (mixing masks with the fold would double-drop). δθ_wall=0.
+//
+//  Axis: each axis uses its own grid metrics + own face velocity; wall on Z,
+//  buoyancy on W (the ref x2↔my-Z relabel is transparent for this symmetric
+//  operator). With κ̂≡1, dκ̂≡0, invρĈp≡1, dinvρĈp≡0 the DIFFUSION reduces to the
+//  const Laplacian; the semi-implicit convection is the faithful upgrade (the
+//  old const path used fully-explicit conservative convection) — this is what
+//  relaxes the Pr=2547 convective CFL.
 // -----------------------------------------------------------------------------
-void laplacian_explicit_rhs_var(real_t*       rhs,
-                                const real_t* phi,
-                                const real_t* kappa, const real_t* inv_rhocp,
-                                const real_t* dx1, const real_t* dmx1,
-                                const real_t* dx2, const real_t* dmx2,
-                                const real_t* dx3, const real_t* dmx3,
-                                int n1_tot, int n2_tot, int n3_tot,
-                                real_t Ct, real_t dt);
 
-void build_adi_bands_var(Direction      d,
-                         real_t*        A, real_t* B, real_t* C, real_t* D,
-                         const real_t*  src,
-                         const real_t*  kappa, const real_t* inv_rhocp,
-                         const real_t*  dx_along, const real_t* dmx_along,
-                         int            n1_tot, int n2_tot, int n3_tot,
-                         int            n1_int, int n2_int, int n3_int,
-                         real_t         Ct, real_t dt);
+// Build the full explicit residual R into rhs (overwrites; interior cells).
+// θ, U, V, W, κ̂, dκ̂, invρĈp, dinvρĈp halos must be filled before the call.
+void energy_residual_rhs_var(real_t*       rhs,
+                             const real_t* T,
+                             const real_t* U, const real_t* V, const real_t* W,
+                             const real_t* kappa, const real_t* dkappa,
+                             const real_t* inv_rhocp, const real_t* dinv_rhocp,
+                             const real_t* dx1, const real_t* dmx1,
+                             const real_t* dx2, const real_t* dmx2,
+                             const real_t* dx3, const real_t* dmx3,
+                             int n1_tot, int n2_tot, int n3_tot,
+                             real_t Ct);
+
+// Build ADI bands (A,B,C = I + dt·M_d) for sweep axis d AND pack the delta-form
+// RHS into D.  `src` = R on the first sweep (is_stage1=true → full M·θⁿ pack);
+// the transposed running increment δ on later sweeps (copied through).
+void build_energy_adi_bands_var(Direction      d,
+                                real_t*        A, real_t* B, real_t* C, real_t* D,
+                                const real_t*  src,
+                                const real_t*  T,
+                                const real_t*  U, const real_t* V, const real_t* W,
+                                const real_t*  kappa, const real_t* dkappa,
+                                const real_t*  inv_rhocp, const real_t* dinv_rhocp,
+                                const real_t*  dx1, const real_t* dmx1,
+                                const real_t*  dx2, const real_t* dmx2,
+                                const real_t*  dx3, const real_t* dmx3,
+                                int            n1_tot, int n2_tot, int n3_tot,
+                                int            n1_int, int n2_int, int n3_int,
+                                real_t         Ct, real_t dt,
+                                bool           is_stage1);
 
 
 // -----------------------------------------------------------------------------

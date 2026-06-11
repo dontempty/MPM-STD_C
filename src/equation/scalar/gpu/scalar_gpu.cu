@@ -11,10 +11,10 @@ void assemble_scalar_const_diff_gpu(const core::Domain&, core::GpuFields&, core:
 void solve_scalar_gpu(const core::Domain&, const core::BoundaryCondition&, core::GpuFields&, core::GpuScalarSystem&, real_t) {
   // TODO(P5)
 }
-void assemble_scalar_var_diff_gpu(const core::Domain&, core::GpuFields&, const core::GpuField&, const core::GpuField&, core::GpuScalarSystem&, real_t) {
-  // TODO(P5)
+void assemble_scalar_var_diff_gpu(const core::Domain&, core::GpuFields&, const core::GpuField&, const core::GpuField&, const core::GpuField&, const core::GpuField&, core::GpuScalarSystem&, real_t) {
+  // TODO(P5) — faithful energy port (delta-form ADI + semi-implicit convection)
 }
-void solve_scalar_var_gpu(const core::Domain&, const core::BoundaryCondition&, core::GpuFields&, const core::GpuField&, const core::GpuField&, core::GpuScalarSystem&, real_t) {
+void solve_scalar_var_gpu(const core::Domain&, const core::BoundaryCondition&, core::GpuFields&, const core::GpuField&, const core::GpuField&, const core::GpuField&, const core::GpuField&, core::GpuScalarSystem&, real_t) {
   // TODO(P5)
 }
 

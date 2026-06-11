@@ -210,8 +210,8 @@ int main(int argc, char** argv) {
     if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
     if (nob) {
-      equation::assemble_scalar_var_diff_cpu(domain, fields, props.kappa, props.inv_rhocp, scalar_system, dt);
-      equation::solve_scalar_var_cpu(domain, bc, fields, props.kappa, props.inv_rhocp, scalar_system, dt);
+      equation::assemble_scalar_var_diff_cpu(domain, fields, props.kappa, props.dkappa, props.inv_rhocp, props.dinv_rhocp, scalar_system, dt);
+      equation::solve_scalar_var_cpu(domain, bc, fields, props.kappa, props.dkappa, props.inv_rhocp, props.dinv_rhocp, scalar_system, dt);
     } else {
       equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
       equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
