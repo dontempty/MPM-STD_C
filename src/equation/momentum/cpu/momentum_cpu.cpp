@@ -112,13 +112,15 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
   const int i1 = ni[0], i2 = ni[1], i3 = ni[2];
   real_t* in   = rhs_buf.data();
   real_t* outb = mom.stage.data();
+  const real_t* dxo  = domain.grid.dx_ptr(own_dir);   // own-dir metric for the face interps
+  const real_t* dmxo = domain.grid.dmx_ptr(own_dir);
   for (Direction dir : bc.topology.sweep_order()) {
     const real_t* dxa  = domain.grid.dx_ptr(dir);
     const real_t* dmxa = domain.grid.dmx_ptr(dir);
     const real_t* qadv = (dir == Direction::X) ? Up : (dir == Direction::Y) ? Vp : Wp;
     const bool    zs   = (dir == Direction::Z) && z_stag;
     mk::build_adi_bands_var(dir, own_dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
-                            in, qf, qadv, mu, irho, dxa, dmxa, n1, n2, n3, i1, i2, i3, Cmu, dt, zs);
+                            in, qf, qadv, mu, irho, dxa, dmxa, dxo, dmxo, n1, n2, n3, i1, i2, i3, Cmu, dt, zs);
     int n_row = 0, n_sys = 0;
     switch (dir) {
       case Direction::X: n_row = i1; n_sys = i2 * i3; break;
@@ -179,17 +181,28 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
   const real_t* dx2 = domain.grid.dx_ptr(Direction::Y), *dmx2 = domain.grid.dmx_ptr(Direction::Y);
   const real_t* dx3 = domain.grid.dx_ptr(Direction::Z), *dmx3 = domain.grid.dmx_ptr(Direction::Z);
 
-  // Faithful component own directions: dU→X, dV→Y(span), dW→Z(wall, staggered).
-  adi_component_var(mom, mom.rhs_u, Up, Up, Vp, Wp, mu, irho, Direction::X, false, bc.U, domain, bc, Cmu, dt, mom.dU.data());
-  adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, Direction::Y, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
-  adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, Direction::Z, true,  bc.W, domain, bc, Cmu, dt, mom.dW.data());
+  const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
 
+  // ── FORWARD substitution dU → dW → dV (ref solvedU→solvedV→solvedW order),
+  //    with the lower-triangular dd* coupling injected into each RHS BEFORE its
+  //    ADI solve using the freshly-solved preceding increments (Gauss-Seidel).
+  // 1) dU (own X) — no coupling.
+  adi_component_var(mom, mom.rhs_u, Up, Up, Vp, Wp, mu, irho, Direction::X, false, bc.U, domain, bc, Cmu, dt, mom.dU.data());
   core::sync_field_cpu(mom.dU, bc.U, domain.sub);
-  core::sync_field_cpu(mom.dV, bc.V, domain.sub);
+
+  // 2) dW (own Z, wall) — inject M21 (dU increment) into rhs_w, then solve.
+  mk::couple_dd_dW_var(mom.rhs_w.data(), mom.dU.data(), Wp, mu, irho,
+                       dx1, dmx1, dx3, dmx3, n1, n2, n3, Cmu, dt);
+  adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, Direction::Z, true, bc.W, domain, bc, Cmu, dt, mom.dW.data());
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
 
-  const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-  // FAITHFUL block coupling (full variable-μ cross-stress). Reference order:
+  // 3) dV (own Y, span) — inject M31 (dU) + M32 (dW) into rhs_v, then solve.
+  mk::couple_dd_dV_var(mom.rhs_v.data(), mom.dU.data(), mom.dW.data(), Vp, mu, irho,
+                       dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
+  adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, Direction::Y, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
+  core::sync_field_cpu(mom.dV, bc.V, domain.sub);
+
+  // ── BLOCK back-substitution (upper M23/M12/M13), ref blockLdV→blockLdU order:
   // blockLdV corrects the WALL increment (my dW) using the span increment (my dV),
   // THEN blockLdU corrects dU using the span (dV) + corrected wall (dW) increments.
   mk::block_couple_dW_var(mom.dW.data(), mom.dV.data(), fields[core::Var::W].data(), mu, irho,

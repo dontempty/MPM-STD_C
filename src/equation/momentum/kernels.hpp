@@ -53,10 +53,13 @@ void compute_mpmstd_rhs_var(real_t*       rhs,
 // Variable-viscosity FAITHFUL ADI bands for sweep direction d (component own =
 // own_dir). d==own_dir → ×2 diffusion (cell μ; single for own-X, two-cell for
 // own-Y/own-Z) + own 0.25 convection on the dx (cell-width) metric + the 0.5·∂q
-// own term. d≠own_dir → ×1 diffusion (simple-avg face μ; EXACT at μ≡1, the OB
-// validation; NOB cross-band μ interpolation is a follow-up) + 0.25 convection on
-// the dmx metric. q = own component field (for the 0.5·∂q own conv), q_adv =
-// advecting velocity along d. z_staggered = wall-normal own-Z metric.
+// own term. d≠own_dir → ×1 diffusion with the FAITHFUL doubly volume-weighted
+// cross-face μ (interp through own_dir to the velocity face, then through d —
+// matches the RHS faces mu1..mu6, ref 675-685; a no-op at μ≡1) + 0.25 convection
+// on the dmx metric. invρ is own-face interpolated (ref invRhoc). q = own
+// component field (for the 0.5·∂q own conv), q_adv = advecting velocity along d.
+// dx_along/dmx_along = swept-dir metric; dx_own/dmx_own = own_dir metric (for the
+// face interps). z_staggered = wall-normal own-Z metric.
 void build_adi_bands_var(Direction      d,
                          Direction      own_dir,
                          real_t*        A, real_t* B, real_t* C, real_t* D,
@@ -65,6 +68,7 @@ void build_adi_bands_var(Direction      d,
                          const real_t*  q_adv,
                          const real_t*  mu, const real_t* invrho,
                          const real_t*  dx_along, const real_t* dmx_along,
+                         const real_t*  dx_own,   const real_t* dmx_own,
                          int            n1_tot, int n2_tot, int n3_tot,
                          int            n1_int,  int n2_int,  int n3_int,
                          real_t         Cmu, real_t dt,
@@ -190,6 +194,41 @@ void block_couple_dU_var(real_t*       dU,
                          const real_t* dx3, const real_t* dmx3,
                          int n1_tot, int n2_tot, int n3_tot,
                          real_t Cmu, real_t dt);
+
+// ── FAITHFUL dd* forward-substitution coupling (block LOWER-triangular) ───────
+// The three M21/M31/M32 off-diagonals applied to the RHS using the already-
+// solved preceding increments, BEFORE the component's own ADI solve. Reference
+// solve order solvedU→solvedV→solvedW maps to my dU→dW→dV; the forward sub is:
+//   dW (ref solvedV, M21): rhs_w -= dt·(...dU...)            (couple_dd_dW_var)
+//   dV (ref solvedW, M31+M32): rhs_v -= dt·(...dU...) -= dt·(...dW...)  (couple_dd_dV_var)
+// These do NOT vanish at μ≡1 (increment×velocity-gradient convection); they were
+// deferred because they are sub-floor at OB. Required for full NOB faithfulness
+// and they make the cross-stress semi-implicit (Gauss-Seidel) — the stabiliser
+// for strong viscosity contrast (glycerol). dU/dW must be synced before the call.
+
+// couple_dd_dW_var ≡ ref solvedV 764-766: dU increment → WALL-normal (dW) RHS.
+void couple_dd_dW_var(real_t*       rhs_w,
+                      const real_t* dU,
+                      const real_t* W,
+                      const real_t* mu, const real_t* invrho,
+                      const real_t* dx1, const real_t* dmx1,
+                      const real_t* dx3, const real_t* dmx3,
+                      int n1_tot, int n2_tot, int n3_tot,
+                      real_t Cmu, real_t dt);
+
+// couple_dd_dV_var ≡ ref solvedW 1114-1120: dU (M31) + dW (M32) increments →
+// SPAN (dV) RHS. ref 'dV' = my dW (wall increment). Run AFTER couple_dd_dW_var
+// + the dW solve (forward substitution needs the updated dW).
+void couple_dd_dV_var(real_t*       rhs_v,
+                      const real_t* dU,
+                      const real_t* dW,
+                      const real_t* V,
+                      const real_t* mu, const real_t* invrho,
+                      const real_t* dx1, const real_t* dmx1,
+                      const real_t* dx2, const real_t* dmx2,
+                      const real_t* dx3, const real_t* dmx3,
+                      int n1_tot, int n2_tot, int n3_tot,
+                      real_t Cmu, real_t dt);
 
 // ── NOB transpose viscous stress (cross-stress), component i ─────────────────
 //   T_i = Σ_j ∂_j(μ ∂_i u_j)  — the ∇u^T half of ∇·(μ(∇u+∇u^T)). Added to the

@@ -75,6 +75,32 @@ double div_max(const core::Domain& d, const core::CpuFields& f) {
   return g;
 }
 
+// Diagnostic: global max|U|,max|V|,max|W| and T range (+ wall-normal k of max|W|).
+// Distinguishes a momentum/buoyancy velocity spike from a scalar (T) overshoot,
+// and whether the velocity max sits at the wall (small/large k) or the interior.
+struct FlowDiag { double umax, vmax, wmax, tmax, tmin; int kwmax; };
+FlowDiag flow_diag(const core::Domain& d, const core::CpuFields& f) {
+  const auto nt = d.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+  const int h = kHaloWidth;
+  const real_t* u = f[core::Var::U].data(); const real_t* v = f[core::Var::V].data();
+  const real_t* w = f[core::Var::W].data(); const real_t* T = f[core::Var::T].data();
+  double um=0, vm=0, wm=0, tx=-1e30, tn=1e30; int kw=-1; double wbest=-1;
+  const int kstart = d.sub.global_offset()[2];
+  for (int i = h; i < n1 - h; ++i)
+    for (int j = h; j < n2 - h; ++j)
+      for (int k = h; k < n3 - h; ++k) {
+        const int c = (i * n2 + j) * n3 + k;
+        um = std::max(um, std::fabs(double(u[c]))); vm = std::max(vm, std::fabs(double(v[c])));
+        const double aw = std::fabs(double(w[c]));
+        if (aw > wbest) { wbest = aw; kw = kstart + (k - h); }
+        wm = std::max(wm, aw);
+        tx = std::max(tx, double(T[c])); tn = std::min(tn, double(T[c]));
+      }
+  double in[5] = {um, vm, wm, tx, -tn}, out[5];
+  MPI_Allreduce(in, out, 5, MPI_DOUBLE, MPI_MAX, d.sub.topology().cart_comm());
+  return {out[0], out[1], out[2], out[3], -out[4], kw};
+}
+
 // Global x,y-plane mean of θ at the centre z-plane (z = Lz/2). Θ_c diagnostic.
 double center_temp(const core::Domain& d, const core::CpuFields& f) {
   const auto nt = d.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -239,9 +265,10 @@ int main(int argc, char** argv) {
     if (step % nmonitor == 0) {
       const double dv = div_max(domain, fields);
       const double tc = (tc_n > 0) ? tc_sum / static_cast<double>(tc_n) : center_temp(domain, fields);
+      const FlowDiag fd = flow_diag(domain, fields);
       if (mpi.is_root())
-        std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f (OB->0)\n",
-                    step, time, double(dt), dv, tc);
+        std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f | umax=%.3g vmax=%.3g wmax=%.3g(k=%d) T=[%.3f,%.3f]\n",
+                    step, time, double(dt), dv, tc, fd.umax, fd.vmax, fd.wmax, fd.kwmax, fd.tmin, fd.tmax);
     }
   }
 
