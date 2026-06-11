@@ -29,3 +29,15 @@ mpmstd/apps/*/statistics/
 mpmstd/apps/*/restart_*/
 mpmstd/apps/*/instant/
 mpmstd/apps/dhvc/stats_*/
+
+# refactored-tree (src/ root) run outputs — not committed
+apps/*/turb_out/
+apps/*/turb_out_old/
+apps/*/coldstart_out/
+apps/*/smoke_out/
+apps/*/regress_out/
+apps/*/statistics/
+apps/*/stats_ob/
+apps/*/stats_*/
+apps/validate/*.bin
+dump_mpm_*.bin

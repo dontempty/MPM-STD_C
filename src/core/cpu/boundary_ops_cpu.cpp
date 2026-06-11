@@ -86,27 +86,31 @@ void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
   const bool owns_lower = (axis_comm.west_rank == MPI_PROC_NULL);
   const bool owns_upper = (axis_comm.east_rank == MPI_PROC_NULL);
 
-  auto fold_lower = [&](const FaceBc& face) {
-    for (int s = 0; s < n_sys; ++s) {
-      const int p = s;  // row 0
-      if (face.kind == BcKind::Dirichlet || face.kind == BcKind::Neumann) {
-        B[p] += A[p]; A[p] = real_t{0};   // δ_ghost = ±δ_interior fold (see original)
-      } else {
-        throw std::runtime_error(std::string("modify_tdma_row_cpu(lower): BcKind not implemented: ")
-                                 + boundary::bc_kind_name(face.kind));
-      }
+  // Wall closure for the ADI increment row — MUST match the explicit ghost policy:
+  //   ZeroGhost Dirichlet (δ_ghost = 0)        → DROP off-diagonal, keep B's wall
+  //                                               diffusion (Dirichlet u=0). [velocity]
+  //   Antisymmetric Dirichlet (δ_ghost = −δ_in)→ B −= off-diag (doubled wall flux). [T]
+  //   Neumann (δ_ghost = +δ_in)                → B += off-diag (zero-gradient).
+  // (The previous code folded B += off-diag for ALL Dirichlet, which CANCELS the
+  // wall-ward diffusion → an unintended Neumann wall; for the no-slip velocity that
+  // under-damps U at the wall — the PaScaL_TCS momentum-validation discrepancy.)
+  auto closure = [&](const FaceBc& face, real_t* offdiag, int p) {
+    if (face.kind == BcKind::Neumann) {
+      B[p] += offdiag[p];
+    } else if (face.kind == BcKind::Dirichlet) {
+      if (face.ghost_policy == GhostPolicy::Antisymmetric) B[p] -= offdiag[p];
+      // ZeroGhost: δ_ghost = 0 → drop only (B unchanged, retains wall diffusion).
+    } else {
+      throw std::runtime_error(std::string("modify_tdma_row_cpu: BcKind not implemented: ")
+                               + boundary::bc_kind_name(face.kind));
     }
+    offdiag[p] = real_t{0};
+  };
+  auto fold_lower = [&](const FaceBc& face) {
+    for (int s = 0; s < n_sys; ++s) closure(face, A, s);                  // row 0
   };
   auto fold_upper = [&](const FaceBc& face) {
-    for (int s = 0; s < n_sys; ++s) {
-      const int p = (n_row - 1) * n_sys + s;
-      if (face.kind == BcKind::Dirichlet || face.kind == BcKind::Neumann) {
-        B[p] += C[p]; C[p] = real_t{0};
-      } else {
-        throw std::runtime_error(std::string("modify_tdma_row_cpu(upper): BcKind not implemented: ")
-                                 + boundary::bc_kind_name(face.kind));
-      }
-    }
+    for (int s = 0; s < n_sys; ++s) closure(face, C, (n_row - 1) * n_sys + s);
   };
 
   if (owns_lower) fold_lower(fbc.face(wall_axis, Side::Minus));

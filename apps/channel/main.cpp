@@ -157,6 +157,43 @@ int main(int argc, char** argv) {
     MPI_Bcast(&dpdx, 1, MPI_DOUBLE, 0, topo.cart_comm());
     MPI_Bcast(&step, 1, MPI_INT,    0, topo.cart_comm());
   }
+  // ── cold-start structured IC: laminar Poiseuille base + deterministic multi-
+  //    mode cos/sin perturbation (streamwise streaks + vortices + oblique waves)
+  //    to seed BYPASS transition to turbulence. Wall-vanishing z-envelopes keep
+  //    no-slip. The first pressure projection cleans the divergence. Gated on
+  //    [init] perturb > 0 and a cold start (continue_in = 0). ────────────────────
+  const double ic_perturb = cfg.get_or<double>("init", "perturb", 0.0);
+  if (!continue_in && ic_perturb > 0.0) {
+    const double Lx = cfg.get<double>("domain", "Lx");
+    const double Ly = cfg.get<double>("domain", "Ly");
+    const double Lz = cfg.get<double>("domain", "Lz");
+    const double Ub = target_Ub, h = 0.5 * Lz, Ucl = 1.5 * Ub, A = ic_perturb;
+    const auto& xc = grid.xc(Direction::X); const auto& yc = grid.xc(Direction::Y); const auto& zc = grid.xc(Direction::Z);
+    const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
+    real_t* U = fields[core::Var::U].data(); real_t* V = fields[core::Var::V].data(); real_t* W = fields[core::Var::W].data();
+    const double pi = M_PI;
+    for (int i = 0; i < n1; ++i)
+      for (int j = 0; j < n2; ++j)
+        for (int k = 0; k < n3; ++k) {
+          const int c = (i * n2 + j) * n3 + k;
+          const double x = xc[i], y = yc[j], z = zc[k];
+          const double eta = (z - h) / h;          // wall-normal, ±1 at walls
+          const double env = 1.0 - eta * eta;       // 0 at walls (for U,V)
+          const double envw = std::sin(pi * z / Lz);// 0 at walls (for W)
+          const double U0 = Ucl * env;              // laminar Poiseuille base
+          const double kx = 2.0*pi*x/Lx, ky = 2.0*pi*y/Ly;
+          // streamwise streaks (x-independent) + 3D oblique waves (trigger breakdown)
+          const double pu = std::cos(ky) + 0.5*std::cos(2*ky)
+                          + std::sin(kx)*std::cos(ky) + 0.5*std::sin(2*kx)*std::cos(ky);
+          const double pv = std::cos(kx)*std::sin(ky) + 0.5*std::sin(kx)*std::sin(2*ky);
+          const double pw = std::sin(kx)*std::sin(ky) + 0.5*std::cos(kx)*std::sin(2*ky);
+          U[c] = static_cast<real_t>(U0  + A*Ucl*env *pu);
+          V[c] = static_cast<real_t>(       A*Ucl*env *pv);
+          W[c] = static_cast<real_t>(       A*Ucl*envw*pw);
+        }
+    if (mpi.is_root()) std::printf("[channel] COLD START: Poiseuille + structured perturbation A=%.3f\n", A);
+  }
+
   zero_w_wall(fields[core::Var::W], sub);
   core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
   core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);

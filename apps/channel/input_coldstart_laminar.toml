@@ -1,0 +1,72 @@
+# Cold-start LAMINAR channel — wall-closure validation against analytic Poiseuille.
+# Zero IC + mass-flow forcing (Ub=1) develops to the steady parabolic profile.
+# Walls at z=0, z=Lz=2 (half-height h=1). Antisymmetric velocity ghost (= channel
+# regression config). Analytic steady solution:
+#   U(z) = 1.5*Ub*(1 - ((z-h)/h)^2),  U(wall)=0 (no-slip),  WSS = 3*nu*Ub/h,
+#   dPdx -> -3*nu*Ub/h^2 = -3*nu  (h=1, Ub=1).
+# This isolates the wall closure: a correct no-slip wall reproduces the parabola;
+# a Neumann/slip wall leaves U(wall)!=0 and a flatter profile.
+#   mpirun -np 2 build/cpu/bin/apps/channel apps/channel/input_coldstart_laminar.toml
+
+[domain]
+Lx = 2.0
+Ly = 2.0
+Lz = 2.0          # full height; half-height h = 1
+
+[mesh]
+n1m = 16
+n2m = 16
+n3m = 48          # resolve the wall-normal profile
+
+[mpi]
+np1 = 2
+np2 = 1
+np3 = 1
+
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 1      # uniform z → clean analytic comparison
+
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 0.0
+
+[physics]
+nu = 0.05         # Re=Ub*h/nu=20, laminar; viscous time h^2/nu=20 → fast steady
+
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+
+[bc.z.minus]
+ghost = "antisymmetric"
+[bc.z.plus]
+ghost = "antisymmetric"
+
+[thermal]
+enabled = 0
+
+[channel_forcing]
+mode = "mass_flow"
+target_bulk_velocity = 1.0
+target_dPdx = 0.0
+
+[time]
+t_start  = 0.0
+t_end    = 100000.0
+dt_start = 0.02
+MaxCFL   = 0.5
+n_steps  = 4000        # >> viscous time → steady
+
+[output]
+dir_stats    = "apps/channel/coldstart_out/"
+nmonitor     = 200
+nstat_start  = 3000    # accumulate the (steady) profile over the last 1000 steps
+nstat        = 1
+nout_stats   = 100000
+out_stats    = 1
+continue_in  = 0       # COLD START (zero IC)
+continue_out = 0

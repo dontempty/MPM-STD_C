@@ -1,0 +1,58 @@
+# Cold-start TURBULENT channel (Re_tau~180) from a STRUCTURED cos/sin perturbation
+# (NOT random) — bypass transition test. Verifies the wall-closure fix sustains
+# wall-bounded turbulence + reproduces canonical channel statistics (u_rms+ peak
+# ~2.6-2.8, Re_tau~180, log-law mean). Small box above the minimal flow unit.
+#   mpirun -np 4 build/cpu/bin/apps/channel apps/channel/input_coldstart_turb.toml
+[domain]
+Lx = 3.14159265   # pi  (streamwise; Lx+ = 180*pi ~ 565)
+Ly = 1.57079633   # pi/2 (span;     Ly+ = 180*pi/2 ~ 283, > minimal ~100)
+Lz = 2.0          # full height; half-height h = 1
+[mesh]
+n1m = 32          # dx+ ~ 17.7
+n2m = 24          # dy+ ~ 11.8
+n3m = 96          # wall-normal, stretched
+[mpi]
+np1 = 4
+np2 = 1
+np3 = 1
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0      # Tanh-stretch the wall-normal
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 1.7      # cluster near walls (dz+_wall ~ O(1))
+[physics]
+nu = 3.5035e-4    # Re_b = Ub*h/nu ~ 2854  -> Re_tau ~ 180
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+ghost = "antisymmetric"
+[bc.z.plus]
+ghost = "antisymmetric"
+[thermal]
+enabled = 0
+[channel_forcing]
+mode = "mass_flow"
+target_bulk_velocity = 1.0
+target_dPdx = 0.0
+[time]
+t_start  = 0.0
+t_end    = 100000.0
+dt_start = 0.02
+MaxCFL   = 0.4
+n_steps  = 40000
+[init]
+perturb = 0.30    # structured-perturbation amplitude (fraction of U_cl)
+[output]
+dir_stats    = "apps/channel/turb_out/"
+nmonitor     = 250
+nstat_start  = 20000   # average over the (developed) second half
+nstat        = 5
+nout_stats   = 5000    # periodic stats snapshots
+out_stats    = 1
+continue_in  = 0       # COLD START
+continue_out = 0
