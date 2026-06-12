@@ -276,23 +276,10 @@ PressureSolver::~PressureSolver()
 }
 
 
-// ── public interface ─────────────────────────────────────────────────────────
+// ── shared spectral + unpack step (steps 2-6 of the pressure solve) ──────────
 
-void PressureSolver::solve(real_t dt,
-                            core::CpuField& U,
-                            core::CpuField& V,
-                            core::CpuField& W,
-                            core::CpuField& P)
+void PressureSolver::solve_spectral_unpack_(core::CpuField& P)
 {
-  // Cache current-solve arguments so helper methods can access them.
-  cur_U_  = &U;
-  cur_V_  = &V;
-  cur_W_  = &W;
-  cur_dt_ = dt;
-
-  // 1. RHS: divergence / dt into rhs_C_ (C-layout, x-fastest)
-  compute_divergence_rhs_pencil_();
-
   // 2. Forward: C→I, FFT(x), I→Y, FFT(y)
   transpose_C_to_I_();
   fft_x_forward_();
@@ -307,37 +294,30 @@ void PressureSolver::solve(real_t dt,
   transpose_Y_to_I_();
   fft_x_backward_();
 
-  // 5. Scale (FFTW is un-normalised) then transpose I→C to fill dp_C_
+  // 5. Scale (FFTW un-normalised) + I→C
   const int N1g = sub_.n_global()[0];
   const int N2g = sub_.n_global()[1];
   const double scale = 1.0 / (static_cast<double>(N1g) * static_cast<double>(N2g));
   for (std::size_t q = 0; q < dp_I_.size(); ++q) dp_I_[q] *= scale;
-
   std::fill(dp_C_.begin(), dp_C_.end(), real_t{0});
-  transpose_I_to_C_();   // fills dp_C_ (C-layout, x-fastest, no halo)
+  transpose_I_to_C_();
 
-  // 6. Unpack dp_C_ into P field interior, remove global mean, apply ghost+halo.
-  //    This matches the original unpack_from_buf_ semantics: P is overwritten with
-  //    dP (not accumulated).  The base-class project_() then uses P (= dP) to
-  //    correct U, V, W.
+  // 6. Unpack dp_C_ → P interior (remove global mean, Neumann ghost, halo+ghost)
   {
     const int h   = kHaloWidth;
     const int n2t = sub_.n_total()[1];
     const int n3t = sub_.n_total()[2];
 
-    // Remove global mean (for uniqueness; same as base-class unpack_from_buf_).
     double local_sum = 0.0;
     const std::size_t n_loc = (std::size_t)nx_loc_ * ny_loc_ * nz_loc_;
     for (std::size_t q = 0; q < n_loc; ++q)
       local_sum += static_cast<double>(dp_C_[q]);
-
     double global_sum = 0.0;
     MPI_Allreduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM,
                   sub_.topology().cart_comm());
     const int    n_int_global = sub_.n_global()[0] * sub_.n_global()[1] * sub_.n_global()[2];
     const real_t mean_dp = static_cast<real_t>(global_sum / n_int_global);
 
-    // Write dP - mean into P interior (MPM-STD_C field layout: x-slowest, z-fastest).
     real_t* p = P.data();
     for (int kk = 0; kk < nz_loc_; ++kk)
       for (int jj = 0; jj < ny_loc_; ++jj)
@@ -347,7 +327,6 @@ void PressureSolver::solve(real_t dt,
               dp_C_[idx_C(ii, jj, kk, nx_loc_, ny_loc_)] - mean_dp;
         }
 
-    // Apply Neumann ghost for dP at Z walls (Neumann BC: ghost = first interior).
     const int rz      = sub_.topology().axis(Direction::Z).rank;
     const int np3_val = sub_.topology().axis(Direction::Z).nprocs;
     if (rz == 0) {
@@ -365,14 +344,97 @@ void PressureSolver::solve(real_t dt,
               p[(i * n2t + j) * n3t + (h + nz_loc_ - 1)];
         }
     }
-
-    // Halo exchange for dP (x, y are periodic; bc_.apply_ghost handles Z walls).
     core::exchange_halo_cpu(P, sub_);
     core::apply_ghost_cpu(P, problem_.P, sub_);
   }
+}
 
-  // 7. Project: U,V,W -= dt * grad(P),   halo + ghost applied inside project_().
+
+// ── public interface ─────────────────────────────────────────────────────────
+
+void PressureSolver::solve(real_t dt,
+                            core::CpuField& U,
+                            core::CpuField& V,
+                            core::CpuField& W,
+                            core::CpuField& P)
+{
+  cur_U_ = &U; cur_V_ = &V; cur_W_ = &W; cur_dt_ = dt;
+  compute_divergence_rhs_pencil_();
+  solve_spectral_unpack_(P);
   project_(dt, U, V, W, P);
+}
+
+
+// ── NOB pressure solve ───────────────────────────────────────────────────────
+// Adds ExtraTerm = ∇·[(1-invRho_face)·∇dPhat] to the Poisson RHS (PaScaL_TCS
+// §214-225), solves with the same spectral engine, then applies the NOB
+// projection u -= dt*[(∇dP) + (invRhoc-1)*(∇dPhat)] (§804-817), and saves
+// the new dP into dPhat for the next time step.
+
+void PressureSolver::add_extra_term_nob_(const real_t* ir, const real_t* ph)
+{
+  const real_t* dx1  = grid_.dx_ptr(Direction::X);
+  const real_t* dmx1 = grid_.dmx_ptr(Direction::X);
+  const real_t* dx2  = grid_.dx_ptr(Direction::Y);
+  const real_t* dmx2 = grid_.dmx_ptr(Direction::Y);
+  const real_t* dx3  = grid_.dx_ptr(Direction::Z);
+  const real_t* dmx3 = grid_.dmx_ptr(Direction::Z);
+
+  const int h   = kHaloWidth;
+  const int n2t = n2_tot_, n3t = n3_tot_;
+
+  for (int kk = 0; kk < nz_loc_; ++kk) {
+    const int k = kk + h, km = k-1, kp = k+1;
+    for (int jj = 0; jj < ny_loc_; ++jj) {
+      const int j = jj + h, jm = j-1, jp = j+1;
+      for (int ii = 0; ii < nx_loc_; ++ii) {
+        const int i = ii + h, im = i-1, ip = i+1;
+
+        const int c   = (i *n2t+j )*n3t+k;
+        const int cxm = (im*n2t+j )*n3t+k,  cxp = (ip*n2t+j )*n3t+k;
+        const int cym = (i *n2t+jm)*n3t+k,  cyp = (i *n2t+jp)*n3t+k;
+        const int czm = (i *n2t+j )*n3t+km, czp = (i *n2t+j )*n3t+kp;
+
+        // Face-averaged invRho at i-1/2 and i+1/2 (PaScaL_TCS §214-219)
+        const real_t ir_xlo = real_t{0.5}/dmx1[i]  * (dx1[im]*ir[c] + dx1[i] *ir[cxm]);
+        const real_t ir_xhi = real_t{0.5}/dmx1[ip] * (dx1[ip]*ir[c] + dx1[i] *ir[cxp]);
+        const real_t ir_ylo = real_t{0.5}/dmx2[j]  * (dx2[jm]*ir[c] + dx2[j] *ir[cym]);
+        const real_t ir_yhi = real_t{0.5}/dmx2[jp] * (dx2[jp]*ir[c] + dx2[j] *ir[cyp]);
+        const real_t ir_zlo = real_t{0.5}/dmx3[k]  * (dx3[km]*ir[c] + dx3[k] *ir[czm]);
+        const real_t ir_zhi = real_t{0.5}/dmx3[kp] * (dx3[kp]*ir[c] + dx3[k] *ir[czp]);
+
+        // dPhat gradients at each face (§220-225)
+        const real_t gx_lo = (ph[c]-ph[cxm]) / dmx1[i];
+        const real_t gx_hi = (ph[cxp]-ph[c]) / dmx1[ip];
+        const real_t gy_lo = (ph[c]-ph[cym]) / dmx2[j];
+        const real_t gy_hi = (ph[cyp]-ph[c]) / dmx2[jp];
+        const real_t gz_lo = (ph[c]-ph[czm]) / dmx3[k];
+        const real_t gz_hi = (ph[czp]-ph[c]) / dmx3[kp];
+
+        // ExtraTerm = ∇·[(1-invRho_face)·∇dPhat]
+        const real_t ex = ((1-ir_xhi)*gx_hi - (1-ir_xlo)*gx_lo) / dx1[i];
+        const real_t ey = ((1-ir_yhi)*gy_hi - (1-ir_ylo)*gy_lo) / dx2[j];
+        const real_t ez = ((1-ir_zhi)*gz_hi - (1-ir_zlo)*gz_lo) / dx3[k];
+
+        rhs_C_[idx_C(ii, jj, kk, nx_loc_, ny_loc_)] += static_cast<double>(ex + ey + ez);
+      }
+    }
+  }
+}
+
+void PressureSolver::solve_nob(real_t dt,
+                                core::CpuField& U, core::CpuField& V,
+                                core::CpuField& W, core::CpuField& P,
+                                const real_t* inv_rho, core::CpuField& dPhat)
+{
+  cur_U_ = &U; cur_V_ = &V; cur_W_ = &W; cur_dt_ = dt;
+  compute_divergence_rhs_pencil_();
+  add_extra_term_nob_(inv_rho, dPhat.data());
+  solve_spectral_unpack_(P);
+  project_nob_(dt, U, V, W, P, inv_rho, dPhat.data());
+  // Save new dP as dPhat for the next step
+  const std::size_t N = (std::size_t)n1_tot_ * n2_tot_ * n3_tot_;
+  std::copy(P.data(), P.data() + N, dPhat.data());
 }
 
 

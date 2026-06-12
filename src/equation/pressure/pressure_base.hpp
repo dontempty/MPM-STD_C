@@ -44,6 +44,12 @@ protected:
   void project_(real_t dt,
                 core::CpuField& U, core::CpuField& V, core::CpuField& W, const core::CpuField& P);
 
+  // NOB projection: u -= dt*[∇dP + (invRhoc-1)*∇dPhat]  (PaScaL_TCS §804-817)
+  void project_nob_(real_t dt,
+                    core::CpuField& U, core::CpuField& V, core::CpuField& W,
+                    const core::CpuField& P,
+                    const real_t* inv_rho, const real_t* dPhat);
+
   // ── Common state ─────────────────────────────────────────────────────────
   const grid::Grid&                  grid_;
   const parallel::mpi::Subdomain&    sub_;

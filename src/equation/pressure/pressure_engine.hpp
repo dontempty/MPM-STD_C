@@ -42,8 +42,17 @@ public:
              core::CpuField& W,
              core::CpuField& P) override;
 
+  // NOB: adds ∇·[(1-invRho)·∇dPhat] to Poisson RHS, applies (invRhoc-1)*∇dPhat
+  // in projection, and updates dPhat := new dP for the next step.
+  void solve_nob(real_t dt,
+                 core::CpuField& U, core::CpuField& V,
+                 core::CpuField& W, core::CpuField& P,
+                 const real_t* inv_rho, core::CpuField& dPhat);
+
 private:
   void compute_divergence_rhs_pencil_();
+  void solve_spectral_unpack_(core::CpuField& P);    // FFT→TDMA→IFFT→scale→unpack
+  void add_extra_term_nob_(const real_t* inv_rho, const real_t* dPhat_data);
   void transpose_C_to_I_();
   void transpose_I_to_C_();
   void transpose_I_to_Y_();

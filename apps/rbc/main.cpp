@@ -256,7 +256,19 @@ int main(int argc, char** argv) {
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     zero_w_wall(fields[core::Var::W], sub);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    // NOB: pass inv_rho so the solver adds the variable-density ExtraTerm and
+    // applies the (invRhoc-1)*∇dPhat projection correction.
+    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
+                                 nob ? props.inv_rho.data() : nullptr);
+
+    // NOB scalar stability: clip T to the physical range [-0.5, +0.5] to prevent
+    // max-principle violations at high Peclet (glycerol Pr=2547, large DeltaT).
+    if (nob && DeltaT > 0.0) {
+      real_t* t_ptr = fields[core::Var::T].data();
+      const std::size_t nf = (std::size_t)sub.n_total()[0]*sub.n_total()[1]*sub.n_total()[2];
+      for (std::size_t q = 0; q < nf; ++q)
+        t_ptr[q] = std::max(real_t{-0.5}, std::min(real_t{0.5}, t_ptr[q]));
+    }
 
     time += static_cast<double>(dt);
     ++step;

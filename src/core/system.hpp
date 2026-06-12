@@ -85,6 +85,7 @@ enum class Transform { Fft, Dct, Tdma };
 struct PressureSystem {
   std::array<Transform, 3> transform{Transform::Tdma, Transform::Tdma, Transform::Tdma};
   std::shared_ptr<equation::pressure::PressureSolver> engine;   // lazy
+  std::unique_ptr<CpuField> dPhat;  // prev-step dP for NOB correction; null = OB
 };
 
 } // namespace mpmstd::core

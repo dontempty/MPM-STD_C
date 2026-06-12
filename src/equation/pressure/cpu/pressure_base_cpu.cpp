@@ -141,4 +141,67 @@ void PressureSolverBase::project_(real_t dt,
   core::apply_ghost_cpu(W, problem_.W, sub_);
 }
 
+// ── project_nob_ ─────────────────────────────────────────────────────────────
+// NOB velocity correction  (PaScaL_TCS module_solve_pressure.f90 §804-817):
+//   u -= dt * [ (dP[i]-dP[i-1])/dmx1[i]  +  (invRhoc-1)*(dPhat[i]-dPhat[i-1])/dmx1[i] ]
+// invRhoc at x-face i-1/2:  0.5/dmx1[i] * (dx1[i-1]*invRho[i] + dx1[i]*invRho[i-1])
+
+void PressureSolverBase::project_nob_(real_t dt,
+                                       core::CpuField& U,
+                                       core::CpuField& V,
+                                       core::CpuField& W,
+                                       const core::CpuField& P,
+                                       const real_t* inv_rho,
+                                       const real_t* dPhat) {
+  real_t*       u  = U.data();
+  real_t*       v  = V.data();
+  real_t*       w  = W.data();
+  const real_t* p  = P.data();
+  const real_t* ir = inv_rho;
+  const real_t* ph = dPhat;
+
+  const real_t* dx1  = grid_.dx_ptr(Direction::X);
+  const real_t* dmx1 = grid_.dmx_ptr(Direction::X);
+  const real_t* dx2  = grid_.dx_ptr(Direction::Y);
+  const real_t* dmx2 = grid_.dmx_ptr(Direction::Y);
+  const real_t* dx3  = grid_.dx_ptr(Direction::Z);
+  const real_t* dmx3 = grid_.dmx_ptr(Direction::Z);
+
+  const int n2 = n2_tot_, n3 = n3_tot_;
+  const int h  = kHaloWidth;
+
+  for (int i = h; i < n1_tot_ - h; ++i) {
+    const int im = i - 1;
+    for (int j = h; j < n2_tot_ - h; ++j) {
+      const int jm = j - 1;
+      for (int k = h; k < n3_tot_ - h; ++k) {
+        const int km = k - 1;
+
+        const int c   = (i  * n2 + j ) * n3 + k;
+        const int cxm = (im * n2 + j ) * n3 + k;
+        const int cym = (i  * n2 + jm) * n3 + k;
+        const int czm = (i  * n2 + j ) * n3 + km;
+
+        // Face-averaged invRho (linear interpolation, PaScaL_TCS §214-225 formula):
+        // irc at face i-1/2: 0.5/dmx1[i]*(dx1[im]*ir[i]+dx1[i]*ir[im])
+        const real_t irc_x = real_t{0.5}/dmx1[i] * (dx1[im]*ir[c]  + dx1[i] *ir[cxm]);
+        const real_t irc_y = real_t{0.5}/dmx2[j] * (dx2[jm]*ir[c]  + dx2[j] *ir[cym]);
+        const real_t irc_z = real_t{0.5}/dmx3[k] * (dx3[km]*ir[c]  + dx3[k] *ir[czm]);
+
+        // u -= dt * [ ∇dP + (irc-1)*∇dPhat ]  at each face
+        u[c] -= dt * ((p[c]-p[cxm])/dmx1[i] + (irc_x - real_t{1})*(ph[c]-ph[cxm])/dmx1[i]);
+        v[c] -= dt * ((p[c]-p[cym])/dmx2[j] + (irc_y - real_t{1})*(ph[c]-ph[cym])/dmx2[j]);
+        w[c] -= dt * ((p[c]-p[czm])/dmx3[k] + (irc_z - real_t{1})*(ph[c]-ph[czm])/dmx3[k]);
+      }
+    }
+  }
+
+  core::exchange_halo_cpu(U, sub_);
+  core::exchange_halo_cpu(V, sub_);
+  core::exchange_halo_cpu(W, sub_);
+  core::apply_ghost_cpu(U, problem_.U, sub_);
+  core::apply_ghost_cpu(V, problem_.V, sub_);
+  core::apply_ghost_cpu(W, problem_.W, sub_);
+}
+
 } // namespace mpmstd::equation::pressure
