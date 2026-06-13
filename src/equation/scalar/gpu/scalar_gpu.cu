@@ -11,6 +11,7 @@
 #include <cuda_runtime.h>
 #include <cstdlib>
 #include <cstdio>
+#include <chrono>
 
 namespace {
 
@@ -217,7 +218,42 @@ __global__ void k_copy_field(double* dst, const double* src, int n) {
   if (idx < n) dst[idx] = src[idx];
 }
 
+// ---------------------------------------------------------------------------
+//  GPU kernel: replace D2H + modify_tdma_row_cpu + H2D for non-periodic dirs.
+//  Operates on device band arrays [n_row × n_sys] (row-major).
+//  lkind/ukind: 0=ZeroGhost (zero off-diag only), 1=Antisymmetric (B-=off),
+//               2=Neumann (B+=off).
+// ---------------------------------------------------------------------------
+__global__ void k_modify_tdma_row_gpu(double* A, double* B, double* C,
+                                       int n_sys, int n_row,
+                                       bool owns_lower, bool owns_upper,
+                                       int lkind, int ukind) {
+    const int s = blockIdx.x * blockDim.x + threadIdx.x;
+    if (s >= n_sys) return;
+    if (owns_lower) {
+        const int p = s;
+        if (lkind == 1) B[p] -= A[p];
+        else if (lkind == 2) B[p] += A[p];
+        A[p] = 0.0;
+    }
+    if (owns_upper) {
+        const int p = (n_row - 1) * n_sys + s;
+        if (ukind == 1) B[p] -= C[p];
+        else if (ukind == 2) B[p] += C[p];
+        C[p] = 0.0;
+    }
+}
+
 } // anonymous namespace
+
+// ---------------------------------------------------------------------------
+//  Helper: map FaceBc to integer kind for k_modify_tdma_row_gpu
+// ---------------------------------------------------------------------------
+static int modify_ghost_kind(const mpmstd::boundary::FaceBc& face) {
+    if (face.kind == mpmstd::boundary::BcKind::Neumann) return 2;
+    if (face.ghost_policy == mpmstd::boundary::GhostPolicy::Antisymmetric) return 1;
+    return 0;
+}
 
 // ---------------------------------------------------------------------------
 //  Helper: get PaScaLTDMACudaBackend from registry (CUDA builds only)
@@ -403,9 +439,17 @@ void solve_scalar_var_gpu(
   const double* d_ir = inv_rcp.data(), *d_dir = dinv_rcp.data();
 
   // d_rhs_ holds the explicit residual written by assemble_scalar_var_diff_gpu.
+  using hrc = std::chrono::high_resolution_clock;
+  using ms_t = std::chrono::duration<double, std::milli>;
+  static int s_sca_n = 0;
+  ++s_sca_n;
+  // per-sweep: [0]=X [1]=Y [2]=Z
+  double tBld[3]={}, tTdma[3]={}, tSct[3]={};
+
   double* in   = d_rhs_;
   double* outb = d_stage_;
   bool    first_sweep = true;
+  int     sw = 0;
 
   for (Direction dir : bc.topology.sweep_order()) {
     int n_row, n_sys;
@@ -417,6 +461,7 @@ void solve_scalar_var_gpu(
     const bool is_stage1 = first_sweep;
     first_sweep = false;
 
+    auto Ta = hrc::now();
     const dim3 blk(32, 16);
     const dim3 grd((n_row + blk.x-1)/blk.x, (n_sys + blk.y-1)/blk.y);
     k_build_adi_var<<<grd, blk>>>(
@@ -426,36 +471,49 @@ void solve_scalar_var_gpu(
         n1i, n2i, n3i, n1t, n2t, n3t,
         static_cast<double>(Ct), static_cast<double>(dt), is_stage1);
     CUDA_CHK(cudaDeviceSynchronize());
+    tBld[sw] = ms_t(hrc::now()-Ta).count();
 
-    // Wall BC fold on Z-direction (Antisymmetric ghost → B -= A at lower, B -= C at upper)
     if (!bc.topology.is_periodic(dir)) {
-      // modify_tdma_row on host is the current approach;
-      // copy bands to host, modify, copy back
-      const std::size_t sz = (std::size_t)n_row * n_sys;
-      sys.A.resize(sz); sys.B.resize(sz); sys.C.resize(sz); sys.D.resize(sz);
-      CUDA_CHK(cudaMemcpy(sys.A.data(), d_A_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      CUDA_CHK(cudaMemcpy(sys.B.data(), d_B_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      CUDA_CHK(cudaMemcpy(sys.C.data(), d_C_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      CUDA_CHK(cudaMemcpy(sys.D.data(), d_D_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      core::modify_tdma_row_cpu(dir, bc.T, domain.sub.topology().axis(dir),
-                                 sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
-                                 n_sys, n_row);
-      CUDA_CHK(cudaMemcpy(d_A_, sys.A.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
-      CUDA_CHK(cudaMemcpy(d_B_, sys.B.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
-      CUDA_CHK(cudaMemcpy(d_C_, sys.C.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
-      CUDA_CHK(cudaMemcpy(d_D_, sys.D.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
+      // GPU kernel replaces D2H + modify_tdma_row_cpu + H2D (eliminates ~86 ms pageable transfer)
+      const auto& axis_dir = domain.sub.topology().axis(dir);
+      const bool owns_lower = (axis_dir.west_rank == MPI_PROC_NULL);
+      const bool owns_upper = (axis_dir.east_rank == MPI_PROC_NULL);
+      const int lkind = modify_ghost_kind(bc.T.face(dir, mpmstd::Side::Minus));
+      const int ukind = modify_ghost_kind(bc.T.face(dir, mpmstd::Side::Plus));
+      auto Tt0 = hrc::now();
+      {
+        const int blk1d = 256;
+        const int grd1d = (n_sys + blk1d - 1) / blk1d;
+        k_modify_tdma_row_gpu<<<grd1d, blk1d>>>(d_A_, d_B_, d_C_, n_sys, n_row,
+                                                  owns_lower, owns_upper, lkind, ukind);
+      }
       cuda_tdma(domain.tdma, dir).solve_many_device(d_A_, d_B_, d_C_, d_D_, n_sys, n_row);
+      CUDA_CHK(cudaDeviceSynchronize());
+      tTdma[sw] = ms_t(hrc::now()-Tt0).count();
     } else {
+      auto Tt0 = hrc::now();
       cuda_tdma(domain.tdma, dir).solve_many_cyclic_device(d_A_, d_B_, d_C_, d_D_, n_sys, n_row);
+      CUDA_CHK(cudaDeviceSynchronize());
+      tTdma[sw] = ms_t(hrc::now()-Tt0).count();
     }
-    CUDA_CHK(cudaDeviceSynchronize());
 
+    auto Ts0 = hrc::now();
     const dim3 blk2(32, 16);
     const dim3 grd2((n_row + blk2.x-1)/blk2.x, (n_sys + blk2.y-1)/blk2.y);
     k_scatter_from_tdma<<<grd2, blk2>>>(dir, outb, d_D_,
                                          n1i, n2i, n3i, n1t, n2t, n3t);
     CUDA_CHK(cudaDeviceSynchronize());
+    tSct[sw] = ms_t(hrc::now()-Ts0).count();
     std::swap(in, outb);
+    ++sw;
+  }
+
+  if (s_sca_n <= 20) {
+    std::printf("[SCA #%d] X(bld=%.2f tdma=%.2f sct=%.2f) Y(bld=%.2f tdma=%.2f sct=%.2f) Z(bld=%.2f tdma=%.2f sct=%.2f) ms\n",
+                s_sca_n,
+                tBld[0], tTdma[0], tSct[0],
+                tBld[1], tTdma[1], tSct[1],
+                tBld[2], tTdma[2], tSct[2]);
   }
 
   // in now points to the final increment δT; add to T (interior only — halo cells not valid)
