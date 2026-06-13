@@ -277,12 +277,15 @@ int main(int argc, char** argv) {
   const int    n_steps  = cfg.get_or<int>   ("time","n_steps", 200000);
   const int    nmonitor    = cfg.get_or<int>("output","nmonitor",    200);
   const int    nstat_start = cfg.get_or<int>("output","nstat_start", 20000);
-  const std::string dir_stats = cfg.get_or<std::string>("output","dir_stats","apps/rbc/statistics/");
+  const std::string dir_stats   = cfg.get_or<std::string>("output","dir_stats","apps/rbc/statistics/");
+  const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in",  "");
+  const std::string restart_out = cfg.get_or<std::string>("restart","dir_out", "");
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
   MPI_Barrier(topo.cart_comm());
 
-  // IC: linear T(z) + multi-mode W perturbation
-  {
+  // IC: linear T(z) + multi-mode W perturbation, or restart from file
+  rbc::RestartMeta rmeta;
+  if (restart_in.empty()) {
     const double Lx=cfg.get<double>("domain","Lx"), Ly=cfg.get<double>("domain","Ly"), Lz=cfg.get<double>("domain","Lz");
     const double T_lo=bc.T.face(Direction::Z,Side::Minus).value, T_hi=bc.T.face(Direction::Z,Side::Plus).value;
     const double amp=cfg.get_or<double>("init","perturb",0.02);
@@ -298,11 +301,14 @@ int main(int argc, char** argv) {
                                         +std::cos(2*M_PI*x/Lx)*std::sin(2*M_PI*y/Ly)
                                         +std::sin(4*M_PI*x/Lx)*std::sin(4*M_PI*y/Ly)));
     }
+    rbc::zero_w_wall(fields[core::Var::W], sub);
+    core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
+    core::sync_field_cpu(fields, core::Var::T, bc, sub);
+  } else {
+    rmeta = rbc::read_restart(fields, bc, sub, restart_in, topo.cart_comm());
+    core::sync_field_cpu(fields, core::Var::P, bc, sub);
   }
-  rbc::zero_w_wall(fields[core::Var::W], sub);
-  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
-  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
-  core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
   // GPU setup: bind device, upload grid metrics, allocate GPU fields
   core::bind_gpu_to_local_rank_gpu(mpi);
@@ -331,8 +337,9 @@ int main(int argc, char** argv) {
                 Ra, Pr, DeltaT, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
   // ── time loop ─────────────────────────────────────────────────────────────
-  double time=0.0; int step=0;
+  double time = rmeta.time; int step = rmeta.step;
   rbc::RbcStats stats(sub.n_global()[2]);
+  rbc::apply_stats_from_restart(stats, rmeta);
   const real_t* dx3_z = grid.dx_ptr(Direction::Z);
   GpuRbcAccum gpu_accum(sub, gpu_grid_arrays);
 
@@ -440,5 +447,14 @@ int main(int argc, char** argv) {
                nzl*sizeof(double), cudaMemcpyDeviceToHost);
   }
   rbc::print_final(stats, sub, Ra, Pr, alpha_T, mpi.is_root(), "rbc_gpu_nob");
+
+  // Write restart files (U/V/W/T + stats.txt) for continuation runs
+  if (!restart_out.empty()) {
+    gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
+    gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
+    gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
+    gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
+    rbc::write_restart(fields, sub, stats, step, time, restart_out, topo.cart_comm());
+  }
   return 0;
 }
