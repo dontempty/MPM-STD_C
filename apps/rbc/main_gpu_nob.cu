@@ -30,6 +30,197 @@ __global__ void k_clip_T_gpu(double* T, std::size_t n) {
   const double v = T[idx];
   T[idx] = v < -0.5 ? -0.5 : (v > 0.5 ? 0.5 : v);
 }
+
+// ── GPU statistics kernels — eliminate per-step 64 MB D2H ────────────────────
+
+__device__ __forceinline__ void atomicMaxDouble(double* addr, double val) {
+  unsigned long long* ull = (unsigned long long*)addr;
+  unsigned long long old = *ull, assumed;
+  do { assumed = old;
+       old = atomicCAS(ull, assumed,
+           __double_as_longlong(fmax(val, __longlong_as_double(assumed))));
+  } while (assumed != old);
+}
+
+// Compute tc_local (∑T at kc_local z-plane) and wt_local (∑W*T*dz) for this rank.
+// d_out[0]=wt, d_out[1]=tc  — must be zeroed before call.
+__global__ void k_accum_tc_wt_rbc(
+    const double* T, const double* W, const double* dx3,
+    double* d_out,
+    int nx, int ny, int nz, int n2t, int n3t, int h, int kc_local)
+{
+  extern __shared__ double shm[];
+  const int ii = blockIdx.x*blockDim.x+threadIdx.x;
+  const int jj = blockIdx.y*blockDim.y+threadIdx.y;
+  const int kk = blockIdx.z*blockDim.z+threadIdx.z;
+  const int tid = (threadIdx.z*blockDim.y+threadIdx.y)*blockDim.x+threadIdx.x;
+  const int bsz = blockDim.x*blockDim.y*blockDim.z;
+  double wt=0.0, tc=0.0;
+  if (ii<nx && jj<ny && kk<nz) {
+    const int i=ii+h, j=jj+h, k=kk+h;
+    const double tv = T[(std::size_t)(i*n2t+j)*n3t+k];
+    const double wv = W[(std::size_t)(i*n2t+j)*n3t+k];
+    wt = wv * tv * dx3[k];
+    if (kk == kc_local) tc = tv;
+  }
+  shm[tid]=wt; shm[bsz+tid]=tc;
+  __syncthreads();
+  for (int s=bsz/2; s>0; s>>=1) {
+    if (tid<s) { shm[tid]+=shm[tid+s]; shm[bsz+tid]+=shm[bsz+tid+s]; }
+    __syncthreads();
+  }
+  if (tid==0) { atomicAdd(d_out+0, shm[0]); atomicAdd(d_out+1, shm[bsz]); }
+}
+
+// Accumulate z-profiles: d_t_sum_z[kk]+=∑_{i,j}T[i,j,kk], d_w2_sum_z[kk]+=∑W².
+// Grid: (ceil(nx*ny/256), nz) blocks, 256 threads, 512*sizeof(double) shared mem.
+__global__ void k_accum_z_profile_rbc(
+    const double* T, const double* W,
+    double* d_t_sum_z, double* d_w2_sum_z,
+    int nx, int ny, int nz, int n2t, int n3t, int h)
+{
+  extern __shared__ double shm[];
+  const int kk = blockIdx.y;
+  const int flat = blockIdx.x*blockDim.x+threadIdx.x;
+  const int tid = threadIdx.x, bsz = blockDim.x;
+  double tv=0.0, w2v=0.0;
+  if (flat<nx*ny && kk<nz) {
+    const int ii=flat/ny, jj=flat%ny, i=ii+h, j=jj+h, k=kk+h;
+    tv = T[(std::size_t)(i*n2t+j)*n3t+k];
+    const double wv = W[(std::size_t)(i*n2t+j)*n3t+k]; w2v = wv*wv;
+  }
+  shm[tid]=tv; shm[bsz+tid]=w2v;
+  __syncthreads();
+  for (int s=bsz/2; s>0; s>>=1) {
+    if (tid<s) { shm[tid]+=shm[tid+s]; shm[bsz+tid]+=shm[bsz+tid+s]; }
+    __syncthreads();
+  }
+  if (tid==0 && kk<nz) { atomicAdd(&d_t_sum_z[kk], shm[0]); atomicAdd(&d_w2_sum_z[kk], shm[bsz]); }
+}
+
+// Compute umax, vmax, wmax, Tmax, -Tmin  (all as max reductions).
+// d_out[5] — must be zeroed before call.
+__global__ void k_flow_diag_rbc(
+    const double* U, const double* V, const double* W, const double* T,
+    double* d_out, int nx, int ny, int nz, int n2t, int n3t, int h)
+{
+  const int ii=blockIdx.x*blockDim.x+threadIdx.x;
+  const int jj=blockIdx.y*blockDim.y+threadIdx.y;
+  const int kk=blockIdx.z*blockDim.z+threadIdx.z;
+  if (ii>=nx||jj>=ny||kk>=nz) return;
+  const std::size_t c = (std::size_t)((ii+h)*n2t+(jj+h))*n3t+(kk+h);
+  atomicMaxDouble(d_out+0, fabs(U[c]));
+  atomicMaxDouble(d_out+1, fabs(V[c]));
+  atomicMaxDouble(d_out+2, fabs(W[c]));
+  atomicMaxDouble(d_out+3, T[c]);
+  atomicMaxDouble(d_out+4, -T[c]);
+}
+
+// Compute max |∇·U|.  d_out[0] — must be zeroed before call.
+__global__ void k_div_max_rbc(
+    const double* U, const double* V, const double* W,
+    const double* dx1, const double* dx2, const double* dx3,
+    double* d_out, int nx, int ny, int nz, int n2t, int n3t, int h)
+{
+  const int ii=blockIdx.x*blockDim.x+threadIdx.x;
+  const int jj=blockIdx.y*blockDim.y+threadIdx.y;
+  const int kk=blockIdx.z*blockDim.z+threadIdx.z;
+  if (ii>=nx||jj>=ny||kk>=nz) return;
+  const int i=ii+h, j=jj+h, k=kk+h;
+  const double dv =
+    (U[(std::size_t)((i+1)*n2t+j)*n3t+k] - U[(std::size_t)(i*n2t+j)*n3t+k]) / dx1[i] +
+    (V[(std::size_t)(i*n2t+j+1)*n3t+k]   - V[(std::size_t)(i*n2t+j)*n3t+k]) / dx2[j] +
+    (W[(std::size_t)(i*n2t+j)*n3t+k+1]   - W[(std::size_t)(i*n2t+j)*n3t+k]) / dx3[k];
+  atomicMaxDouble(d_out, fabs(dv));
+}
+
+// ── GpuRbcAccum: device-side stats buffers + GPU accumulate/print helpers ────
+struct GpuRbcAccum {
+  double* d_tmp2    = nullptr;   // [2]  scratch: {wt_local, tc_local}
+  double* d_diag6   = nullptr;   // [6]  scratch: {umax,vmax,wmax,Tmax,-Tmin,div_max}
+  double* d_t_sum_z = nullptr;   // [nzl] z-profile of T (accumulated each step)
+  double* d_w2_sum_z= nullptr;   // [nzl] z-profile of W² (accumulated each step)
+  int nzl, nx, ny, nz, n2t, n3t, h, kc_local, nxg, nyg, koff;
+  const double* d_dx1; const double* d_dx2; const double* d_dx3;
+
+  GpuRbcAccum(const core::Subdomain& sub, const core::gpu::GpuGridArrays& gg) {
+    const auto ni = sub.n_interior(); nx=ni[0]; ny=ni[1]; nz=ni[2]; nzl=nz;
+    const auto nt = sub.n_total();    n2t=nt[1]; n3t=nt[2]; h=kHaloWidth;
+    const auto ng = sub.n_global();   nxg=ng[0]; nyg=ng[1];
+    const int nzg = ng[2], kc_g = nzg/2;
+    koff = sub.global_offset()[2];
+    kc_local = (kc_g>=koff && kc_g<koff+nzl) ? (kc_g - koff) : -1;
+    cudaMalloc(&d_tmp2,     2*sizeof(double));
+    cudaMalloc(&d_diag6,    6*sizeof(double));
+    cudaMalloc(&d_t_sum_z,  nzl*sizeof(double));
+    cudaMalloc(&d_w2_sum_z, nzl*sizeof(double));
+    cudaMemset(d_t_sum_z,  0, nzl*sizeof(double));
+    cudaMemset(d_w2_sum_z, 0, nzl*sizeof(double));
+    d_dx1=gg.d_dx1(); d_dx2=gg.d_dx2(); d_dx3=gg.d_dx3();
+  }
+  ~GpuRbcAccum() {
+    cudaFree(d_tmp2); cudaFree(d_diag6);
+    cudaFree(d_t_sum_z); cudaFree(d_w2_sum_z);
+  }
+};
+
+// GPU accumulate: compute tc and wt on device, D2H 16 bytes, MPI_Allreduce → update stats.
+inline void gpu_accumulate_rbc(GpuRbcAccum& ga, rbc::RbcStats& s,
+    const core::GpuFields& gf, MPI_Comm comm)
+{
+  const double* T = gf[core::Var::T].data();
+  const double* W = gf[core::Var::W].data();
+  cudaMemset(ga.d_tmp2, 0, 2*sizeof(double));
+  // k_accum_tc_wt: block (8,8,4)=256, grid covers (nx,ny,nz)
+  const dim3 blk(8,8,4);
+  const dim3 grd((ga.nx+7)/8,(ga.ny+7)/8,(ga.nz+3)/4);
+  k_accum_tc_wt_rbc<<<grd,blk,2*256*sizeof(double)>>>(
+      T, W, ga.d_dx3, ga.d_tmp2,
+      ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h, ga.kc_local);
+  // k_accum_z_profile: 256 threads, grid (ceil(nx*ny/256), nz)
+  const int flat_blocks = (ga.nx*ga.ny+255)/256;
+  k_accum_z_profile_rbc<<<dim3(flat_blocks,ga.nz),256,2*256*sizeof(double)>>>(
+      T, W, ga.d_t_sum_z, ga.d_w2_sum_z,
+      ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h);
+  cudaDeviceSynchronize();
+  // D2H: 16 bytes
+  double local[2]; cudaMemcpy(local, ga.d_tmp2, 2*sizeof(double), cudaMemcpyDeviceToHost);
+  double global[2];
+  MPI_Allreduce(local, global, 2, MPI_DOUBLE, MPI_SUM, comm);
+  s.wt_sum += global[0];
+  s.tc_sum += global[1] / (double(ga.nxg)*ga.nyg);
+  ++s.tc_n;
+}
+
+// GPU print_step: flow_diag + div_max on device, D2H 48 bytes, MPI_Allreduce → printf.
+inline void gpu_print_step_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
+    const core::GpuFields& gf, int step, double time, real_t dt, double alpha_T,
+    bool is_root, MPI_Comm comm)
+{
+  const double* U=gf[core::Var::U].data(); const double* V=gf[core::Var::V].data();
+  const double* W=gf[core::Var::W].data(); const double* T=gf[core::Var::T].data();
+  cudaMemset(ga.d_diag6, 0, 6*sizeof(double));
+  const dim3 blk(8,8,4);
+  const dim3 grd((ga.nx+7)/8,(ga.ny+7)/8,(ga.nz+3)/4);
+  k_flow_diag_rbc<<<grd,blk>>>(U,V,W,T, ga.d_diag6,
+      ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h);
+  k_div_max_rbc<<<grd,blk>>>(U,V,W, ga.d_dx1, ga.d_dx2, ga.d_dx3, ga.d_diag6+5,
+      ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h);
+  cudaDeviceSynchronize();
+  double local[6]; cudaMemcpy(local, ga.d_diag6, 6*sizeof(double), cudaMemcpyDeviceToHost);
+  double global[6];
+  MPI_Allreduce(local, global, 6, MPI_DOUBLE, MPI_MAX, comm);
+  if (!is_root) return;
+  const double dv=global[5], umax=global[0], vmax=global[1], wmax=global[2];
+  const double Tmax=global[3], Tmin=-global[4];
+  const double tc = (s.tc_n>0) ? s.tc_sum/s.tc_n : 0.0;
+  std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f | umax=%.3g vmax=%.3g wmax=%.3g T=[%.3f,%.3f]\n",
+              step, time, double(dt), dv, tc, umax, vmax, wmax, Tmin, Tmax);
+  if (s.tc_n > 0) {
+    const double wt_now = s.wt_sum / (double(ga.nxg)*ga.nyg) / s.tc_n;
+    std::printf("  [Nu] running: Nu=%.4f (tc_n=%ld)\n", 1.0 + wt_now/alpha_T, s.tc_n);
+  }
+}
 } // anonymous namespace
 
 int main(int argc, char** argv) {
@@ -143,6 +334,7 @@ int main(int argc, char** argv) {
   double time=0.0; int step=0;
   rbc::RbcStats stats(sub.n_global()[2]);
   const real_t* dx3_z = grid.dx_ptr(Direction::Z);
+  GpuRbcAccum gpu_accum(sub, gpu_grid_arrays);
 
   // Per-section timing accumulators (only rank 0 prints)
   double t_scalar=0, t_mom=0, t_zero_w=0, t_pressure=0, t_clip=0, t_diag=0, t_accum=0;
@@ -208,23 +400,16 @@ int main(int argc, char** argv) {
 
     time += double(dt); ++step;
 
-    // Download U, V, W, T only when needed for stats accumulation or monitor print.
-    // Before nstat_start, only download for print_step (every nmonitor steps).
-    const bool need_cpu = (step >= nstat_start) || (step % nmonitor == 0);
+    // GPU statistics: device reductions only — no field D2H (≤48 bytes per step)
     auto t_d0 = hrc::now();
-    if (need_cpu) {
-      gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
-      gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
-      gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
-      gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
-    }
+    if (step >= nstat_start)
+      gpu_accumulate_rbc(gpu_accum, stats, gpu_fields, topo.cart_comm());
     t_diag += ms_since(t_d0);
 
     auto t_a0 = hrc::now();
-    if (need_cpu) rbc::accumulate(stats, domain, sub, fields, dx3_z, nstat_start, step);
+    if (step % nmonitor == 0)
+      gpu_print_step_rbc(gpu_accum, stats, gpu_fields, step, time, dt, alpha_T, mpi.is_root(), topo.cart_comm());
     t_accum += ms_since(t_a0);
-
-    if (step % nmonitor == 0) rbc::print_step(stats, domain, fields, step, time, dt, alpha_T, mpi.is_root());
 
     if (step == n_time_steps && mpi.is_root()) {
       const double total = t_scalar+t_mom+t_zero_w+t_pressure+t_clip+t_diag+t_accum;
@@ -246,6 +431,14 @@ int main(int argc, char** argv) {
     }
   }
 
+  // D2H z-profiles (once at run end, ≈0.5 KB each, for print_final)
+  if (stats.tc_n > 0) {
+    const int nzl = sub.n_interior()[2];
+    cudaMemcpy(stats.t_sum_z.data()  + gpu_accum.koff, gpu_accum.d_t_sum_z,
+               nzl*sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(stats.w2_sum_z.data() + gpu_accum.koff, gpu_accum.d_w2_sum_z,
+               nzl*sizeof(double), cudaMemcpyDeviceToHost);
+  }
   rbc::print_final(stats, sub, Ra, Pr, alpha_T, mpi.is_root(), "rbc_gpu_nob");
   return 0;
 }
