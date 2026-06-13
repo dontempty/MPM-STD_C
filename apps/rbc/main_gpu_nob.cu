@@ -232,6 +232,17 @@ int main(int argc, char** argv) {
       std::printf("  scalar=%.1f  momentum=%.1f  zero_w=%.1f  pressure=%.1f  clip=%.1f  diag_D2H=%.1f  accum=%.1f\n",
                   t_scalar/n_time_steps, t_mom/n_time_steps, t_zero_w/n_time_steps,
                   t_pressure/n_time_steps, t_clip/n_time_steps, t_diag/n_time_steps, t_accum/n_time_steps);
+      // Reset accumulators to measure steady-state timing separately
+      t_scalar=0; t_mom=0; t_zero_w=0; t_pressure=0; t_clip=0; t_diag=0; t_accum=0;
+    }
+    // Print steady-state timing snapshot (steps 11–n_steps) at end
+    if (step == n_steps && mpi.is_root() && n_steps > n_time_steps) {
+      const int ss_steps = n_steps - n_time_steps;
+      const double total = t_scalar+t_mom+t_zero_w+t_pressure+t_clip+t_diag+t_accum;
+      std::printf("[TIMING_SS] %d steps (steady-state)  total=%.1f ms/step\n", ss_steps, total/ss_steps);
+      std::printf("  scalar=%.1f  momentum=%.1f  zero_w=%.1f  pressure=%.1f  clip=%.1f  diag_D2H=%.1f  accum=%.1f\n",
+                  t_scalar/ss_steps, t_mom/ss_steps, t_zero_w/ss_steps,
+                  t_pressure/ss_steps, t_clip/ss_steps, t_diag/ss_steps, t_accum/ss_steps);
     }
   }
 
