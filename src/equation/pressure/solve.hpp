@@ -20,4 +20,9 @@ void solve_pressure_cpu(const core::Domain& domain, const core::BoundaryConditio
 void solve_pressure_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
                         core::GpuFields& fields, core::PressureSystem& poi, real_t dt);
 
+// NOB GPU pressure solve: adds ExtraTerm + NOB projection, updates internal dPhat.
+void solve_pressure_nob_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+                             core::GpuFields& fields, core::PressureSystem& poi, real_t dt,
+                             const core::GpuField& inv_rho);
+
 } // namespace mpmstd::equation

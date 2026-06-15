@@ -1022,7 +1022,6 @@ void PressureSolverGpu::run_forward_pipeline_()
     const std::size_t slab = (std::size_t)h1p_Y_me_ * N2g;
     CUFFT_CHK(cufftExecD2Z(plan_fwd_x_, d_rhs_C_dev_, d_hat_I_));
     if (h1p_Y_me_ > 0) {
-      CUDA_CHK(cudaDeviceSynchronize());
       for (int k = 0; k < n3_I_; ++k)
         CUFFT_CHK(cufftExecZ2Z(plan_y_,
                                d_hat_I_ + k * slab,
@@ -1102,10 +1101,8 @@ void PressureSolverGpu::run_backward_pipeline_()
                                d_hat_I_ + k * slab,
                                CUFFT_INVERSE));
     }
-    CUDA_CHK(cudaDeviceSynchronize());
     // c2r directly from d_hat_I_ (np2=1: hat_I_ layout == hat_Y_ layout)
     CUFFT_CHK(cufftExecZ2D(plan_bwd_x_, d_hat_I_, d_dp_I_));
-    CUDA_CHK(cudaDeviceSynchronize());
     const double scale = 1.0 / (double(N1g) * double(sub_.n_global()[1]));
     k_gpu_scale<<<(int)((sz+255)/256), 256>>>(d_dp_I_, scale, sz);
     CUDA_CHK(cudaDeviceSynchronize());

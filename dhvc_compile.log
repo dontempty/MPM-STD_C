@@ -1,0 +1,15 @@
+  NVCC  src/physics/forcing/gpu/forcing_gpu.cu
+  NVCC  src/driver/gpu/cfl_gpu.cu
+  LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
+"apps/dhvc/main_gpu.cu", line 414: warning: variable "t_ss" was set but never used [set_but_not_used]
+      double t_ss = 0.0; int n_time_steps = 10;
+             ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+COMPILE_OBJ:0
+BUILD_EXIT:0
+=== Submitting DHVC GPU validation runs ===
+Submitted batch job 29451
+Submitted batch job 29452
+Submitted batch job 29453

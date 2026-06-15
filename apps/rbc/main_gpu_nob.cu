@@ -140,13 +140,13 @@ struct GpuRbcAccum {
   double* d_diag6   = nullptr;   // [6]  scratch: {umax,vmax,wmax,Tmax,-Tmin,div_max}
   double* d_t_sum_z = nullptr;   // [nzl] z-profile of T (accumulated each step)
   double* d_w2_sum_z= nullptr;   // [nzl] z-profile of W² (accumulated each step)
-  int nzl, nx, ny, nz, n2t, n3t, h, kc_local, nxg, nyg, koff;
+  int nzl, nx, ny, nz, n2t, n3t, h, kc_local, nxg, nyg, koff, nz_global;
   const double* d_dx1; const double* d_dx2; const double* d_dx3;
 
   GpuRbcAccum(const core::Subdomain& sub, const core::gpu::GpuGridArrays& gg) {
     const auto ni = sub.n_interior(); nx=ni[0]; ny=ni[1]; nz=ni[2]; nzl=nz;
     const auto nt = sub.n_total();    n2t=nt[1]; n3t=nt[2]; h=kHaloWidth;
-    const auto ng = sub.n_global();   nxg=ng[0]; nyg=ng[1];
+    const auto ng = sub.n_global();   nxg=ng[0]; nyg=ng[1]; nz_global=ng[2];
     const int nzg = ng[2], kc_g = nzg/2;
     koff = sub.global_offset()[2];
     kc_local = (kc_g>=koff && kc_g<koff+nzl) ? (kc_g - koff) : -1;
@@ -192,10 +192,11 @@ inline void gpu_accumulate_rbc(GpuRbcAccum& ga, rbc::RbcStats& s,
   ++s.tc_n;
 }
 
-// GPU print_step: flow_diag + div_max on device, D2H 48 bytes, MPI_Allreduce → printf.
+// GPU print_step: flow_diag + div_max on device, D2H 48 bytes, MPI_Allreduce → printf + CSV.
+// Total D2H per call: 48 bytes.
 inline void gpu_print_step_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
     const core::GpuFields& gf, int step, double time, real_t dt, double alpha_T,
-    bool is_root, MPI_Comm comm)
+    bool is_root, MPI_Comm comm, FILE* mon_fp)
 {
   const double* U=gf[core::Var::U].data(); const double* V=gf[core::Var::V].data();
   const double* W=gf[core::Var::W].data(); const double* T=gf[core::Var::T].data();
@@ -213,13 +214,58 @@ inline void gpu_print_step_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
   if (!is_root) return;
   const double dv=global[5], umax=global[0], vmax=global[1], wmax=global[2];
   const double Tmax=global[3], Tmin=-global[4];
-  const double tc = (s.tc_n>0) ? s.tc_sum/s.tc_n : 0.0;
+  const double tc  = (s.tc_n>0) ? s.tc_sum/s.tc_n : 0.0;
+  const double nu_val = (s.tc_n>0) ? 1.0 + (s.wt_sum/(double(ga.nxg)*ga.nyg)/s.tc_n)/alpha_T : 0.0;
   std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f | umax=%.3g vmax=%.3g wmax=%.3g T=[%.3f,%.3f]\n",
               step, time, double(dt), dv, tc, umax, vmax, wmax, Tmin, Tmax);
-  if (s.tc_n > 0) {
-    const double wt_now = s.wt_sum / (double(ga.nxg)*ga.nyg) / s.tc_n;
-    std::printf("  [Nu] running: Nu=%.4f (tc_n=%ld)\n", 1.0 + wt_now/alpha_T, s.tc_n);
+  if (s.tc_n > 0)
+    std::printf("  [Nu] running: Nu=%.4f (tc_n=%ld)\n", nu_val, s.tc_n);
+  if (mon_fp) {
+    std::fprintf(mon_fp, "%d,%.6g,%.6g,%.6e,%.6f,%.6f\n",
+                 step, time, double(dt), dv, tc, nu_val);
+    std::fflush(mon_fp);
   }
+}
+
+// Write z-profile stats file: D2H ~nzl*16 B (t_sum + w2_sum), gather, write CSV.
+inline void gpu_write_stats_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
+    const std::string& path, int step, double Ra, double DeltaT,
+    bool is_root, MPI_Comm comm,
+    const core::Grid& grid, const core::Subdomain& sub)
+{
+  if (s.tc_n == 0) return;
+  const int nzl = ga.nzl, nzg = ga.nz_global;
+  const double inv = 1.0 / (s.tc_n * static_cast<double>(ga.nxg) * ga.nyg);
+  // D2H local z-profiles
+  std::vector<double> t_loc(nzl), w2_loc(nzl);
+  cudaMemcpy(t_loc.data(),  ga.d_t_sum_z,  nzl*sizeof(double), cudaMemcpyDeviceToHost);
+  cudaMemcpy(w2_loc.data(), ga.d_w2_sum_z, nzl*sizeof(double), cudaMemcpyDeviceToHost);
+  // Gather global profiles
+  std::vector<double> t_send(nzg,0.0), w2_send(nzg,0.0);
+  std::vector<double> t_glb(nzg,0.0),  w2_glb(nzg,0.0);
+  for (int kl=0; kl<nzl; ++kl) {
+    t_send[ga.koff+kl]  = t_loc[kl]  * inv;
+    w2_send[ga.koff+kl] = w2_loc[kl] * inv;
+  }
+  MPI_Allreduce(t_send.data(),  t_glb.data(),  nzg, MPI_DOUBLE, MPI_SUM, comm);
+  MPI_Allreduce(w2_send.data(), w2_glb.data(), nzg, MPI_DOUBLE, MPI_SUM, comm);
+  if (!is_root) return;
+  FILE* fp = std::fopen(path.c_str(), "w");
+  if (!fp) { std::fprintf(stderr, "[rbc_stats] cannot open '%s'\n", path.c_str()); return; }
+  std::fprintf(fp, "# RBC z-profile stats (step=%d, n=%ld, Ra=%.2e, DeltaT=%.1f)\n",
+               step, s.tc_n, Ra, DeltaT);
+  std::fprintf(fp, "# Z,T_mean,W_rms\n");
+  // global offset per rank is baked into t_glb — just index by global k
+  for (int k=0; k<nzg; ++k) {
+    // zc is local; for rank 0 global offset=0, so zc[h+k] is valid only for k < nzl
+    // Use the gathered global offset via sub.n_global()[2] and grid cell spacing
+    // Safe: write index k and T_mean, W_rms
+    const double w_rms = std::sqrt(std::max(w2_glb[k], 0.0));
+    std::fprintf(fp, "%.8e,%.8e,%.8e\n",
+                 static_cast<double>(k+1) / static_cast<double>(nzg),  // normalized z
+                 t_glb[k], w_rms);
+  }
+  std::fclose(fp);
 }
 } // anonymous namespace
 
@@ -277,6 +323,7 @@ int main(int argc, char** argv) {
   const int    n_steps  = cfg.get_or<int>   ("time","n_steps", 200000);
   const int    nmonitor    = cfg.get_or<int>("output","nmonitor",    200);
   const int    nstat_start = cfg.get_or<int>("output","nstat_start", 20000);
+  const int    nstat_write = cfg.get_or<int>("output","nstat_write", 10000);
   const std::string dir_stats   = cfg.get_or<std::string>("output","dir_stats","apps/rbc/statistics/");
   const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in",  "");
   const std::string restart_out = cfg.get_or<std::string>("restart","dir_out", "");
@@ -342,6 +389,13 @@ int main(int argc, char** argv) {
   rbc::apply_stats_from_restart(stats, rmeta);
   const real_t* dx3_z = grid.dx_ptr(Direction::Z);
   GpuRbcAccum gpu_accum(sub, gpu_grid_arrays);
+
+  FILE* mon_fp = nullptr;
+  if (mpi.is_root()) {
+    const std::string mon_path = dir_stats + "monitor.csv";
+    mon_fp = std::fopen(mon_path.c_str(), "w");
+    if (mon_fp) std::fprintf(mon_fp, "step,t,dt,div,Theta_c,Nu\n");
+  }
 
   // Per-section timing accumulators (only rank 0 prints)
   double t_scalar=0, t_mom=0, t_zero_w=0, t_pressure=0, t_clip=0, t_diag=0, t_accum=0;
@@ -415,8 +469,14 @@ int main(int argc, char** argv) {
 
     auto t_a0 = hrc::now();
     if (step % nmonitor == 0)
-      gpu_print_step_rbc(gpu_accum, stats, gpu_fields, step, time, dt, alpha_T, mpi.is_root(), topo.cart_comm());
+      gpu_print_step_rbc(gpu_accum, stats, gpu_fields, step, time, dt, alpha_T, mpi.is_root(), topo.cart_comm(), mon_fp);
     t_accum += ms_since(t_a0);
+
+    if (step >= nstat_start && nstat_write > 0 && step % nstat_write == 0) {
+      const std::string sp = dir_stats + "stats_" + std::to_string(step) + ".dat";
+      gpu_write_stats_rbc(gpu_accum, stats, sp, step, Ra, DeltaT,
+                          mpi.is_root(), topo.cart_comm(), grid, sub);
+    }
 
     if (step == n_time_steps && mpi.is_root()) {
       const double total = t_scalar+t_mom+t_zero_w+t_pressure+t_clip+t_diag+t_accum;
@@ -436,6 +496,15 @@ int main(int argc, char** argv) {
                   t_scalar/ss_steps, t_mom/ss_steps, t_zero_w/ss_steps,
                   t_pressure/ss_steps, t_clip/ss_steps, t_diag/ss_steps, t_accum/ss_steps);
     }
+  }
+
+  if (mon_fp) std::fclose(mon_fp);
+
+  // Write final stats file
+  {
+    const std::string sp = dir_stats + "stats_final.dat";
+    gpu_write_stats_rbc(gpu_accum, stats, sp, step, Ra, DeltaT,
+                        mpi.is_root(), topo.cart_comm(), grid, sub);
   }
 
   // D2H z-profiles (once at run end, ≈0.5 KB each, for print_final)

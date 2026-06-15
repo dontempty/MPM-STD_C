@@ -131,8 +131,9 @@ __global__ void k_build_adi_var(
     double Ct, double dt, bool is_stage1) {
   using namespace mpmstd::equation::scalar::kernels::stencil;
 
-  const int row = blockIdx.x * blockDim.x + threadIdx.x;
-  const int sys = blockIdx.y * blockDim.y + threadIdx.y;
+  // sys in threadIdx.x so warp has adjacent sys values → coalesced writes to A/B/C/D[row*n_sys+sys]
+  const int sys = blockIdx.x * blockDim.x + threadIdx.x;
+  const int row = blockIdx.y * blockDim.y + threadIdx.y;
 
   int i, j, k, n_row_max, n_sys_max, p;
   if (d == mpmstd::Direction::X) {
@@ -175,8 +176,8 @@ __global__ void k_scatter_from_tdma(
     int n1_int, int n2_int, int n3_int,
     int n1_tot, int n2_tot, int n3_tot) {
   using namespace mpmstd::equation::scalar::kernels::stencil;
-  const int row = blockIdx.x * blockDim.x + threadIdx.x;
-  const int sys = blockIdx.y * blockDim.y + threadIdx.y;
+  const int sys = blockIdx.x * blockDim.x + threadIdx.x;
+  const int row = blockIdx.y * blockDim.y + threadIdx.y;
 
   int i, j, k, n_row_max, n_sys_max;
   if (d == mpmstd::Direction::X) {
@@ -328,8 +329,9 @@ void solve_scalar_gpu(const core::Domain& domain, const core::BoundaryCondition&
     const bool is_stage1 = first_sweep;
     first_sweep = false;
 
+    // sys in x-thread → coalesced writes to band arrays
     const dim3 blk(32, 16);
-    const dim3 grd((n_row + blk.x-1)/blk.x, (n_sys + blk.y-1)/blk.y);
+    const dim3 grd((n_sys + blk.x-1)/blk.x, (n_row + blk.y-1)/blk.y);
     k_build_adi_var<<<grd, blk>>>(
         dir, d_A_, d_B_, d_C_, d_D_, in, fields[core::Var::T].data(),
         fields[core::Var::U].data(), fields[core::Var::V].data(), fields[core::Var::W].data(),
@@ -337,33 +339,29 @@ void solve_scalar_gpu(const core::Domain& domain, const core::BoundaryCondition&
         dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
         n1i, n2i, n3i, n1t, n2t, n3t,
         Ct, static_cast<double>(dt), is_stage1);
-    CUDA_CHK(cudaDeviceSynchronize());
 
     if (!bc.topology.is_periodic(dir)) {
-      const std::size_t sz = (std::size_t)n_row * n_sys;
-      sys.A.resize(sz); sys.B.resize(sz); sys.C.resize(sz); sys.D.resize(sz);
-      CUDA_CHK(cudaMemcpy(sys.A.data(), d_A_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      CUDA_CHK(cudaMemcpy(sys.B.data(), d_B_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      CUDA_CHK(cudaMemcpy(sys.C.data(), d_C_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      CUDA_CHK(cudaMemcpy(sys.D.data(), d_D_, sz*sizeof(double), cudaMemcpyDeviceToHost));
-      core::modify_tdma_row_cpu(dir, bc.T, domain.sub.topology().axis(dir),
-                                 sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
-                                 n_sys, n_row);
-      CUDA_CHK(cudaMemcpy(d_A_, sys.A.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
-      CUDA_CHK(cudaMemcpy(d_B_, sys.B.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
-      CUDA_CHK(cudaMemcpy(d_C_, sys.C.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
-      CUDA_CHK(cudaMemcpy(d_D_, sys.D.data(), sz*sizeof(double), cudaMemcpyHostToDevice));
+      // GPU kernel replaces D2H + modify_tdma_row_cpu + H2D (eliminates ~138 MB pageable transfer)
+      const auto& axis_dir = domain.sub.topology().axis(dir);
+      const bool owns_lower = (axis_dir.west_rank == MPI_PROC_NULL);
+      const bool owns_upper = (axis_dir.east_rank == MPI_PROC_NULL);
+      const int lkind = modify_ghost_kind(bc.T.face(dir, mpmstd::Side::Minus));
+      const int ukind = modify_ghost_kind(bc.T.face(dir, mpmstd::Side::Plus));
+      {
+        const int blk1d = 256;
+        const int grd1d = (n_sys + blk1d - 1) / blk1d;
+        k_modify_tdma_row_gpu<<<grd1d, blk1d>>>(d_A_, d_B_, d_C_, n_sys, n_row,
+                                                  owns_lower, owns_upper, lkind, ukind);
+      }
       cuda_tdma(domain.tdma, dir).solve_many_device(d_A_, d_B_, d_C_, d_D_, n_sys, n_row);
     } else {
       cuda_tdma(domain.tdma, dir).solve_many_cyclic_device(d_A_, d_B_, d_C_, d_D_, n_sys, n_row);
     }
-    CUDA_CHK(cudaDeviceSynchronize());
 
     const dim3 blk2(32, 16);
-    const dim3 grd2((n_row + blk2.x-1)/blk2.x, (n_sys + blk2.y-1)/blk2.y);
+    const dim3 grd2((n_sys + blk2.x-1)/blk2.x, (n_row + blk2.y-1)/blk2.y);
     k_scatter_from_tdma<<<grd2, blk2>>>(dir, outb, d_D_,
                                          n1i, n2i, n3i, n1t, n2t, n3t);
-    CUDA_CHK(cudaDeviceSynchronize());
     std::swap(in, outb);
   }
 
@@ -463,7 +461,7 @@ void solve_scalar_var_gpu(
 
     auto Ta = hrc::now();
     const dim3 blk(32, 16);
-    const dim3 grd((n_row + blk.x-1)/blk.x, (n_sys + blk.y-1)/blk.y);
+    const dim3 grd((n_sys + blk.x-1)/blk.x, (n_row + blk.y-1)/blk.y);
     k_build_adi_var<<<grd, blk>>>(
         dir, d_A_, d_B_, d_C_, d_D_, in, d_T,
         d_U, d_V, d_W, d_kp, d_dkp, d_ir, d_dir,
@@ -499,7 +497,7 @@ void solve_scalar_var_gpu(
 
     auto Ts0 = hrc::now();
     const dim3 blk2(32, 16);
-    const dim3 grd2((n_row + blk2.x-1)/blk2.x, (n_sys + blk2.y-1)/blk2.y);
+    const dim3 grd2((n_sys + blk2.x-1)/blk2.x, (n_row + blk2.y-1)/blk2.y);
     k_scatter_from_tdma<<<grd2, blk2>>>(dir, outb, d_D_,
                                          n1i, n2i, n3i, n1t, n2t, n3t);
     CUDA_CHK(cudaDeviceSynchronize());

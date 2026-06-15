@@ -67,10 +67,15 @@ ifeq ($(BACKEND),cuda)
   # <cuda_runtime.h>, so no -cuda is needed for host TUs. Strip the GCC-only
   # WARN/-MP that nvc++ rejects. (Shared Makefile.inc untouched → CPU baseline safe.)
   HOST_FLAGS := $(CXXFLAGS) -DOMPI_SKIP_MPICXX -DMPMSTD_BACKEND_CPU $(INCS) $(INC)
+  # CUDA-aware host flags: -cuda enables cuda_runtime.h for wrappers that call
+  # CUDA runtime APIs (e.g. pascal_tdma_cuda_backend). No dynamic-init std::function
+  # in these files so the nvc++ ICE that affects boundary/problem.cpp is not triggered.
+  CUDA_HOST_FLAGS := $(CXXFLAGS) -cuda -DOMPI_SKIP_MPICXX -DMPMSTD_BACKEND_CUDA $(INCS) $(INC)
   DEV_FLAGS  := $(ALL_CUFLAGS) $(INC)
 else
   LIB_CU     :=
   HOST_FLAGS := $(ALL_CXXFLAGS) $(INC)
+  CUDA_HOST_FLAGS :=
   DEV_FLAGS  := $(ALL_CUFLAGS) $(INC)
 endif
 LIB_CPP := $(LIB_CPU_CPP) $(LIB_AGN_CPP)
@@ -79,8 +84,34 @@ LIB_OBJS := $(patsubst %.cpp,$(OBJ)/%.o,$(LIB_CPP)) \
             $(patsubst %.cu,$(OBJ)/%.o,$(LIB_CU)) \
             $(patsubst %.cpp,$(OBJ)/_src/%.o,$(SRC_INFRA))
 
+ifeq ($(BACKEND),cuda)
+  # pascal_tdma_cuda_backend.cpp needs MPMSTD_BACKEND_CUDA (not _CPU) to activate
+  # the CUDA runtime calls. Compiled as plain host C++ (no -cuda flag).
+  CUDA_WRAP_OBJ := $(OBJ)/_src/linear_solver/tdma/pascal_tdma_cuda_backend.o
+  LIB_OBJS += $(CUDA_WRAP_OBJ)
+$(CUDA_WRAP_OBJ): $(ROOT_DIR)/src/linear_solver/tdma/pascal_tdma_cuda_backend.cpp
+	@mkdir -p $(dir $@)
+	@echo "  CXX   src/linear_solver/tdma/pascal_tdma_cuda_backend.cpp"
+	@$(CXX) $(CUDA_HOST_FLAGS) -c $< -o $@
+
+  # tdma_registry.cpp selects CPU vs CUDA backend via #ifdef MPMSTD_BACKEND_CUDA.
+  # The generic SRC_INFRA rule uses HOST_FLAGS (no CUDA macro), which would create
+  # PaScaLTDMACpuBackend even in the CUDA build. Override with the CUDA macro so
+  # the registry creates PaScaLTDMACudaBackend — required for scalar_gpu.cu which
+  # does static_cast<PaScaLTDMACudaBackend&>(tdma.get(d)). No -cuda flag needed
+  # here since this file does not call CUDA runtime APIs directly.
+  TDMA_REG_OBJ := $(OBJ)/_src/linear_solver/tdma/tdma_registry.o
+$(TDMA_REG_OBJ): $(ROOT_DIR)/src/linear_solver/tdma/tdma_registry.cpp
+	@mkdir -p $(dir $@)
+	@echo "  CXX   src/linear_solver/tdma/tdma_registry.cpp"
+	@$(CXX) $(HOST_FLAGS) -DMPMSTD_BACKEND_CUDA -c $< -o $@
+endif
+
 # ---- apps + tests -----------------------------------------------------------
-APPS      := channel cavity dhvc rbc validate
+APPS      := channel cavity dhvc rbc validate rbc_cpu_ob rbc_cpu_nob
+ifeq ($(BACKEND),cuda)
+  APPS    += rbc_gpu_ob rbc_gpu_nob dhvc_gpu
+endif
 APP_BINS  := $(patsubst %,$(BINDIR)/apps/%,$(APPS))
 TEST_CPP  := $(shell find $(ROOT_DIR)/tests/unit $(ROOT_DIR)/tests/integration $(ROOT_DIR)/tests/regression -name '*.cpp' 2>/dev/null)
 TEST_BINS := $(patsubst $(ROOT_DIR)/tests/%.cpp,$(BINDIR)/tests/%,$(TEST_CPP))
@@ -107,6 +138,10 @@ $(OBJ)/%.o: %.cu
 	@mkdir -p $(dir $@)
 	@echo "  NVCC  $<"
 	@$(CXX) $(DEV_FLAGS) -c $< -o $@
+
+# explicit .cuh header dependencies — add when a .cu includes a heavy header
+$(OBJ)/src/equation/pressure/gpu/pressure_gpu.o: \
+    src/equation/pressure/gpu/pressure_engine_gpu.cuh
 $(OBJ)/_src/%.o: $(ROOT_DIR)/src/%.cpp
 	@mkdir -p $(dir $@)
 	@echo "  CXX   src/$*.cpp"
@@ -118,6 +153,37 @@ $(BINDIR)/apps/%: apps/%/main.cpp $(LIB)
 	@echo "  APP   $@"
 	@$(CXX) $(HOST_FLAGS) -c $< -o $(OBJ)/apps/$*.o
 	@$(CXX) $(HOST_FLAGS) $(OBJ)/apps/$*.o $(LIB) $(EXT_LIBS) -o $@
+
+# RBC split variants
+$(BINDIR)/apps/rbc_cpu_ob: apps/rbc/main_cpu_ob.cpp $(LIB)
+	@mkdir -p $(dir $@) $(OBJ)/apps
+	@echo "  APP   $@"
+	@$(CXX) $(HOST_FLAGS) -c $< -o $(OBJ)/apps/rbc_cpu_ob.o
+	@$(CXX) $(HOST_FLAGS) $(OBJ)/apps/rbc_cpu_ob.o $(LIB) $(EXT_LIBS) -o $@
+
+$(BINDIR)/apps/rbc_cpu_nob: apps/rbc/main_cpu_nob.cpp $(LIB)
+	@mkdir -p $(dir $@) $(OBJ)/apps
+	@echo "  APP   $@"
+	@$(CXX) $(HOST_FLAGS) -c $< -o $(OBJ)/apps/rbc_cpu_nob.o
+	@$(CXX) $(HOST_FLAGS) $(OBJ)/apps/rbc_cpu_nob.o $(LIB) $(EXT_LIBS) -o $@
+
+$(BINDIR)/apps/rbc_gpu_ob: apps/rbc/main_gpu_ob.cu $(LIB)
+	@mkdir -p $(dir $@) $(OBJ)/apps
+	@echo "  APP   $@"
+	@$(CXX) $(DEV_FLAGS) -c $< -o $(OBJ)/apps/rbc_gpu_ob.o
+	@$(CXX) $(DEV_FLAGS) $(OBJ)/apps/rbc_gpu_ob.o $(LIB) $(EXT_LIBS) -o $@
+
+$(BINDIR)/apps/rbc_gpu_nob: apps/rbc/main_gpu_nob.cu $(LIB)
+	@mkdir -p $(dir $@) $(OBJ)/apps
+	@echo "  APP   $@"
+	@$(CXX) $(DEV_FLAGS) -c $< -o $(OBJ)/apps/rbc_gpu_nob.o
+	@$(CXX) $(DEV_FLAGS) $(OBJ)/apps/rbc_gpu_nob.o $(LIB) $(EXT_LIBS) -o $@
+
+$(BINDIR)/apps/dhvc_gpu: apps/dhvc/main_gpu.cu $(LIB)
+	@mkdir -p $(dir $@) $(OBJ)/apps
+	@echo "  APP   $@"
+	@$(CXX) $(DEV_FLAGS) -c $< -o $(OBJ)/apps/dhvc_gpu.o
+	@$(CXX) $(DEV_FLAGS) $(OBJ)/apps/dhvc_gpu.o $(LIB) $(EXT_LIBS) -o $@
 
 tests: lib $(TEST_BINS)
 $(BINDIR)/tests/%: $(ROOT_DIR)/tests/%.cpp $(LIB)

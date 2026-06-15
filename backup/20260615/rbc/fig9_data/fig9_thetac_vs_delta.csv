@@ -1,0 +1,9 @@
+# Fig-9 NOB glycerol RBC: central-plane mean temp deviation vs DeltaT
+# CPU proxy: Pr=7, Ra=1e5, 64^3, Gamma=2, full NOB. Exact Fig9 = Pr=2547,Ra=1e6,128^3 (GPU).
+# Theta_c = running mean <theta>_{x,y} at mid-height over averaging window; tail_drift = spread over last 25% (smaller=more converged).
+Delta,Theta_c,status,t_final,div_final,tail_drift,Ra,Pr,grid
+20,0.05465,OK,328.0,9.56e-15,0.0001,1.00e+05,7,64x64x48
+30,0.08302,OK,220.0,1.05e-14,0.0013,1.00e+05,7,64x64x48
+40,0.09486,OK,143.0,1.86e-14,0.004,1.00e+05,7,64x64x48
+50,0.11685,OK,91.0,2.22e-14,0.0134,1.00e+05,7,64x64x48
+60,0.06795,DIVERGED,8.66,4290000000.0,0.0004,1.00e+05,7,64x64x48

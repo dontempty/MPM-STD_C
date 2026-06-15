@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 using namespace mpmstd;
 
@@ -227,10 +228,102 @@ int main(int argc, char** argv) {
     std::printf("[rbc] OB  Ra=%.2e Pr=%.4g  nu=%.4e alpha=%.4e  n=%dx%dx%d (x,y periodic, z wall=gravity)\n",
                 Ra, Pr, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
+#ifdef MPMSTD_BACKEND_CUDA
+  // G3b: GPU hybrid — scalar+momentum on GPU, pressure on CPU.
+  core::bind_gpu_to_local_rank_gpu(mpi);
+
+  core::GpuFields gpu_fields;
+  gpu_fields.add(core::Var::U, sub); gpu_fields.add(core::Var::V, sub);
+  gpu_fields.add(core::Var::W, sub); gpu_fields.add(core::Var::P, sub);
+  gpu_fields.add(core::Var::T, sub);
+  gpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
+  gpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
+
+  core::GpuMomentumSystem gpu_momentum(sub);
+  core::GpuScalarSystem   gpu_scalar(sub);
+  physics::GpuPropertyFields gpu_props(sub);
+
+  gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
+  gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());
+  gpu_fields[core::Var::W].to_device(fields[core::Var::W].data());
+  gpu_fields[core::Var::P].to_device(fields[core::Var::P].data());
+  gpu_fields[core::Var::T].to_device(fields[core::Var::T].data());
+#endif
+
   // ── time loop ──────────────────────────────────────────────────────────────
   double tc_sum = 0.0; long tc_n = 0;   // running mean of central temperature
   double time = 0.0; int step = 0;
+
+  // Nu + z-profile accumulators
+  const int nzg  = sub.n_global()[2];
+  const int koff = sub.global_offset()[2];
+  const int nzl  = sub.n_interior()[2];
+  std::vector<double> t_sum_z(nzg, 0.0);
+  std::vector<double> w2_sum_z(nzg, 0.0);
+  double wt_sum = 0.0;
+  const real_t* dx3_z = grid.dx_ptr(Direction::Z);
   while (time < t_end && step < n_steps) {
+#ifdef MPMSTD_BACKEND_CUDA
+    // ── GPU hybrid path (G3b): scalar+momentum GPU, pressure CPU ────────────
+    const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
+
+    if (nob) physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+
+    if (nob) {
+      equation::assemble_scalar_var_diff_gpu(domain, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
+                                             gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
+      equation::solve_scalar_var_gpu(domain, bc, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
+                                     gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
+    } else {
+      equation::assemble_scalar_const_diff_gpu(domain, gpu_fields, gpu_scalar, dt);
+      equation::solve_scalar_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
+    }
+    core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
+
+    if (nob) equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+    else     equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
+    if (nob) physics::add_buoyancy_force_nob_gpu(gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
+    else     physics::add_buoyancy_force_gpu(gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    if (nob) equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+    else     equation::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
+    equation::update_velocity_gpu(gpu_fields, gpu_momentum);
+    core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
+    core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
+    core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
+
+    // zero_w_wall workaround: transfer W, apply on host, transfer back
+    gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
+    zero_w_wall(fields[core::Var::W], sub);
+    gpu_fields[core::Var::W].to_device(fields[core::Var::W].data());
+    core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
+
+    // Transfer GPU→CPU for pressure and diagnostics
+    gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
+    gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
+    gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
+    gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
+
+    // Update CPU properties for pressure (from transferred T)
+    if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
+
+    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
+                                 nob ? props.inv_rho.data() : nullptr);
+
+    if (nob && DeltaT > 0.0) {
+      real_t* t_ptr = fields[core::Var::T].data();
+      const std::size_t nf = (std::size_t)sub.n_total()[0]*sub.n_total()[1]*sub.n_total()[2];
+      for (std::size_t q = 0; q < nf; ++q)
+        t_ptr[q] = std::max(real_t{-0.5}, std::min(real_t{0.5}, t_ptr[q]));
+    }
+
+    // Transfer back to GPU after pressure projection
+    gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
+    gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());
+    gpu_fields[core::Var::W].to_device(fields[core::Var::W].data());
+    gpu_fields[core::Var::T].to_device(fields[core::Var::T].data());
+
+#else
+    // ── CPU path ─────────────────────────────────────────────────────────────
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
     if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
@@ -246,8 +339,8 @@ int main(int argc, char** argv) {
 
     if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
     else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    if (nob) physics::add_buoyancy_force_nob_cpu(momentum, fields[core::Var::T], props.inv_rho, buoy, dt);  // F=invRho·(θ+a12pera11·θ²·Δ)
-    else     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);                     // OB: F=θ on W
+    if (nob) physics::add_buoyancy_force_nob_cpu(momentum, fields[core::Var::T], props.inv_rho, buoy, dt);
+    else     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);
     if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
     else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
@@ -256,36 +349,83 @@ int main(int argc, char** argv) {
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     zero_w_wall(fields[core::Var::W], sub);
 
-    // NOB: pass inv_rho so the solver adds the variable-density ExtraTerm and
-    // applies the (invRhoc-1)*∇dPhat projection correction.
     equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
                                  nob ? props.inv_rho.data() : nullptr);
 
-    // NOB scalar stability: clip T to the physical range [-0.5, +0.5] to prevent
-    // max-principle violations at high Peclet (glycerol Pr=2547, large DeltaT).
     if (nob && DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();
       const std::size_t nf = (std::size_t)sub.n_total()[0]*sub.n_total()[1]*sub.n_total()[2];
       for (std::size_t q = 0; q < nf; ++q)
         t_ptr[q] = std::max(real_t{-0.5}, std::min(real_t{0.5}, t_ptr[q]));
     }
+#endif
 
     time += static_cast<double>(dt);
     ++step;
 
-    if (step >= nstat_start) { tc_sum += center_temp(domain, fields); ++tc_n; }
+    if (step >= nstat_start) {
+      tc_sum += center_temp(domain, fields);
+      ++tc_n;
+      {
+        const auto nt_ = sub.n_total(); const int n1_=nt_[0], n2_=nt_[1], n3_=nt_[2];
+        const int h_ = kHaloWidth;
+        const real_t* Tp = fields[core::Var::T].data();
+        const real_t* Wp = fields[core::Var::W].data();
+        double wt_loc = 0.0;
+        for (int i = h_; i < n1_-h_; ++i)
+          for (int j = h_; j < n2_-h_; ++j)
+            for (int kk = 0; kk < nzl; ++kk) {
+              const int k = kk + h_;
+              const double tv = double(Tp[(i*n2_+j)*n3_+k]);
+              const double wv = double(Wp[(i*n2_+j)*n3_+k]);
+              t_sum_z[koff+kk] += tv;
+              w2_sum_z[koff+kk] += wv*wv;
+              wt_loc += wv * tv * double(dx3_z[k]);
+            }
+        double wt_g = 0.0;
+        MPI_Allreduce(&wt_loc, &wt_g, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+        wt_sum += wt_g;
+      }
+    }
     if (step % nmonitor == 0) {
       const double dv = div_max(domain, fields);
       const double tc = (tc_n > 0) ? tc_sum / static_cast<double>(tc_n) : center_temp(domain, fields);
       const FlowDiag fd = flow_diag(domain, fields);
-      if (mpi.is_root())
+      if (mpi.is_root()) {
         std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f | umax=%.3g vmax=%.3g wmax=%.3g(k=%d) T=[%.3f,%.3f]\n",
                     step, time, double(dt), dv, tc, fd.umax, fd.vmax, fd.wmax, fd.kwmax, fd.tmin, fd.tmax);
+        if (tc_n > 0) {
+          const int nxg_ = sub.n_global()[0], nyg_ = sub.n_global()[1];
+          const double wt_now = wt_sum / (static_cast<double>(nxg_)*nyg_) / static_cast<double>(tc_n);
+          std::printf("  [Nu] running: Nu=%.4f (tc_n=%ld)\n", 1.0 + wt_now/alpha_T, tc_n);
+        }
+      }
     }
   }
 
   const double theta_c = (tc_n > 0) ? tc_sum / static_cast<double>(tc_n) : center_temp(domain, fields);
   if (mpi.is_root())
     std::printf("[rbc] done: OB Ra=%.2e Pr=%.4g  Theta_c=%.5f  (OB reference -> 0)\n", Ra, Pr, theta_c);
+
+  if (tc_n > 0) {
+    const int nxg = sub.n_global()[0], nyg = sub.n_global()[1];
+    std::vector<double> t_z_g(nzg, 0.0), w2_z_g(nzg, 0.0);
+    MPI_Allreduce(t_sum_z.data(),  t_z_g.data(),  nzg, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+    MPI_Allreduce(w2_sum_z.data(), w2_z_g.data(), nzg, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+    const double inv_nxy = 1.0 / (static_cast<double>(nxg) * nyg);
+    const double inv_n   = 1.0 / static_cast<double>(tc_n);
+    // wt_sum is dz-weighted (dx3_z), Lz=1 → vol-avg = wt_sum / (nx*ny)
+    const double wt_mean = wt_sum * inv_nxy * inv_n;
+    const double Nu = 1.0 + wt_mean / alpha_T;
+    if (mpi.is_root()) {
+      std::printf("[rbc] Nu=%.4f  (wt_mean=%.6f  alpha_T=%.4e  tc_n=%ld)\n", Nu, wt_mean, alpha_T, tc_n);
+      std::printf("[rbc] k  T_mean  W_rms\n");
+      for (int k = 0; k < nzg; ++k) {
+        const double Tk = t_z_g[k]  * inv_nxy * inv_n;
+        const double Wk = std::sqrt(std::max(0.0, w2_z_g[k] * inv_nxy * inv_n));
+        std::printf("  %3d  %+.5f  %.5f\n", k, Tk, Wk);
+      }
+    }
+  }
   return 0;
 }

@@ -1,0 +1,20 @@
+=== Compiling rbc_gpu_nob + dhvc_gpu ===
+  LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_gpu_ob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_gpu_nob
+"apps/rbc/main_gpu_nob.cu", line 254: warning: variable "h" was declared but never referenced [declared_but_not_referenced]
+    const int h = kHaloWidth;
+              ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/dhvc_gpu
+"apps/dhvc/main_gpu.cu", line 403: warning: variable "t_ss" was set but never used [set_but_not_used]
+      double t_ss = 0.0; int n_time_steps = 10;
+             ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+=== compile done ===
+-rwxrwxr-x 1 wel1come1234 wel1come1234 1629248 Jun 14 10:09 build/cuda/bin/apps/dhvc_gpu
+-rwxrwxr-x 1 wel1come1234 wel1come1234 1670224 Jun 14 10:09 build/cuda/bin/apps/rbc_gpu_nob

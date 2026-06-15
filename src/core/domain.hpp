@@ -23,6 +23,8 @@ struct Domain {
   const MpiTopology&                 topo;
   const Subdomain&                   sub;
   linear_solver::tdma::TdmaRegistry& tdma;
+  // Device-resident grid arrays (GpuGridArrays*) for CUDA builds; null in CPU builds.
+  const void*                        gpu_grid = nullptr;
 };
 
 } // namespace mpmstd::core

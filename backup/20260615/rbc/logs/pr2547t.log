@@ -1,0 +1,12 @@
+No protocol specified
+[rbc] OB  Ra=1.00e+06 Pr=2547  nu=5.0468e-02 alpha=1.9815e-05  n=64x64x96 (x,y periodic, z wall=gravity)
+step=500 t=0.0804 dt=8.54e-06 div=2.11e-10 Theta_c=-0.0079 (OB->0)
+step=1000 t=0.0806 dt=5.3e-12 div=7.63e-06 Theta_c=-0.0079 (OB->0)
+step=1500 t=0.0806 dt=1.19e-13 div=7.93e-04 Theta_c=-0.0079 (OB->0)
+step=2000 t=0.0806 dt=1e-19 div=7.68e+02 Theta_c=-0.0079 (OB->0)
+step=2500 t=0.0806 dt=1.68e-21 div=4.10e+04 Theta_c=-0.0079 (OB->0)
+step=3000 t=0.0806 dt=7.18e-26 div=1.07e+09 Theta_c=-0.0079 (OB->0)
+step=3500 t=0.0806 dt=7.4e-31 div=7.04e+13 Theta_c=-0.0079 (OB->0)
+step=4000 t=0.0806 dt=4.23e-36 div=1.84e+19 Theta_c=-0.0079 (OB->0)
+step=4500 t=0.0806 dt=2.59e-40 div=3.02e+23 Theta_c=-0.0079 (OB->0)
+step=5000 t=0.0806 dt=6.98e-47 div=1.27e+30 Theta_c=-0.0079 (OB->0)

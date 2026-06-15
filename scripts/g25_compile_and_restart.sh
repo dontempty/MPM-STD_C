@@ -5,7 +5,7 @@
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=1
 #SBATCH -t 00:12:00
-#SBATCH -o /shared/home/wel1come1234/workspace/MPM-STD_C/g25_compile.log
+#SBATCH -o /shared/home/wel1come1234/workspace/MPM-STD_C/apps/rbc/logs/g25_compile.log
 
 cd /shared/home/wel1come1234/workspace/MPM-STD_C
 module load nvhpc/23.7

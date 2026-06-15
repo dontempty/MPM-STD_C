@@ -43,4 +43,11 @@ const FieldBoundary& face_bc_for(const BoundaryCondition& bc, Var v);
 // Container convenience: sync Fields[v] (halo + that variable's BC ghost) in one.
 void sync_field_cpu(CpuFields& fields, Var v, const BoundaryCondition& bc, const Subdomain& sub);
 
+// GPU variants — defined in core/gpu/boundary_ops_gpu.cu (GPU build only).
+void apply_ghost_gpu(GpuField& phi, const FieldBoundary& fbc,
+                     const Subdomain& sub, real_t t = real_t{0});
+void sync_field_gpu(GpuField& field, const FieldBoundary& fbc, const Subdomain& sub,
+                    real_t t = real_t{0});
+void sync_field_gpu(GpuFields& fields, Var v, const BoundaryCondition& bc, const Subdomain& sub);
+
 } // namespace mpmstd::core

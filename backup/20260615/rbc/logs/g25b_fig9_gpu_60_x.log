@@ -1,0 +1,707 @@
+=== G25b: Fig9 GPU ΔT=60K EXTENDED (400K steps, ~7.5h) ===
+nstat_start=100K (t≈500FF≈0.73×τ); 300K step average → ~1500 FF ≈ 2.2×τ
+
+[TIMING] 10 steps  total=109.4 ms/step
+step=1000 t=5.69 dt=0.0047 div=1.07e-10 Theta_c=0.0000 | umax=1.09 vmax=0.00749 wmax=0.121 T=[-0.498,0.497]
+step=2000 t=10.5 dt=0.00494 div=9.92e-11 Theta_c=0.0000 | umax=1.17 vmax=0.0122 wmax=0.128 T=[-0.498,0.497]
+step=3000 t=15.3 dt=0.00465 div=1.02e-10 Theta_c=0.0000 | umax=1.23 vmax=0.0273 wmax=0.133 T=[-0.498,0.497]
+step=4000 t=20.1 dt=0.00461 div=1.05e-10 Theta_c=0.0000 | umax=1.29 vmax=0.0595 wmax=0.135 T=[-0.499,0.498]
+step=5000 t=24.9 dt=0.00501 div=1.05e-10 Theta_c=0.0000 | umax=1.3 vmax=0.0929 wmax=0.178 T=[-0.499,0.499]
+step=6000 t=29.7 dt=0.00481 div=1.07e-10 Theta_c=0.0000 | umax=1.39 vmax=0.0954 wmax=0.229 T=[-0.499,0.500]
+step=7000 t=34.6 dt=0.00453 div=9.25e-11 Theta_c=0.0000 | umax=1.39 vmax=0.0705 wmax=0.212 T=[-0.499,0.500]
+step=8000 t=39.4 dt=0.00472 div=9.04e-11 Theta_c=0.0000 | umax=1.41 vmax=0.0513 wmax=0.172 T=[-0.499,0.500]
+step=9000 t=44.2 dt=0.00438 div=7.90e-11 Theta_c=0.0000 | umax=1.28 vmax=0.039 wmax=0.145 T=[-0.499,0.500]
+step=10000 t=49 dt=0.00398 div=7.18e-11 Theta_c=0.0000 | umax=1.13 vmax=0.0303 wmax=0.141 T=[-0.499,0.500]
+step=11000 t=53.5 dt=0.00423 div=7.19e-11 Theta_c=0.0000 | umax=1.05 vmax=0.0251 wmax=0.132 T=[-0.499,0.500]
+step=12000 t=57.9 dt=0.00403 div=6.91e-11 Theta_c=0.0000 | umax=0.983 vmax=0.0255 wmax=0.125 T=[-0.499,0.500]
+step=13000 t=62.1 dt=0.00402 div=7.19e-11 Theta_c=0.0000 | umax=1.19 vmax=0.0412 wmax=0.147 T=[-0.499,0.500]
+step=14000 t=66.2 dt=0.00436 div=7.87e-11 Theta_c=0.0000 | umax=1.45 vmax=0.0428 wmax=0.177 T=[-0.499,0.500]
+step=15000 t=70.3 dt=0.00376 div=6.57e-11 Theta_c=0.0000 | umax=1.12 vmax=0.0574 wmax=0.145 T=[-0.499,0.500]
+step=16000 t=74.5 dt=0.00387 div=6.19e-11 Theta_c=0.0000 | umax=1.24 vmax=0.0581 wmax=0.147 T=[-0.499,0.500]
+step=17000 t=78.7 dt=0.00623 div=7.10e-11 Theta_c=0.0000 | umax=1.75 vmax=0.073 wmax=0.215 T=[-0.499,0.500]
+step=18000 t=82.9 dt=0.00327 div=5.78e-11 Theta_c=0.0000 | umax=0.986 vmax=0.0748 wmax=0.131 T=[-0.499,0.500]
+step=19000 t=86.8 dt=0.00351 div=6.89e-11 Theta_c=0.0000 | umax=2.3 vmax=0.169 wmax=0.324 T=[-0.500,0.500]
+step=20000 t=91.1 dt=0.00565 div=7.47e-11 Theta_c=0.0000 | umax=1.24 vmax=0.0685 wmax=0.153 T=[-0.499,0.500]
+step=21000 t=95.2 dt=0.00549 div=9.25e-11 Theta_c=0.0000 | umax=0.91 vmax=0.0975 wmax=0.118 T=[-0.499,0.500]
+step=22000 t=99.4 dt=0.00411 div=7.20e-11 Theta_c=0.0000 | umax=1.2 vmax=0.0544 wmax=0.15 T=[-0.499,0.500]
+step=23000 t=103 dt=0.00468 div=8.22e-11 Theta_c=0.0000 | umax=1.32 vmax=0.0493 wmax=0.164 T=[-0.499,0.500]
+step=24000 t=107 dt=0.00386 div=7.72e-11 Theta_c=0.0000 | umax=1.3 vmax=0.0454 wmax=0.157 T=[-0.499,0.500]
+step=25000 t=111 dt=0.004 div=7.57e-11 Theta_c=0.0000 | umax=1.07 vmax=0.0433 wmax=0.125 T=[-0.499,0.500]
+step=26000 t=116 dt=0.00572 div=1.02e-10 Theta_c=0.0000 | umax=1.43 vmax=0.0727 wmax=0.181 T=[-0.499,0.500]
+step=27000 t=120 dt=0.00508 div=8.26e-11 Theta_c=0.0000 | umax=1.11 vmax=0.0822 wmax=0.143 T=[-0.498,0.500]
+step=28000 t=124 dt=0.00715 div=7.72e-11 Theta_c=0.0000 | umax=0.877 vmax=0.0911 wmax=0.108 T=[-0.498,0.500]
+step=29000 t=128 dt=0.00321 div=6.12e-11 Theta_c=0.0000 | umax=1.34 vmax=0.0716 wmax=0.174 T=[-0.498,0.500]
+step=30000 t=133 dt=0.00417 div=8.02e-11 Theta_c=0.0000 | umax=0.78 vmax=0.0749 wmax=0.104 T=[-0.498,0.500]
+step=31000 t=137 dt=0.00704 div=8.91e-11 Theta_c=0.0000 | umax=1.12 vmax=0.097 wmax=0.142 T=[-0.497,0.500]
+step=32000 t=141 dt=0.00451 div=8.07e-11 Theta_c=0.0000 | umax=1.02 vmax=0.0879 wmax=0.13 T=[-0.497,0.500]
+step=33000 t=145 dt=0.00536 div=1.03e-10 Theta_c=0.0000 | umax=0.698 vmax=0.102 wmax=0.0933 T=[-0.497,0.500]
+step=34000 t=150 dt=0.00351 div=6.81e-11 Theta_c=0.0000 | umax=1.12 vmax=0.0449 wmax=0.143 T=[-0.497,0.500]
+step=35000 t=154 dt=0.00332 div=6.50e-11 Theta_c=0.0000 | umax=1.15 vmax=0.07 wmax=0.14 T=[-0.496,0.500]
+step=36000 t=158 dt=0.00301 div=6.27e-11 Theta_c=0.0000 | umax=1.28 vmax=0.0664 wmax=0.165 T=[-0.496,0.500]
+step=37000 t=163 dt=0.00457 div=8.06e-11 Theta_c=0.0000 | umax=0.963 vmax=0.0611 wmax=0.123 T=[-0.496,0.500]
+step=38000 t=167 dt=0.005 div=8.60e-11 Theta_c=0.0000 | umax=0.771 vmax=0.0876 wmax=0.0982 T=[-0.495,0.490]
+step=39000 t=171 dt=0.0055 div=1.01e-10 Theta_c=0.0000 | umax=0.961 vmax=0.0611 wmax=0.125 T=[-0.495,0.491]
+step=40000 t=176 dt=0.00303 div=5.68e-11 Theta_c=0.0000 | umax=1.08 vmax=0.102 wmax=0.135 T=[-0.494,0.492]
+step=41000 t=180 dt=0.00323 div=6.83e-11 Theta_c=0.0000 | umax=0.968 vmax=0.105 wmax=0.135 T=[-0.494,0.492]
+step=42000 t=184 dt=0.00286 div=5.66e-11 Theta_c=0.0000 | umax=1.69 vmax=0.044 wmax=0.215 T=[-0.494,0.492]
+step=43000 t=189 dt=0.00284 div=5.56e-11 Theta_c=0.0000 | umax=1.67 vmax=0.0342 wmax=0.209 T=[-0.493,0.493]
+step=44000 t=193 dt=0.00615 div=1.06e-10 Theta_c=0.0000 | umax=1.88 vmax=0.0762 wmax=0.245 T=[-0.493,0.500]
+step=45000 t=198 dt=0.00349 div=6.57e-11 Theta_c=0.0000 | umax=1.42 vmax=0.0345 wmax=0.179 T=[-0.492,0.500]
+step=46000 t=202 dt=0.00431 div=8.01e-11 Theta_c=0.0000 | umax=0.749 vmax=0.106 wmax=0.114 T=[-0.492,0.497]
+step=47000 t=206 dt=0.00539 div=1.04e-10 Theta_c=0.0000 | umax=1.16 vmax=0.057 wmax=0.147 T=[-0.491,0.491]
+step=48000 t=211 dt=0.00238 div=5.11e-11 Theta_c=0.0000 | umax=1.56 vmax=0.0531 wmax=0.18 T=[-0.491,0.492]
+step=49000 t=215 dt=0.00444 div=8.30e-11 Theta_c=0.0000 | umax=0.683 vmax=0.1 wmax=0.106 T=[-0.491,0.492]
+step=50000 t=219 dt=0.00713 div=1.23e-10 Theta_c=0.0000 | umax=1 vmax=0.0628 wmax=0.128 T=[-0.490,0.491]
+step=51000 t=224 dt=0.00508 div=9.52e-11 Theta_c=0.0000 | umax=1.34 vmax=0.0492 wmax=0.174 T=[-0.490,0.491]
+step=52000 t=228 dt=0.00513 div=9.12e-11 Theta_c=0.0000 | umax=1.18 vmax=0.0456 wmax=0.154 T=[-0.490,0.491]
+step=53000 t=233 dt=0.00533 div=1.02e-10 Theta_c=0.0000 | umax=0.788 vmax=0.0703 wmax=0.101 T=[-0.490,0.492]
+step=54000 t=237 dt=0.00379 div=6.43e-11 Theta_c=0.0000 | umax=2.05 vmax=0.0334 wmax=0.259 T=[-0.490,0.497]
+step=55000 t=241 dt=0.00482 div=9.19e-11 Theta_c=0.0000 | umax=0.776 vmax=0.0602 wmax=0.0995 T=[-0.490,0.500]
+step=56000 t=246 dt=0.00524 div=9.12e-11 Theta_c=0.0000 | umax=0.636 vmax=0.094 wmax=0.0929 T=[-0.489,0.492]
+step=57000 t=250 dt=0.00338 div=7.06e-11 Theta_c=0.0000 | umax=1.46 vmax=0.038 wmax=0.179 T=[-0.489,0.491]
+step=58000 t=255 dt=0.00368 div=7.38e-11 Theta_c=0.0000 | umax=1.25 vmax=0.0396 wmax=0.155 T=[-0.489,0.491]
+step=59000 t=259 dt=0.00275 div=5.63e-11 Theta_c=0.0000 | umax=1.39 vmax=0.0538 wmax=0.17 T=[-0.489,0.492]
+step=60000 t=264 dt=0.00321 div=7.16e-11 Theta_c=0.0000 | umax=1.88 vmax=0.0307 wmax=0.236 T=[-0.489,0.492]
+step=61000 t=268 dt=0.00387 div=7.23e-11 Theta_c=0.0000 | umax=1.04 vmax=0.049 wmax=0.127 T=[-0.490,0.491]
+step=62000 t=273 dt=0.00488 div=8.53e-11 Theta_c=0.0000 | umax=1.9 vmax=0.052 wmax=0.239 T=[-0.490,0.491]
+step=63000 t=277 dt=0.00584 div=9.83e-11 Theta_c=0.0000 | umax=0.818 vmax=0.06 wmax=0.104 T=[-0.489,0.491]
+step=64000 t=282 dt=0.00641 div=1.07e-10 Theta_c=0.0000 | umax=0.546 vmax=0.0549 wmax=0.0714 T=[-0.489,0.491]
+step=65000 t=286 dt=0.00466 div=8.79e-11 Theta_c=0.0000 | umax=1.38 vmax=0.0341 wmax=0.178 T=[-0.489,0.491]
+step=66000 t=291 dt=0.00455 div=8.66e-11 Theta_c=0.0000 | umax=0.644 vmax=0.0621 wmax=0.0876 T=[-0.489,0.491]
+step=67000 t=295 dt=0.0083 div=9.69e-11 Theta_c=0.0000 | umax=1.2 vmax=0.0555 wmax=0.149 T=[-0.490,0.491]
+step=68000 t=300 dt=0.00449 div=8.34e-11 Theta_c=0.0000 | umax=1.04 vmax=0.0381 wmax=0.134 T=[-0.490,0.491]
+step=69000 t=304 dt=0.00347 div=6.38e-11 Theta_c=0.0000 | umax=1.73 vmax=0.0348 wmax=0.219 T=[-0.490,0.491]
+step=70000 t=309 dt=0.00762 div=1.22e-10 Theta_c=0.0000 | umax=0.803 vmax=0.0633 wmax=0.1 T=[-0.490,0.492]
+step=71000 t=313 dt=0.00707 div=1.18e-10 Theta_c=0.0000 | umax=0.953 vmax=0.0584 wmax=0.121 T=[-0.490,0.491]
+step=72000 t=318 dt=0.00387 div=7.53e-11 Theta_c=0.0000 | umax=1.17 vmax=0.0417 wmax=0.15 T=[-0.490,0.491]
+step=73000 t=322 dt=0.00419 div=8.26e-11 Theta_c=0.0000 | umax=0.942 vmax=0.0582 wmax=0.117 T=[-0.491,0.491]
+step=74000 t=327 dt=0.0053 div=9.69e-11 Theta_c=0.0000 | umax=1.09 vmax=0.0461 wmax=0.138 T=[-0.491,0.492]
+step=75000 t=332 dt=0.00293 div=6.33e-11 Theta_c=0.0000 | umax=1.43 vmax=0.0426 wmax=0.181 T=[-0.491,0.492]
+step=76000 t=336 dt=0.00333 div=7.17e-11 Theta_c=0.0000 | umax=1.64 vmax=0.0311 wmax=0.209 T=[-0.491,0.492]
+step=77000 t=341 dt=0.00297 div=6.23e-11 Theta_c=0.0000 | umax=1.33 vmax=0.0468 wmax=0.156 T=[-0.491,0.492]
+step=78000 t=345 dt=0.00478 div=9.35e-11 Theta_c=0.0000 | umax=0.884 vmax=0.0445 wmax=0.112 T=[-0.491,0.492]
+step=79000 t=350 dt=0.00858 div=1.69e-10 Theta_c=0.0000 | umax=0.882 vmax=0.0704 wmax=0.103 T=[-0.491,0.492]
+step=80000 t=355 dt=0.00491 div=8.60e-11 Theta_c=0.0000 | umax=0.72 vmax=0.0471 wmax=0.0905 T=[-0.491,0.492]
+step=81000 t=359 dt=0.0042 div=7.97e-11 Theta_c=0.0000 | umax=0.84 vmax=0.0523 wmax=0.105 T=[-0.490,0.492]
+step=82000 t=364 dt=0.00323 div=6.23e-11 Theta_c=0.0000 | umax=0.97 vmax=0.0557 wmax=0.122 T=[-0.491,0.492]
+step=83000 t=368 dt=0.00312 div=5.96e-11 Theta_c=0.0000 | umax=1.52 vmax=0.0261 wmax=0.195 T=[-0.491,0.492]
+step=84000 t=373 dt=0.00445 div=8.29e-11 Theta_c=0.0000 | umax=0.83 vmax=0.061 wmax=0.103 T=[-0.491,0.492]
+step=85000 t=378 dt=0.0054 div=1.03e-10 Theta_c=0.0000 | umax=0.766 vmax=0.0451 wmax=0.0981 T=[-0.491,0.492]
+step=86000 t=382 dt=0.00518 div=9.19e-11 Theta_c=0.0000 | umax=1.15 vmax=0.039 wmax=0.145 T=[-0.491,0.492]
+step=87000 t=387 dt=0.00435 div=8.05e-11 Theta_c=0.0000 | umax=0.889 vmax=0.0353 wmax=0.113 T=[-0.491,0.492]
+step=88000 t=392 dt=0.00409 div=7.32e-11 Theta_c=0.0000 | umax=0.826 vmax=0.0616 wmax=0.102 T=[-0.491,0.492]
+step=89000 t=396 dt=0.00476 div=8.81e-11 Theta_c=0.0000 | umax=0.819 vmax=0.0515 wmax=0.104 T=[-0.491,0.492]
+step=90000 t=401 dt=0.00496 div=9.50e-11 Theta_c=0.0000 | umax=1.22 vmax=0.0331 wmax=0.154 T=[-0.491,0.492]
+step=91000 t=405 dt=0.00373 div=7.55e-11 Theta_c=0.0000 | umax=1.16 vmax=0.0308 wmax=0.148 T=[-0.492,0.492]
+step=92000 t=410 dt=0.00373 div=7.53e-11 Theta_c=0.0000 | umax=1.19 vmax=0.0317 wmax=0.153 T=[-0.492,0.492]
+step=93000 t=415 dt=0.00903 div=1.52e-10 Theta_c=0.0000 | umax=1.17 vmax=0.0586 wmax=0.147 T=[-0.492,0.492]
+step=94000 t=419 dt=0.00598 div=1.07e-10 Theta_c=0.0000 | umax=1.53 vmax=0.037 wmax=0.195 T=[-0.492,0.492]
+step=95000 t=424 dt=0.00436 div=7.67e-11 Theta_c=0.0000 | umax=0.693 vmax=0.0579 wmax=0.0887 T=[-0.492,0.492]
+step=96000 t=429 dt=0.00643 div=1.12e-10 Theta_c=0.0000 | umax=0.685 vmax=0.0527 wmax=0.0874 T=[-0.492,0.492]
+step=97000 t=433 dt=0.00435 div=8.84e-11 Theta_c=0.0000 | umax=1.08 vmax=0.0339 wmax=0.138 T=[-0.493,0.492]
+step=98000 t=438 dt=0.00592 div=1.01e-10 Theta_c=0.0000 | umax=0.983 vmax=0.0461 wmax=0.129 T=[-0.493,0.492]
+step=99000 t=443 dt=0.00682 div=1.18e-10 Theta_c=0.0000 | umax=0.713 vmax=0.0476 wmax=0.0911 T=[-0.492,0.491]
+step=100000 t=447 dt=0.00544 div=1.06e-10 Theta_c=0.0595 | umax=1.07 vmax=0.0395 wmax=0.137 T=[-0.492,0.491]
+  [Nu] running: Nu=6.0260 (tc_n=1)
+step=101000 t=452 dt=0.00498 div=8.89e-11 Theta_c=0.0595 | umax=1.25 vmax=0.0491 wmax=0.16 T=[-0.492,0.491]
+  [Nu] running: Nu=6.0709 (tc_n=1001)
+step=102000 t=457 dt=0.00732 div=1.23e-10 Theta_c=0.0594 | umax=1.02 vmax=0.0474 wmax=0.131 T=[-0.493,0.492]
+  [Nu] running: Nu=6.1455 (tc_n=2001)
+step=103000 t=461 dt=0.00387 div=7.76e-11 Theta_c=0.0592 | umax=1.12 vmax=0.0336 wmax=0.141 T=[-0.493,0.493]
+  [Nu] running: Nu=6.2248 (tc_n=3001)
+step=104000 t=466 dt=0.00588 div=1.09e-10 Theta_c=0.0590 | umax=0.958 vmax=0.0544 wmax=0.123 T=[-0.493,0.493]
+  [Nu] running: Nu=6.3075 (tc_n=4001)
+step=105000 t=471 dt=0.00485 div=9.38e-11 Theta_c=0.0588 | umax=1.2 vmax=0.0301 wmax=0.151 T=[-0.493,0.493]
+  [Nu] running: Nu=6.3939 (tc_n=5001)
+step=106000 t=475 dt=0.00392 div=7.76e-11 Theta_c=0.0586 | umax=1.7 vmax=0.0292 wmax=0.205 T=[-0.493,0.492]
+  [Nu] running: Nu=6.4839 (tc_n=6001)
+step=107000 t=480 dt=0.00463 div=8.73e-11 Theta_c=0.0584 | umax=1.05 vmax=0.0631 wmax=0.129 T=[-0.493,0.492]
+  [Nu] running: Nu=6.5772 (tc_n=7001)
+step=108000 t=485 dt=0.00255 div=5.39e-11 Theta_c=0.0582 | umax=1.48 vmax=0.0591 wmax=0.183 T=[-0.493,0.492]
+  [Nu] running: Nu=6.6745 (tc_n=8001)
+step=109000 t=489 dt=0.00429 div=7.86e-11 Theta_c=0.0581 | umax=1.24 vmax=0.0299 wmax=0.158 T=[-0.493,0.492]
+  [Nu] running: Nu=6.7755 (tc_n=9001)
+step=110000 t=494 dt=0.00658 div=1.22e-10 Theta_c=0.0580 | umax=0.816 vmax=0.0642 wmax=0.104 T=[-0.493,0.492]
+  [Nu] running: Nu=6.8811 (tc_n=10001)
+step=111000 t=499 dt=0.00468 div=9.27e-11 Theta_c=0.0580 | umax=1.3 vmax=0.0278 wmax=0.168 T=[-0.493,0.492]
+  [Nu] running: Nu=6.9908 (tc_n=11001)
+step=112000 t=503 dt=0.00309 div=6.04e-11 Theta_c=0.0580 | umax=1.04 vmax=0.0487 wmax=0.132 T=[-0.493,0.492]
+  [Nu] running: Nu=7.1043 (tc_n=12001)
+step=113000 t=508 dt=0.00387 div=7.67e-11 Theta_c=0.0580 | umax=1.23 vmax=0.0354 wmax=0.156 T=[-0.493,0.492]
+  [Nu] running: Nu=7.2201 (tc_n=13001)
+step=114000 t=512 dt=0.00486 div=9.59e-11 Theta_c=0.0580 | umax=1.25 vmax=0.0494 wmax=0.156 T=[-0.493,0.492]
+  [Nu] running: Nu=7.3371 (tc_n=14001)
+step=115000 t=517 dt=0.00294 div=5.81e-11 Theta_c=0.0580 | umax=1.33 vmax=0.0647 wmax=0.169 T=[-0.493,0.492]
+  [Nu] running: Nu=7.4549 (tc_n=15001)
+step=116000 t=522 dt=0.00273 div=5.55e-11 Theta_c=0.0581 | umax=1.25 vmax=0.0564 wmax=0.155 T=[-0.493,0.493]
+  [Nu] running: Nu=7.5726 (tc_n=16001)
+step=117000 t=526 dt=0.00593 div=1.11e-10 Theta_c=0.0582 | umax=0.816 vmax=0.052 wmax=0.105 T=[-0.493,0.493]
+  [Nu] running: Nu=7.6904 (tc_n=17001)
+step=118000 t=531 dt=0.00593 div=1.10e-10 Theta_c=0.0583 | umax=1.09 vmax=0.0642 wmax=0.141 T=[-0.493,0.492]
+  [Nu] running: Nu=7.8082 (tc_n=18001)
+step=119000 t=535 dt=0.00343 div=7.46e-11 Theta_c=0.0584 | umax=1.19 vmax=0.0478 wmax=0.153 T=[-0.493,0.493]
+  [Nu] running: Nu=7.9256 (tc_n=19001)
+step=120000 t=540 dt=0.00488 div=9.22e-11 Theta_c=0.0585 | umax=0.861 vmax=0.0504 wmax=0.109 T=[-0.493,0.493]
+  [Nu] running: Nu=8.0441 (tc_n=20001)
+step=121000 t=545 dt=0.0065 div=1.21e-10 Theta_c=0.0587 | umax=1.35 vmax=0.0606 wmax=0.162 T=[-0.494,0.493]
+  [Nu] running: Nu=8.1626 (tc_n=21001)
+step=122000 t=549 dt=0.00514 div=9.85e-11 Theta_c=0.0588 | umax=0.747 vmax=0.053 wmax=0.0948 T=[-0.494,0.493]
+  [Nu] running: Nu=8.2803 (tc_n=22001)
+step=123000 t=554 dt=0.0037 div=7.34e-11 Theta_c=0.0589 | umax=1.06 vmax=0.038 wmax=0.134 T=[-0.494,0.493]
+  [Nu] running: Nu=8.3953 (tc_n=23001)
+step=124000 t=558 dt=0.00444 div=8.89e-11 Theta_c=0.0590 | umax=1.41 vmax=0.0468 wmax=0.175 T=[-0.493,0.493]
+  [Nu] running: Nu=8.5073 (tc_n=24001)
+step=125000 t=563 dt=0.00284 div=5.86e-11 Theta_c=0.0592 | umax=1.09 vmax=0.0617 wmax=0.139 T=[-0.493,0.493]
+  [Nu] running: Nu=8.6149 (tc_n=25001)
+step=126000 t=567 dt=0.0045 div=8.15e-11 Theta_c=0.0593 | umax=0.9 vmax=0.0382 wmax=0.112 T=[-0.493,0.493]
+  [Nu] running: Nu=8.7174 (tc_n=26001)
+step=127000 t=572 dt=0.00509 div=9.29e-11 Theta_c=0.0595 | umax=1.1 vmax=0.0509 wmax=0.141 T=[-0.493,0.493]
+  [Nu] running: Nu=8.8145 (tc_n=27001)
+step=128000 t=576 dt=0.00386 div=7.58e-11 Theta_c=0.0596 | umax=1.66 vmax=0.0284 wmax=0.205 T=[-0.493,0.493]
+  [Nu] running: Nu=8.9052 (tc_n=28001)
+step=129000 t=581 dt=0.00407 div=7.47e-11 Theta_c=0.0597 | umax=1.03 vmax=0.051 wmax=0.128 T=[-0.493,0.493]
+  [Nu] running: Nu=8.9892 (tc_n=29001)
+step=130000 t=585 dt=0.00336 div=6.12e-11 Theta_c=0.0599 | umax=1 vmax=0.0585 wmax=0.124 T=[-0.493,0.492]
+  [Nu] running: Nu=9.0668 (tc_n=30001)
+step=131000 t=590 dt=0.00346 div=6.99e-11 Theta_c=0.0600 | umax=1.12 vmax=0.0424 wmax=0.139 T=[-0.494,0.492]
+  [Nu] running: Nu=9.1376 (tc_n=31001)
+step=132000 t=594 dt=0.00236 div=5.10e-11 Theta_c=0.0602 | umax=1.45 vmax=0.0428 wmax=0.183 T=[-0.494,0.492]
+  [Nu] running: Nu=9.2015 (tc_n=32001)
+step=133000 t=599 dt=0.00464 div=8.50e-11 Theta_c=0.0603 | umax=0.775 vmax=0.0714 wmax=0.0963 T=[-0.494,0.492]
+  [Nu] running: Nu=9.2595 (tc_n=33001)
+step=134000 t=603 dt=0.00435 div=8.43e-11 Theta_c=0.0605 | umax=1.65 vmax=0.0363 wmax=0.205 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3120 (tc_n=34001)
+step=135000 t=608 dt=0.00321 div=6.69e-11 Theta_c=0.0606 | umax=1.18 vmax=0.0482 wmax=0.149 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3584 (tc_n=35001)
+step=136000 t=612 dt=0.00444 div=8.11e-11 Theta_c=0.0608 | umax=0.811 vmax=0.078 wmax=0.103 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3985 (tc_n=36001)
+step=137000 t=617 dt=0.00674 div=1.25e-10 Theta_c=0.0610 | umax=1.48 vmax=0.0776 wmax=0.193 T=[-0.494,0.493]
+  [Nu] running: Nu=9.4331 (tc_n=37001)
+step=138000 t=621 dt=0.00292 div=5.76e-11 Theta_c=0.0611 | umax=1.08 vmax=0.059 wmax=0.132 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4617 (tc_n=38001)
+step=139000 t=626 dt=0.00799 div=1.47e-10 Theta_c=0.0612 | umax=1.49 vmax=0.0711 wmax=0.183 T=[-0.494,0.493]
+  [Nu] running: Nu=9.4849 (tc_n=39001)
+step=140000 t=630 dt=0.00457 div=8.57e-11 Theta_c=0.0614 | umax=0.897 vmax=0.0524 wmax=0.115 T=[-0.493,0.492]
+  [Nu] running: Nu=9.5031 (tc_n=40001)
+step=141000 t=635 dt=0.00541 div=9.65e-11 Theta_c=0.0615 | umax=1.51 vmax=0.0495 wmax=0.196 T=[-0.493,0.493]
+  [Nu] running: Nu=9.5173 (tc_n=41001)
+step=142000 t=639 dt=0.005 div=9.30e-11 Theta_c=0.0616 | umax=0.989 vmax=0.0557 wmax=0.126 T=[-0.493,0.492]
+  [Nu] running: Nu=9.5274 (tc_n=42001)
+step=143000 t=644 dt=0.00558 div=9.90e-11 Theta_c=0.0617 | umax=0.924 vmax=0.0644 wmax=0.116 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5341 (tc_n=43001)
+step=144000 t=648 dt=0.00472 div=8.56e-11 Theta_c=0.0618 | umax=1.52 vmax=0.0373 wmax=0.195 T=[-0.494,0.493]
+  [Nu] running: Nu=9.5380 (tc_n=44001)
+step=145000 t=653 dt=0.00392 div=7.20e-11 Theta_c=0.0619 | umax=1.05 vmax=0.0541 wmax=0.133 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5398 (tc_n=45001)
+step=146000 t=657 dt=0.00296 div=5.76e-11 Theta_c=0.0620 | umax=1.29 vmax=0.0388 wmax=0.164 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5393 (tc_n=46001)
+step=147000 t=662 dt=0.00549 div=1.05e-10 Theta_c=0.0622 | umax=0.939 vmax=0.0638 wmax=0.121 T=[-0.494,0.493]
+  [Nu] running: Nu=9.5373 (tc_n=47001)
+step=148000 t=666 dt=0.00852 div=1.45e-10 Theta_c=0.0623 | umax=1.57 vmax=0.0667 wmax=0.201 T=[-0.494,0.493]
+  [Nu] running: Nu=9.5336 (tc_n=48001)
+step=149000 t=671 dt=0.00524 div=9.84e-11 Theta_c=0.0624 | umax=0.814 vmax=0.0419 wmax=0.103 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5288 (tc_n=49001)
+step=150000 t=675 dt=0.00658 div=1.11e-10 Theta_c=0.0625 | umax=1.75 vmax=0.0671 wmax=0.222 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5228 (tc_n=50001)
+step=151000 t=680 dt=0.0057 div=9.83e-11 Theta_c=0.0626 | umax=1.28 vmax=0.0564 wmax=0.156 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5160 (tc_n=51001)
+step=152000 t=684 dt=0.00375 div=7.46e-11 Theta_c=0.0627 | umax=0.954 vmax=0.0645 wmax=0.12 T=[-0.494,0.492]
+  [Nu] running: Nu=9.5089 (tc_n=52001)
+step=153000 t=689 dt=0.00476 div=8.97e-11 Theta_c=0.0629 | umax=0.661 vmax=0.0732 wmax=0.0843 T=[-0.494,0.493]
+  [Nu] running: Nu=9.5016 (tc_n=53001)
+step=154000 t=693 dt=0.00349 div=6.90e-11 Theta_c=0.0630 | umax=1.55 vmax=0.0351 wmax=0.195 T=[-0.494,0.493]
+  [Nu] running: Nu=9.4940 (tc_n=54001)
+step=155000 t=698 dt=0.00472 div=8.79e-11 Theta_c=0.0631 | umax=1.13 vmax=0.0406 wmax=0.142 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4861 (tc_n=55001)
+step=156000 t=702 dt=0.00433 div=8.59e-11 Theta_c=0.0632 | umax=1.9 vmax=0.0387 wmax=0.241 T=[-0.493,0.492]
+  [Nu] running: Nu=9.4781 (tc_n=56001)
+step=157000 t=707 dt=0.0031 div=5.86e-11 Theta_c=0.0634 | umax=1.61 vmax=0.0336 wmax=0.196 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4701 (tc_n=57001)
+step=158000 t=711 dt=0.00461 div=8.59e-11 Theta_c=0.0635 | umax=1.06 vmax=0.0502 wmax=0.136 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4623 (tc_n=58001)
+step=159000 t=716 dt=0.00705 div=1.26e-10 Theta_c=0.0636 | umax=1.96 vmax=0.0672 wmax=0.252 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4546 (tc_n=59001)
+step=160000 t=720 dt=0.007 div=1.21e-10 Theta_c=0.0637 | umax=0.72 vmax=0.0751 wmax=0.0919 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4470 (tc_n=60001)
+step=161000 t=725 dt=0.00344 div=7.30e-11 Theta_c=0.0639 | umax=1.23 vmax=0.0622 wmax=0.15 T=[-0.494,0.492]
+  [Nu] running: Nu=9.4397 (tc_n=61001)
+step=162000 t=729 dt=0.00682 div=1.21e-10 Theta_c=0.0640 | umax=0.596 vmax=0.0828 wmax=0.08 T=[-0.493,0.493]
+  [Nu] running: Nu=9.4322 (tc_n=62001)
+step=163000 t=734 dt=0.00502 div=9.29e-11 Theta_c=0.0641 | umax=1.16 vmax=0.0506 wmax=0.148 T=[-0.493,0.493]
+  [Nu] running: Nu=9.4248 (tc_n=63001)
+step=164000 t=738 dt=0.00635 div=1.15e-10 Theta_c=0.0643 | umax=0.543 vmax=0.0764 wmax=0.0875 T=[-0.493,0.493]
+  [Nu] running: Nu=9.4175 (tc_n=64001)
+step=165000 t=743 dt=0.00464 div=8.85e-11 Theta_c=0.0644 | umax=1.14 vmax=0.0337 wmax=0.142 T=[-0.493,0.493]
+  [Nu] running: Nu=9.4101 (tc_n=65001)
+step=166000 t=747 dt=0.00594 div=1.01e-10 Theta_c=0.0645 | umax=2.13 vmax=0.0631 wmax=0.26 T=[-0.493,0.493]
+  [Nu] running: Nu=9.4026 (tc_n=66001)
+step=167000 t=752 dt=0.00399 div=7.62e-11 Theta_c=0.0647 | umax=1.15 vmax=0.0497 wmax=0.144 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3951 (tc_n=67001)
+step=168000 t=756 dt=0.00348 div=7.18e-11 Theta_c=0.0648 | umax=1.27 vmax=0.0399 wmax=0.162 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3882 (tc_n=68001)
+step=169000 t=761 dt=0.00438 div=7.85e-11 Theta_c=0.0649 | umax=1.29 vmax=0.0496 wmax=0.164 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3817 (tc_n=69001)
+step=170000 t=765 dt=0.0047 div=9.32e-11 Theta_c=0.0650 | umax=0.551 vmax=0.0983 wmax=0.106 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3759 (tc_n=70001)
+step=171000 t=770 dt=0.00566 div=1.08e-10 Theta_c=0.0652 | umax=1.24 vmax=0.0479 wmax=0.152 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3708 (tc_n=71001)
+step=172000 t=774 dt=0.00578 div=9.93e-11 Theta_c=0.0653 | umax=0.783 vmax=0.0581 wmax=0.0994 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3663 (tc_n=72001)
+step=173000 t=779 dt=0.0044 div=8.26e-11 Theta_c=0.0654 | umax=1.16 vmax=0.0397 wmax=0.145 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3623 (tc_n=73001)
+step=174000 t=783 dt=0.00372 div=6.97e-11 Theta_c=0.0656 | umax=1.14 vmax=0.0603 wmax=0.135 T=[-0.492,0.492]
+  [Nu] running: Nu=9.3590 (tc_n=74001)
+step=175000 t=788 dt=0.00592 div=1.10e-10 Theta_c=0.0657 | umax=1.06 vmax=0.0782 wmax=0.131 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3560 (tc_n=75001)
+step=176000 t=792 dt=0.00626 div=1.20e-10 Theta_c=0.0658 | umax=0.843 vmax=0.0868 wmax=0.105 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3536 (tc_n=76001)
+step=177000 t=797 dt=0.0037 div=6.92e-11 Theta_c=0.0660 | umax=1.45 vmax=0.0787 wmax=0.184 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3516 (tc_n=77001)
+step=178000 t=801 dt=0.00583 div=1.15e-10 Theta_c=0.0661 | umax=0.987 vmax=0.0718 wmax=0.132 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3500 (tc_n=78001)
+step=179000 t=806 dt=0.00403 div=8.16e-11 Theta_c=0.0662 | umax=0.601 vmax=0.0776 wmax=0.103 T=[-0.493,0.492]
+  [Nu] running: Nu=9.3486 (tc_n=79001)
+step=180000 t=810 dt=0.00904 div=1.44e-10 Theta_c=0.0663 | umax=1.44 vmax=0.0649 wmax=0.173 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3476 (tc_n=80001)
+step=181000 t=815 dt=0.0025 div=4.87e-11 Theta_c=0.0665 | umax=1.34 vmax=0.0571 wmax=0.17 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3470 (tc_n=81001)
+step=182000 t=819 dt=0.00398 div=7.47e-11 Theta_c=0.0666 | umax=1.26 vmax=0.0401 wmax=0.159 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3469 (tc_n=82001)
+step=183000 t=824 dt=0.00322 div=7.27e-11 Theta_c=0.0667 | umax=1.56 vmax=0.0374 wmax=0.199 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3473 (tc_n=83001)
+step=184000 t=828 dt=0.00407 div=8.00e-11 Theta_c=0.0669 | umax=0.82 vmax=0.0528 wmax=0.103 T=[-0.493,0.492]
+  [Nu] running: Nu=9.3482 (tc_n=84001)
+step=185000 t=832 dt=0.00259 div=5.55e-11 Theta_c=0.0670 | umax=1.27 vmax=0.0582 wmax=0.159 T=[-0.493,0.492]
+  [Nu] running: Nu=9.3496 (tc_n=85001)
+step=186000 t=837 dt=0.00711 div=1.23e-10 Theta_c=0.0672 | umax=1.15 vmax=0.0648 wmax=0.155 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3514 (tc_n=86001)
+step=187000 t=841 dt=0.00595 div=1.16e-10 Theta_c=0.0673 | umax=0.981 vmax=0.073 wmax=0.124 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3535 (tc_n=87001)
+step=188000 t=846 dt=0.00488 div=9.11e-11 Theta_c=0.0674 | umax=0.472 vmax=0.0793 wmax=0.101 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3560 (tc_n=88001)
+step=189000 t=850 dt=0.00497 div=9.97e-11 Theta_c=0.0675 | umax=0.547 vmax=0.0713 wmax=0.0946 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3588 (tc_n=89001)
+step=190000 t=855 dt=0.00312 div=6.14e-11 Theta_c=0.0677 | umax=1.3 vmax=0.0717 wmax=0.167 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3618 (tc_n=90001)
+step=191000 t=859 dt=0.00246 div=5.26e-11 Theta_c=0.0678 | umax=1.44 vmax=0.0738 wmax=0.173 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3648 (tc_n=91001)
+step=192000 t=864 dt=0.00391 div=7.80e-11 Theta_c=0.0679 | umax=1.87 vmax=0.04 wmax=0.242 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3679 (tc_n=92001)
+step=193000 t=868 dt=0.00412 div=8.53e-11 Theta_c=0.0681 | umax=1.17 vmax=0.041 wmax=0.15 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3710 (tc_n=93001)
+step=194000 t=873 dt=0.00398 div=7.68e-11 Theta_c=0.0682 | umax=1.1 vmax=0.0472 wmax=0.137 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3741 (tc_n=94001)
+step=195000 t=877 dt=0.00374 div=7.78e-11 Theta_c=0.0683 | umax=0.946 vmax=0.0487 wmax=0.118 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3771 (tc_n=95001)
+step=196000 t=882 dt=0.00276 div=5.42e-11 Theta_c=0.0684 | umax=1.37 vmax=0.0515 wmax=0.168 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3799 (tc_n=96001)
+step=197000 t=886 dt=0.00364 div=7.24e-11 Theta_c=0.0686 | umax=1.02 vmax=0.0935 wmax=0.127 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3823 (tc_n=97001)
+step=198000 t=891 dt=0.00329 div=6.84e-11 Theta_c=0.0687 | umax=1.12 vmax=0.0487 wmax=0.143 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3844 (tc_n=98001)
+step=199000 t=895 dt=0.00315 div=6.17e-11 Theta_c=0.0688 | umax=1.62 vmax=0.0398 wmax=0.193 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3862 (tc_n=99001)
+step=200000 t=900 dt=0.00261 div=5.31e-11 Theta_c=0.0689 | umax=1.27 vmax=0.0689 wmax=0.152 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3879 (tc_n=100001)
+step=201000 t=904 dt=0.00361 div=6.88e-11 Theta_c=0.0691 | umax=1.3 vmax=0.0356 wmax=0.161 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3894 (tc_n=101001)
+step=202000 t=909 dt=0.00328 div=6.68e-11 Theta_c=0.0692 | umax=1.2 vmax=0.0606 wmax=0.15 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3907 (tc_n=102001)
+step=203000 t=913 dt=0.00348 div=7.10e-11 Theta_c=0.0693 | umax=1.16 vmax=0.0684 wmax=0.145 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3916 (tc_n=103001)
+step=204000 t=917 dt=0.00739 div=1.24e-10 Theta_c=0.0694 | umax=0.776 vmax=0.0972 wmax=0.0905 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3925 (tc_n=104001)
+step=205000 t=922 dt=0.00331 div=6.75e-11 Theta_c=0.0696 | umax=1.17 vmax=0.0691 wmax=0.147 T=[-0.494,0.492]
+  [Nu] running: Nu=9.3931 (tc_n=105001)
+step=206000 t=926 dt=0.00383 div=7.13e-11 Theta_c=0.0697 | umax=0.869 vmax=0.0642 wmax=0.109 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3935 (tc_n=106001)
+step=207000 t=931 dt=0.0026 div=5.55e-11 Theta_c=0.0698 | umax=2.04 vmax=0.0332 wmax=0.248 T=[-0.494,0.493]
+  [Nu] running: Nu=9.3936 (tc_n=107001)
+step=208000 t=935 dt=0.00446 div=8.28e-11 Theta_c=0.0699 | umax=0.845 vmax=0.0563 wmax=0.106 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3934 (tc_n=108001)
+step=209000 t=940 dt=0.00265 div=5.28e-11 Theta_c=0.0701 | umax=1.58 vmax=0.0373 wmax=0.188 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3930 (tc_n=109001)
+step=210000 t=944 dt=0.00256 div=5.05e-11 Theta_c=0.0702 | umax=1.55 vmax=0.0446 wmax=0.196 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3924 (tc_n=110001)
+step=211000 t=949 dt=0.00463 div=8.18e-11 Theta_c=0.0703 | umax=1.2 vmax=0.0489 wmax=0.151 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3918 (tc_n=111001)
+step=212000 t=953 dt=0.00503 div=9.10e-11 Theta_c=0.0704 | umax=1.71 vmax=0.0452 wmax=0.222 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3911 (tc_n=112001)
+step=213000 t=958 dt=0.00454 div=8.51e-11 Theta_c=0.0705 | umax=1.6 vmax=0.0524 wmax=0.204 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3903 (tc_n=113001)
+step=214000 t=962 dt=0.00571 div=9.89e-11 Theta_c=0.0707 | umax=0.802 vmax=0.0591 wmax=0.102 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3896 (tc_n=114001)
+step=215000 t=966 dt=0.00437 div=9.52e-11 Theta_c=0.0708 | umax=0.668 vmax=0.0658 wmax=0.0963 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3888 (tc_n=115001)
+step=216000 t=971 dt=0.00409 div=8.55e-11 Theta_c=0.0709 | umax=1.46 vmax=0.0399 wmax=0.177 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3881 (tc_n=116001)
+step=217000 t=975 dt=0.00378 div=8.35e-11 Theta_c=0.0710 | umax=1.89 vmax=0.0488 wmax=0.244 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3871 (tc_n=117001)
+step=218000 t=980 dt=0.00465 div=8.74e-11 Theta_c=0.0711 | umax=0.942 vmax=0.0634 wmax=0.116 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3860 (tc_n=118001)
+step=219000 t=984 dt=0.0069 div=1.22e-10 Theta_c=0.0713 | umax=1.09 vmax=0.0817 wmax=0.137 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3848 (tc_n=119001)
+step=220000 t=989 dt=0.00495 div=8.84e-11 Theta_c=0.0714 | umax=1.56 vmax=0.0592 wmax=0.184 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3834 (tc_n=120001)
+step=221000 t=993 dt=0.00606 div=1.07e-10 Theta_c=0.0715 | umax=1.28 vmax=0.0549 wmax=0.168 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3819 (tc_n=121001)
+step=222000 t=998 dt=0.00385 div=8.10e-11 Theta_c=0.0716 | umax=1.02 vmax=0.0572 wmax=0.127 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3803 (tc_n=122001)
+step=223000 t=1e+03 dt=0.00348 div=6.49e-11 Theta_c=0.0717 | umax=1.94 vmax=0.034 wmax=0.241 T=[-0.493,0.492]
+  [Nu] running: Nu=9.3787 (tc_n=123001)
+step=224000 t=1.01e+03 dt=0.00835 div=1.38e-10 Theta_c=0.0719 | umax=1.59 vmax=0.0899 wmax=0.196 T=[-0.493,0.492]
+  [Nu] running: Nu=9.3773 (tc_n=124001)
+step=225000 t=1.01e+03 dt=0.00382 div=7.34e-11 Theta_c=0.0720 | umax=0.991 vmax=0.0755 wmax=0.125 T=[-0.493,0.492]
+  [Nu] running: Nu=9.3761 (tc_n=125001)
+step=226000 t=1.02e+03 dt=0.00783 div=1.42e-10 Theta_c=0.0721 | umax=1.13 vmax=0.0751 wmax=0.142 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3749 (tc_n=126001)
+step=227000 t=1.02e+03 dt=0.00351 div=7.07e-11 Theta_c=0.0722 | umax=0.741 vmax=0.0654 wmax=0.106 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3740 (tc_n=127001)
+step=228000 t=1.02e+03 dt=0.00706 div=1.24e-10 Theta_c=0.0723 | umax=0.878 vmax=0.0548 wmax=0.11 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3732 (tc_n=128001)
+step=229000 t=1.03e+03 dt=0.00428 div=8.42e-11 Theta_c=0.0725 | umax=1.6 vmax=0.0538 wmax=0.193 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3725 (tc_n=129001)
+step=230000 t=1.03e+03 dt=0.00437 div=8.20e-11 Theta_c=0.0726 | umax=0.683 vmax=0.054 wmax=0.0899 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3717 (tc_n=130001)
+step=231000 t=1.04e+03 dt=0.00388 div=7.35e-11 Theta_c=0.0727 | umax=1.32 vmax=0.0362 wmax=0.169 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3709 (tc_n=131001)
+step=232000 t=1.04e+03 dt=0.00391 div=8.52e-11 Theta_c=0.0728 | umax=0.815 vmax=0.0648 wmax=0.106 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3701 (tc_n=132001)
+step=233000 t=1.05e+03 dt=0.00369 div=6.83e-11 Theta_c=0.0729 | umax=1.9 vmax=0.0386 wmax=0.231 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3692 (tc_n=133001)
+step=234000 t=1.05e+03 dt=0.00961 div=1.53e-10 Theta_c=0.0731 | umax=1.31 vmax=0.0735 wmax=0.172 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3683 (tc_n=134001)
+step=235000 t=1.06e+03 dt=0.00328 div=6.55e-11 Theta_c=0.0732 | umax=1.22 vmax=0.0484 wmax=0.152 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3674 (tc_n=135001)
+step=236000 t=1.06e+03 dt=0.00526 div=9.67e-11 Theta_c=0.0733 | umax=0.988 vmax=0.0605 wmax=0.124 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3667 (tc_n=136001)
+step=237000 t=1.06e+03 dt=0.00369 div=7.72e-11 Theta_c=0.0734 | umax=1.06 vmax=0.0538 wmax=0.135 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3661 (tc_n=137001)
+step=238000 t=1.07e+03 dt=0.00295 div=5.90e-11 Theta_c=0.0735 | umax=1.62 vmax=0.041 wmax=0.196 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3654 (tc_n=138001)
+step=239000 t=1.07e+03 dt=0.00275 div=5.67e-11 Theta_c=0.0736 | umax=1.69 vmax=0.0321 wmax=0.219 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3649 (tc_n=139001)
+step=240000 t=1.08e+03 dt=0.00308 div=6.62e-11 Theta_c=0.0738 | umax=0.967 vmax=0.0662 wmax=0.122 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3643 (tc_n=140001)
+step=241000 t=1.08e+03 dt=0.00375 div=8.52e-11 Theta_c=0.0739 | umax=1.92 vmax=0.0349 wmax=0.247 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3639 (tc_n=141001)
+step=242000 t=1.09e+03 dt=0.00379 div=7.81e-11 Theta_c=0.0740 | umax=0.991 vmax=0.0546 wmax=0.126 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3635 (tc_n=142001)
+step=243000 t=1.09e+03 dt=0.00216 div=5.03e-11 Theta_c=0.0741 | umax=1.75 vmax=0.0515 wmax=0.215 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3633 (tc_n=143001)
+step=244000 t=1.1e+03 dt=0.0044 div=8.30e-11 Theta_c=0.0742 | umax=0.616 vmax=0.0868 wmax=0.104 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3631 (tc_n=144001)
+step=245000 t=1.1e+03 dt=0.00308 div=6.87e-11 Theta_c=0.0744 | umax=1.85 vmax=0.0346 wmax=0.235 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3630 (tc_n=145001)
+step=246000 t=1.1e+03 dt=0.00507 div=8.32e-11 Theta_c=0.0745 | umax=1.17 vmax=0.0367 wmax=0.149 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3629 (tc_n=146001)
+step=247000 t=1.11e+03 dt=0.00673 div=1.31e-10 Theta_c=0.0746 | umax=1 vmax=0.0667 wmax=0.129 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3628 (tc_n=147001)
+step=248000 t=1.11e+03 dt=0.00393 div=7.76e-11 Theta_c=0.0747 | umax=1.04 vmax=0.0536 wmax=0.127 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3626 (tc_n=148001)
+step=249000 t=1.12e+03 dt=0.00437 div=8.89e-11 Theta_c=0.0748 | umax=0.995 vmax=0.0475 wmax=0.124 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3623 (tc_n=149001)
+step=250000 t=1.12e+03 dt=0.0053 div=9.36e-11 Theta_c=0.0749 | umax=0.725 vmax=0.0652 wmax=0.093 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3620 (tc_n=150001)
+step=251000 t=1.13e+03 dt=0.00387 div=8.14e-11 Theta_c=0.0751 | umax=1.41 vmax=0.0454 wmax=0.177 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3615 (tc_n=151001)
+step=252000 t=1.13e+03 dt=0.00419 div=7.77e-11 Theta_c=0.0752 | umax=0.921 vmax=0.0706 wmax=0.113 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3609 (tc_n=152001)
+step=253000 t=1.14e+03 dt=0.00294 div=6.21e-11 Theta_c=0.0753 | umax=1.79 vmax=0.0283 wmax=0.23 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3603 (tc_n=153001)
+step=254000 t=1.14e+03 dt=0.00416 div=8.17e-11 Theta_c=0.0754 | umax=0.813 vmax=0.0643 wmax=0.102 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3597 (tc_n=154001)
+step=255000 t=1.14e+03 dt=0.00758 div=1.35e-10 Theta_c=0.0755 | umax=1.05 vmax=0.0754 wmax=0.137 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3591 (tc_n=155001)
+step=256000 t=1.15e+03 dt=0.00379 div=7.71e-11 Theta_c=0.0756 | umax=1.57 vmax=0.0373 wmax=0.201 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3585 (tc_n=156001)
+step=257000 t=1.15e+03 dt=0.00582 div=9.96e-11 Theta_c=0.0758 | umax=0.841 vmax=0.0913 wmax=0.108 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3581 (tc_n=157001)
+step=258000 t=1.16e+03 dt=0.00511 div=1.03e-10 Theta_c=0.0759 | umax=0.887 vmax=0.0795 wmax=0.112 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3577 (tc_n=158001)
+step=259000 t=1.16e+03 dt=0.00498 div=9.74e-11 Theta_c=0.0760 | umax=1.4 vmax=0.0478 wmax=0.178 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3573 (tc_n=159001)
+step=260000 t=1.17e+03 dt=0.004 div=8.75e-11 Theta_c=0.0761 | umax=1.02 vmax=0.0598 wmax=0.128 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3569 (tc_n=160001)
+step=261000 t=1.17e+03 dt=0.00237 div=5.77e-11 Theta_c=0.0762 | umax=1.33 vmax=0.087 wmax=0.158 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3564 (tc_n=161001)
+step=262000 t=1.18e+03 dt=0.00514 div=9.14e-11 Theta_c=0.0763 | umax=0.964 vmax=0.0615 wmax=0.121 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3559 (tc_n=162001)
+step=263000 t=1.18e+03 dt=0.00616 div=1.10e-10 Theta_c=0.0764 | umax=1.81 vmax=0.0597 wmax=0.23 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3551 (tc_n=163001)
+step=264000 t=1.18e+03 dt=0.00417 div=8.45e-11 Theta_c=0.0766 | umax=0.711 vmax=0.0678 wmax=0.1 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3543 (tc_n=164001)
+step=265000 t=1.19e+03 dt=0.00281 div=5.91e-11 Theta_c=0.0767 | umax=1.3 vmax=0.051 wmax=0.163 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3534 (tc_n=165001)
+step=266000 t=1.19e+03 dt=0.00462 div=8.90e-11 Theta_c=0.0768 | umax=0.891 vmax=0.0587 wmax=0.113 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3524 (tc_n=166001)
+step=267000 t=1.2e+03 dt=0.00355 div=7.11e-11 Theta_c=0.0769 | umax=1.65 vmax=0.0322 wmax=0.203 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3513 (tc_n=167001)
+step=268000 t=1.2e+03 dt=0.006 div=1.14e-10 Theta_c=0.0770 | umax=0.759 vmax=0.0706 wmax=0.0962 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3503 (tc_n=168001)
+step=269000 t=1.21e+03 dt=0.00421 div=7.73e-11 Theta_c=0.0771 | umax=1.04 vmax=0.0494 wmax=0.133 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3493 (tc_n=169001)
+step=270000 t=1.21e+03 dt=0.00318 div=6.28e-11 Theta_c=0.0773 | umax=1.2 vmax=0.0487 wmax=0.15 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3484 (tc_n=170001)
+step=271000 t=1.22e+03 dt=0.00231 div=4.89e-11 Theta_c=0.0774 | umax=1.55 vmax=0.0635 wmax=0.19 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3474 (tc_n=171001)
+step=272000 t=1.22e+03 dt=0.00301 div=6.52e-11 Theta_c=0.0775 | umax=1.62 vmax=0.0519 wmax=0.195 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3463 (tc_n=172001)
+step=273000 t=1.22e+03 dt=0.00337 div=7.12e-11 Theta_c=0.0776 | umax=1.25 vmax=0.0464 wmax=0.157 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3451 (tc_n=173001)
+step=274000 t=1.23e+03 dt=0.00336 div=6.82e-11 Theta_c=0.0777 | umax=1.12 vmax=0.0439 wmax=0.145 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3436 (tc_n=174001)
+step=275000 t=1.23e+03 dt=0.00268 div=5.83e-11 Theta_c=0.0778 | umax=1.39 vmax=0.0656 wmax=0.178 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3421 (tc_n=175001)
+step=276000 t=1.24e+03 dt=0.00349 div=7.07e-11 Theta_c=0.0779 | umax=0.87 vmax=0.066 wmax=0.109 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3403 (tc_n=176001)
+step=277000 t=1.24e+03 dt=0.00367 div=7.02e-11 Theta_c=0.0780 | umax=1.36 vmax=0.0362 wmax=0.166 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3384 (tc_n=177001)
+step=278000 t=1.25e+03 dt=0.00554 div=1.00e-10 Theta_c=0.0782 | umax=0.546 vmax=0.0785 wmax=0.0905 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3365 (tc_n=178001)
+step=279000 t=1.25e+03 dt=0.00335 div=6.69e-11 Theta_c=0.0783 | umax=0.979 vmax=0.0612 wmax=0.122 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3346 (tc_n=179001)
+step=280000 t=1.26e+03 dt=0.0079 div=1.31e-10 Theta_c=0.0784 | umax=1.27 vmax=0.0785 wmax=0.165 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3327 (tc_n=180001)
+step=281000 t=1.26e+03 dt=0.00512 div=9.50e-11 Theta_c=0.0785 | umax=1.62 vmax=0.05 wmax=0.209 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3309 (tc_n=181001)
+step=282000 t=1.27e+03 dt=0.00236 div=4.93e-11 Theta_c=0.0786 | umax=1.5 vmax=0.0523 wmax=0.187 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3293 (tc_n=182001)
+step=283000 t=1.27e+03 dt=0.0035 div=7.01e-11 Theta_c=0.0787 | umax=1.2 vmax=0.0516 wmax=0.151 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3280 (tc_n=183001)
+step=284000 t=1.27e+03 dt=0.00291 div=6.20e-11 Theta_c=0.0788 | umax=0.902 vmax=0.0804 wmax=0.131 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3270 (tc_n=184001)
+step=285000 t=1.28e+03 dt=0.0037 div=7.34e-11 Theta_c=0.0789 | umax=0.962 vmax=0.0563 wmax=0.121 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3262 (tc_n=185001)
+step=286000 t=1.28e+03 dt=0.00395 div=6.94e-11 Theta_c=0.0790 | umax=1.28 vmax=0.0389 wmax=0.162 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3256 (tc_n=186001)
+step=287000 t=1.29e+03 dt=0.00489 div=9.71e-11 Theta_c=0.0792 | umax=0.825 vmax=0.0646 wmax=0.105 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3252 (tc_n=187001)
+step=288000 t=1.29e+03 dt=0.00525 div=9.37e-11 Theta_c=0.0793 | umax=0.778 vmax=0.0493 wmax=0.0973 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3249 (tc_n=188001)
+step=289000 t=1.3e+03 dt=0.00375 div=7.40e-11 Theta_c=0.0794 | umax=0.675 vmax=0.0726 wmax=0.112 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3247 (tc_n=189001)
+step=290000 t=1.3e+03 dt=0.00845 div=1.47e-10 Theta_c=0.0795 | umax=1.17 vmax=0.0812 wmax=0.153 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3245 (tc_n=190001)
+step=291000 t=1.31e+03 dt=0.00326 div=6.52e-11 Theta_c=0.0796 | umax=1.31 vmax=0.0623 wmax=0.168 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3244 (tc_n=191001)
+step=292000 t=1.31e+03 dt=0.00441 div=8.70e-11 Theta_c=0.0797 | umax=1.55 vmax=0.0371 wmax=0.195 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3245 (tc_n=192001)
+step=293000 t=1.31e+03 dt=0.00303 div=6.16e-11 Theta_c=0.0798 | umax=1.2 vmax=0.0706 wmax=0.137 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3246 (tc_n=193001)
+step=294000 t=1.32e+03 dt=0.00307 div=6.15e-11 Theta_c=0.0799 | umax=1.33 vmax=0.0418 wmax=0.166 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3249 (tc_n=194001)
+step=295000 t=1.32e+03 dt=0.00371 div=7.20e-11 Theta_c=0.0800 | umax=1.04 vmax=0.0841 wmax=0.132 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3253 (tc_n=195001)
+step=296000 t=1.33e+03 dt=0.00497 div=9.37e-11 Theta_c=0.0802 | umax=0.754 vmax=0.056 wmax=0.0962 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3257 (tc_n=196001)
+step=297000 t=1.33e+03 dt=0.00502 div=9.42e-11 Theta_c=0.0803 | umax=1.65 vmax=0.0457 wmax=0.214 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3261 (tc_n=197001)
+step=298000 t=1.34e+03 dt=0.00439 div=8.10e-11 Theta_c=0.0804 | umax=0.865 vmax=0.0574 wmax=0.111 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3266 (tc_n=198001)
+step=299000 t=1.34e+03 dt=0.00283 div=6.16e-11 Theta_c=0.0805 | umax=1.76 vmax=0.0446 wmax=0.214 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3270 (tc_n=199001)
+step=300000 t=1.35e+03 dt=0.00307 div=6.28e-11 Theta_c=0.0806 | umax=1.57 vmax=0.0324 wmax=0.193 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3274 (tc_n=200001)
+step=301000 t=1.35e+03 dt=0.00568 div=1.05e-10 Theta_c=0.0807 | umax=1.57 vmax=0.0556 wmax=0.206 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3278 (tc_n=201001)
+step=302000 t=1.35e+03 dt=0.00538 div=1.04e-10 Theta_c=0.0808 | umax=1.29 vmax=0.0536 wmax=0.158 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3281 (tc_n=202001)
+step=303000 t=1.36e+03 dt=0.00549 div=9.51e-11 Theta_c=0.0809 | umax=1.48 vmax=0.0519 wmax=0.181 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3285 (tc_n=203001)
+step=304000 t=1.36e+03 dt=0.00454 div=8.83e-11 Theta_c=0.0810 | umax=0.655 vmax=0.0934 wmax=0.0967 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3289 (tc_n=204001)
+step=305000 t=1.37e+03 dt=0.00424 div=8.20e-11 Theta_c=0.0811 | umax=1.24 vmax=0.0662 wmax=0.159 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3293 (tc_n=205001)
+step=306000 t=1.37e+03 dt=0.00663 div=1.07e-10 Theta_c=0.0812 | umax=2.05 vmax=0.0561 wmax=0.255 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3297 (tc_n=206001)
+step=307000 t=1.38e+03 dt=0.00491 div=8.90e-11 Theta_c=0.0813 | umax=0.709 vmax=0.0876 wmax=0.109 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3302 (tc_n=207001)
+step=308000 t=1.38e+03 dt=0.00579 div=1.10e-10 Theta_c=0.0815 | umax=0.775 vmax=0.0745 wmax=0.096 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3307 (tc_n=208001)
+step=309000 t=1.39e+03 dt=0.00833 div=1.35e-10 Theta_c=0.0816 | umax=0.903 vmax=0.0821 wmax=0.115 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3311 (tc_n=209001)
+step=310000 t=1.39e+03 dt=0.00481 div=9.15e-11 Theta_c=0.0817 | umax=0.683 vmax=0.0516 wmax=0.0864 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3314 (tc_n=210001)
+step=311000 t=1.39e+03 dt=0.00278 div=5.24e-11 Theta_c=0.0818 | umax=0.888 vmax=0.0945 wmax=0.143 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3316 (tc_n=211001)
+step=312000 t=1.4e+03 dt=0.00336 div=6.41e-11 Theta_c=0.0819 | umax=1.37 vmax=0.0344 wmax=0.158 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3316 (tc_n=212001)
+step=313000 t=1.4e+03 dt=0.00339 div=7.00e-11 Theta_c=0.0820 | umax=1.69 vmax=0.0371 wmax=0.215 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3315 (tc_n=213001)
+step=314000 t=1.41e+03 dt=0.00619 div=1.26e-10 Theta_c=0.0821 | umax=0.809 vmax=0.0641 wmax=0.102 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3313 (tc_n=214001)
+step=315000 t=1.41e+03 dt=0.00823 div=1.41e-10 Theta_c=0.0822 | umax=1.3 vmax=0.0827 wmax=0.161 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3309 (tc_n=215001)
+step=316000 t=1.42e+03 dt=0.00305 div=6.35e-11 Theta_c=0.0823 | umax=1.96 vmax=0.0332 wmax=0.244 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3304 (tc_n=216001)
+step=317000 t=1.42e+03 dt=0.00264 div=5.32e-11 Theta_c=0.0824 | umax=1.36 vmax=0.0447 wmax=0.167 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3298 (tc_n=217001)
+step=318000 t=1.43e+03 dt=0.00389 div=7.64e-11 Theta_c=0.0825 | umax=0.629 vmax=0.0838 wmax=0.112 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3290 (tc_n=218001)
+step=319000 t=1.43e+03 dt=0.0047 div=8.33e-11 Theta_c=0.0826 | umax=1.79 vmax=0.0528 wmax=0.223 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3280 (tc_n=219001)
+step=320000 t=1.43e+03 dt=0.0048 div=8.53e-11 Theta_c=0.0827 | umax=0.526 vmax=0.0868 wmax=0.108 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3269 (tc_n=220001)
+step=321000 t=1.44e+03 dt=0.00602 div=1.03e-10 Theta_c=0.0828 | umax=0.824 vmax=0.0625 wmax=0.106 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3258 (tc_n=221001)
+step=322000 t=1.44e+03 dt=0.00236 div=5.36e-11 Theta_c=0.0829 | umax=1.65 vmax=0.0494 wmax=0.209 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3247 (tc_n=222001)
+step=323000 t=1.45e+03 dt=0.00435 div=8.70e-11 Theta_c=0.0830 | umax=1.07 vmax=0.0531 wmax=0.136 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3235 (tc_n=223001)
+step=324000 t=1.45e+03 dt=0.00422 div=7.77e-11 Theta_c=0.0831 | umax=0.851 vmax=0.0944 wmax=0.107 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3224 (tc_n=224001)
+step=325000 t=1.46e+03 dt=0.00244 div=5.03e-11 Theta_c=0.0832 | umax=1.65 vmax=0.0476 wmax=0.211 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3214 (tc_n=225001)
+step=326000 t=1.46e+03 dt=0.00818 div=1.42e-10 Theta_c=0.0834 | umax=0.98 vmax=0.0784 wmax=0.124 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3204 (tc_n=226001)
+step=327000 t=1.47e+03 dt=0.00707 div=1.39e-10 Theta_c=0.0835 | umax=1.54 vmax=0.0625 wmax=0.199 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3195 (tc_n=227001)
+step=328000 t=1.47e+03 dt=0.00821 div=1.50e-10 Theta_c=0.0836 | umax=1.11 vmax=0.0794 wmax=0.137 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3186 (tc_n=228001)
+step=329000 t=1.47e+03 dt=0.00347 div=7.50e-11 Theta_c=0.0837 | umax=1.53 vmax=0.0448 wmax=0.181 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3178 (tc_n=229001)
+step=330000 t=1.48e+03 dt=0.00418 div=7.61e-11 Theta_c=0.0838 | umax=0.842 vmax=0.0462 wmax=0.107 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3171 (tc_n=230001)
+step=331000 t=1.48e+03 dt=0.00258 div=5.67e-11 Theta_c=0.0839 | umax=1.79 vmax=0.0378 wmax=0.22 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3164 (tc_n=231001)
+step=332000 t=1.49e+03 dt=0.00337 div=6.85e-11 Theta_c=0.0840 | umax=1.71 vmax=0.032 wmax=0.219 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3157 (tc_n=232001)
+step=333000 t=1.49e+03 dt=0.00524 div=1.05e-10 Theta_c=0.0841 | umax=1.11 vmax=0.0603 wmax=0.141 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3150 (tc_n=233001)
+step=334000 t=1.5e+03 dt=0.0044 div=9.29e-11 Theta_c=0.0842 | umax=1.08 vmax=0.0462 wmax=0.135 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3142 (tc_n=234001)
+step=335000 t=1.5e+03 dt=0.00348 div=7.20e-11 Theta_c=0.0843 | umax=1.74 vmax=0.0382 wmax=0.223 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3135 (tc_n=235001)
+step=336000 t=1.51e+03 dt=0.00707 div=1.22e-10 Theta_c=0.0844 | umax=0.706 vmax=0.0697 wmax=0.0914 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3127 (tc_n=236001)
+step=337000 t=1.51e+03 dt=0.00384 div=7.47e-11 Theta_c=0.0845 | umax=1.09 vmax=0.0757 wmax=0.136 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3119 (tc_n=237001)
+step=338000 t=1.51e+03 dt=0.00611 div=1.08e-10 Theta_c=0.0846 | umax=0.93 vmax=0.0804 wmax=0.118 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3110 (tc_n=238001)
+step=339000 t=1.52e+03 dt=0.00364 div=6.85e-11 Theta_c=0.0847 | umax=0.755 vmax=0.087 wmax=0.113 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3101 (tc_n=239001)
+step=340000 t=1.52e+03 dt=0.00267 div=5.84e-11 Theta_c=0.0848 | umax=1.41 vmax=0.0732 wmax=0.171 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3092 (tc_n=240001)
+step=341000 t=1.53e+03 dt=0.00351 div=6.97e-11 Theta_c=0.0849 | umax=1.26 vmax=0.0865 wmax=0.161 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3082 (tc_n=241001)
+step=342000 t=1.53e+03 dt=0.00423 div=8.31e-11 Theta_c=0.0850 | umax=1.02 vmax=0.0487 wmax=0.131 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3073 (tc_n=242001)
+step=343000 t=1.54e+03 dt=0.0045 div=8.73e-11 Theta_c=0.0851 | umax=1.36 vmax=0.0447 wmax=0.18 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3066 (tc_n=243001)
+step=344000 t=1.54e+03 dt=0.00261 div=5.53e-11 Theta_c=0.0852 | umax=1.41 vmax=0.0573 wmax=0.179 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3058 (tc_n=244001)
+step=345000 t=1.55e+03 dt=0.00488 div=1.07e-10 Theta_c=0.0853 | umax=1.39 vmax=0.0389 wmax=0.172 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3053 (tc_n=245001)
+step=346000 t=1.55e+03 dt=0.00305 div=6.03e-11 Theta_c=0.0854 | umax=1.36 vmax=0.0447 wmax=0.171 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3047 (tc_n=246001)
+step=347000 t=1.55e+03 dt=0.00209 div=4.63e-11 Theta_c=0.0855 | umax=1.85 vmax=0.0656 wmax=0.228 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3043 (tc_n=247001)
+step=348000 t=1.56e+03 dt=0.00568 div=1.13e-10 Theta_c=0.0856 | umax=0.593 vmax=0.0869 wmax=0.101 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3040 (tc_n=248001)
+step=349000 t=1.56e+03 dt=0.00406 div=8.02e-11 Theta_c=0.0857 | umax=0.992 vmax=0.0987 wmax=0.125 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3037 (tc_n=249001)
+step=350000 t=1.57e+03 dt=0.00358 div=7.04e-11 Theta_c=0.0858 | umax=0.968 vmax=0.0689 wmax=0.12 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3034 (tc_n=250001)
+step=351000 t=1.57e+03 dt=0.0046 div=8.86e-11 Theta_c=0.0859 | umax=1.53 vmax=0.0429 wmax=0.197 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3032 (tc_n=251001)
+step=352000 t=1.58e+03 dt=0.00387 div=8.34e-11 Theta_c=0.0860 | umax=1.18 vmax=0.0538 wmax=0.151 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3030 (tc_n=252001)
+step=353000 t=1.58e+03 dt=0.00498 div=9.83e-11 Theta_c=0.0861 | umax=0.591 vmax=0.0607 wmax=0.0879 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3029 (tc_n=253001)
+step=354000 t=1.59e+03 dt=0.00636 div=1.14e-10 Theta_c=0.0862 | umax=0.945 vmax=0.0716 wmax=0.119 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3028 (tc_n=254001)
+step=355000 t=1.59e+03 dt=0.00338 div=6.99e-11 Theta_c=0.0863 | umax=0.942 vmax=0.0695 wmax=0.122 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3026 (tc_n=255001)
+step=356000 t=1.59e+03 dt=0.00369 div=7.70e-11 Theta_c=0.0864 | umax=1.77 vmax=0.0425 wmax=0.226 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3025 (tc_n=256001)
+step=357000 t=1.6e+03 dt=0.00487 div=9.33e-11 Theta_c=0.0865 | umax=0.687 vmax=0.0655 wmax=0.091 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3024 (tc_n=257001)
+step=358000 t=1.6e+03 dt=0.00464 div=9.66e-11 Theta_c=0.0866 | umax=1.37 vmax=0.0493 wmax=0.171 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3024 (tc_n=258001)
+step=359000 t=1.61e+03 dt=0.00768 div=1.40e-10 Theta_c=0.0867 | umax=0.78 vmax=0.0948 wmax=0.0941 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3024 (tc_n=259001)
+step=360000 t=1.61e+03 dt=0.00327 div=6.63e-11 Theta_c=0.0868 | umax=1.01 vmax=0.0591 wmax=0.125 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3026 (tc_n=260001)
+step=361000 t=1.62e+03 dt=0.00571 div=1.05e-10 Theta_c=0.0869 | umax=0.695 vmax=0.0846 wmax=0.0891 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3028 (tc_n=261001)
+step=362000 t=1.62e+03 dt=0.00466 div=8.85e-11 Theta_c=0.0870 | umax=0.802 vmax=0.0666 wmax=0.103 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3031 (tc_n=262001)
+step=363000 t=1.63e+03 dt=0.00307 div=6.17e-11 Theta_c=0.0871 | umax=1.44 vmax=0.0447 wmax=0.18 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3034 (tc_n=263001)
+step=364000 t=1.63e+03 dt=0.00341 div=7.36e-11 Theta_c=0.0872 | umax=1.07 vmax=0.063 wmax=0.135 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3035 (tc_n=264001)
+step=365000 t=1.63e+03 dt=0.00262 div=6.36e-11 Theta_c=0.0873 | umax=1.53 vmax=0.0525 wmax=0.189 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3035 (tc_n=265001)
+step=366000 t=1.64e+03 dt=0.00494 div=9.56e-11 Theta_c=0.0874 | umax=0.723 vmax=0.0791 wmax=0.094 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3034 (tc_n=266001)
+step=367000 t=1.64e+03 dt=0.00531 div=1.03e-10 Theta_c=0.0875 | umax=0.8 vmax=0.0719 wmax=0.0993 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3032 (tc_n=267001)
+step=368000 t=1.65e+03 dt=0.00259 div=5.43e-11 Theta_c=0.0876 | umax=1.72 vmax=0.047 wmax=0.216 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3030 (tc_n=268001)
+step=369000 t=1.65e+03 dt=0.00353 div=7.25e-11 Theta_c=0.0877 | umax=1.42 vmax=0.046 wmax=0.18 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3027 (tc_n=269001)
+step=370000 t=1.66e+03 dt=0.00378 div=7.10e-11 Theta_c=0.0878 | umax=1.57 vmax=0.0339 wmax=0.196 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3025 (tc_n=270001)
+step=371000 t=1.66e+03 dt=0.00416 div=8.87e-11 Theta_c=0.0879 | umax=0.936 vmax=0.0569 wmax=0.119 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3022 (tc_n=271001)
+step=372000 t=1.67e+03 dt=0.00345 div=6.70e-11 Theta_c=0.0880 | umax=1.02 vmax=0.0503 wmax=0.126 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3021 (tc_n=272001)
+step=373000 t=1.67e+03 dt=0.00549 div=1.04e-10 Theta_c=0.0881 | umax=0.797 vmax=0.0853 wmax=0.103 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3020 (tc_n=273001)
+step=374000 t=1.67e+03 dt=0.00568 div=1.10e-10 Theta_c=0.0882 | umax=0.87 vmax=0.0721 wmax=0.11 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3019 (tc_n=274001)
+step=375000 t=1.68e+03 dt=0.00801 div=1.49e-10 Theta_c=0.0883 | umax=1.21 vmax=0.0661 wmax=0.16 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3020 (tc_n=275001)
+step=376000 t=1.68e+03 dt=0.00589 div=1.13e-10 Theta_c=0.0884 | umax=1.14 vmax=0.0615 wmax=0.142 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3022 (tc_n=276001)
+step=377000 t=1.69e+03 dt=0.00529 div=9.86e-11 Theta_c=0.0885 | umax=1.09 vmax=0.0505 wmax=0.141 T=[-0.493,0.493]
+  [Nu] running: Nu=9.3023 (tc_n=277001)
+step=378000 t=1.69e+03 dt=0.00543 div=1.04e-10 Theta_c=0.0886 | umax=1.14 vmax=0.0486 wmax=0.148 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3024 (tc_n=278001)
+step=379000 t=1.7e+03 dt=0.00293 div=6.37e-11 Theta_c=0.0887 | umax=0.93 vmax=0.0746 wmax=0.132 T=[-0.492,0.493]
+  [Nu] running: Nu=9.3025 (tc_n=279001)
+step=380000 t=1.7e+03 dt=0.0022 div=4.91e-11 Theta_c=0.0888 | umax=1.54 vmax=0.0681 wmax=0.188 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3025 (tc_n=280001)
+step=381000 t=1.71e+03 dt=0.00343 div=6.81e-11 Theta_c=0.0889 | umax=0.875 vmax=0.0835 wmax=0.121 T=[-0.492,0.494]
+  [Nu] running: Nu=9.3024 (tc_n=281001)
+step=382000 t=1.71e+03 dt=0.00541 div=1.04e-10 Theta_c=0.0890 | umax=1.97 vmax=0.0742 wmax=0.244 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3021 (tc_n=282001)
+step=383000 t=1.71e+03 dt=0.00261 div=5.76e-11 Theta_c=0.0891 | umax=1.85 vmax=0.039 wmax=0.229 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3019 (tc_n=283001)
+step=384000 t=1.72e+03 dt=0.00427 div=7.98e-11 Theta_c=0.0892 | umax=0.497 vmax=0.0921 wmax=0.116 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3016 (tc_n=284001)
+step=385000 t=1.72e+03 dt=0.00445 div=8.59e-11 Theta_c=0.0893 | umax=1.02 vmax=0.0673 wmax=0.129 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3014 (tc_n=285001)
+step=386000 t=1.73e+03 dt=0.0027 div=5.86e-11 Theta_c=0.0894 | umax=1.46 vmax=0.0506 wmax=0.178 T=[-0.493,0.495]
+  [Nu] running: Nu=9.3011 (tc_n=286001)
+step=387000 t=1.73e+03 dt=0.00388 div=7.83e-11 Theta_c=0.0895 | umax=1.96 vmax=0.0338 wmax=0.242 T=[-0.493,0.495]
+  [Nu] running: Nu=9.3009 (tc_n=287001)
+step=388000 t=1.74e+03 dt=0.0027 div=5.74e-11 Theta_c=0.0896 | umax=1.14 vmax=0.0703 wmax=0.137 T=[-0.493,0.495]
+  [Nu] running: Nu=9.3006 (tc_n=288001)
+step=389000 t=1.74e+03 dt=0.00254 div=5.55e-11 Theta_c=0.0897 | umax=1.57 vmax=0.0408 wmax=0.2 T=[-0.493,0.495]
+  [Nu] running: Nu=9.3003 (tc_n=289001)
+step=390000 t=1.75e+03 dt=0.00495 div=9.76e-11 Theta_c=0.0898 | umax=0.808 vmax=0.076 wmax=0.103 T=[-0.493,0.494]
+  [Nu] running: Nu=9.3001 (tc_n=290001)
+step=391000 t=1.75e+03 dt=0.00383 div=7.27e-11 Theta_c=0.0899 | umax=1.16 vmax=0.0668 wmax=0.147 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2998 (tc_n=291001)
+step=392000 t=1.75e+03 dt=0.00601 div=1.21e-10 Theta_c=0.0900 | umax=1.54 vmax=0.0619 wmax=0.204 T=[-0.492,0.494]
+  [Nu] running: Nu=9.2995 (tc_n=292001)
+step=393000 t=1.76e+03 dt=0.005 div=9.01e-11 Theta_c=0.0900 | umax=0.892 vmax=0.0573 wmax=0.115 T=[-0.492,0.494]
+  [Nu] running: Nu=9.2990 (tc_n=293001)
+step=394000 t=1.76e+03 dt=0.00672 div=1.13e-10 Theta_c=0.0901 | umax=1.01 vmax=0.0702 wmax=0.123 T=[-0.492,0.494]
+  [Nu] running: Nu=9.2986 (tc_n=294001)
+step=395000 t=1.77e+03 dt=0.00292 div=6.50e-11 Theta_c=0.0902 | umax=1.08 vmax=0.0665 wmax=0.134 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2982 (tc_n=295001)
+step=396000 t=1.77e+03 dt=0.00407 div=7.89e-11 Theta_c=0.0903 | umax=0.679 vmax=0.0903 wmax=0.112 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2978 (tc_n=296001)
+step=397000 t=1.78e+03 dt=0.00357 div=7.07e-11 Theta_c=0.0904 | umax=1.06 vmax=0.057 wmax=0.134 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2975 (tc_n=297001)
+step=398000 t=1.78e+03 dt=0.00312 div=6.39e-11 Theta_c=0.0905 | umax=1.16 vmax=0.0524 wmax=0.145 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2971 (tc_n=298001)
+step=399000 t=1.79e+03 dt=0.00396 div=8.09e-11 Theta_c=0.0906 | umax=0.631 vmax=0.0862 wmax=0.118 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2969 (tc_n=299001)
+step=400000 t=1.79e+03 dt=0.0068 div=1.12e-10 Theta_c=0.0907 | umax=0.581 vmax=0.0751 wmax=0.0854 T=[-0.493,0.494]
+  [Nu] running: Nu=9.2966 (tc_n=300001)
+[TIMING_SS] 399990 steps (steady-state)  total=29.0 ms/step
+[restart] wrote to apps/rbc/restart_out_60_x/ (step=400000 tc_n=300001)

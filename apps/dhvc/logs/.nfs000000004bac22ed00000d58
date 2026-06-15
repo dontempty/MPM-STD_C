@@ -1,0 +1,42 @@
+=== BUILD Mon Jun 15 08:32:38 KST 2026 ===
+  NVCC  src/core/gpu/halo_gpu.cu
+  NVCC  src/equation/momentum/gpu/momentum_gpu.cu
+  NVCC  src/equation/scalar/gpu/scalar_gpu.cu
+"src/equation/scalar/gpu/scalar_gpu.cu", line 217: warning: function "<unnamed>::k_copy_field" was declared but never referenced [declared_but_not_referenced]
+  __global__ void k_copy_field(double* dst, const double* src, int n) {
+                  ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+"src/equation/momentum/gpu/momentum_gpu.cu", line 105: warning: function "<unnamed>::ensure_ob_property_bufs_mom" was declared but never referenced [declared_but_not_referenced]
+  void ensure_ob_property_bufs_mom(std::size_t nf, double nu)
+       ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+  LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/channel
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/dhvc
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/cavity
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/validate
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_cpu_ob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_gpu_ob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_cpu_nob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_gpu_nob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/dhvc_gpu
+  TEST  /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/tests/unit/test_smoke_cpu
+/shared/home/wel1come1234/workspace/MPM-STD_C/tests/unit/test_smoke_cpu.cpp:
+"apps/dhvc/main_gpu.cu", line 403: warning: variable "t_ss" was set but never used [set_but_not_used]
+      double t_ss = 0.0; int n_time_steps = 10;
+             ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+=== RUN timing 864x192x416 n_steps=20 Mon Jun 15 08:33:01 KST 2026 ===
+[dhvc_gpu] Ra=1.00e+07 Pr=0.7 nu=2.6458e-04 alpha=3.7796e-04 n=864x192x416 GPU
+[TIMING] 10 steps  total=996.2 ms/step
+[TIMING_BREAKDOWN] per step:  cfl=1.0  scalar=71.0  mom=133.3  corr=0.9  sync=8.0  pres=782.0  ms
+[TIMING_SS] 10 steps (steady-state)  total=234.1 ms/step
+[dhvc_gpu] done: Ra=1.00e+07  Re_dstar=0.0000  (target=20.9762)
+DONE Mon Jun 15 08:33:26 KST 2026

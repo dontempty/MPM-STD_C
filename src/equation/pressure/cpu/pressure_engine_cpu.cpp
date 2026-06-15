@@ -1,5 +1,9 @@
 #include "equation/pressure/pressure_engine.hpp"
 #include "common/macros.hpp"
+#include "linear_solver/tdma/pascal_tdma_cpu_backend.hpp"
+#ifdef MPMSTD_BACKEND_CUDA
+  #include "linear_solver/tdma/pascal_tdma_cuda_backend.hpp"
+#endif
 
 #include <fftw3.h>
 #include <mpi.h>
@@ -254,6 +258,12 @@ PressureSolver::PressureSolver(const grid::Grid&                  grid,
     comm_xz_1d_.west_rank = (rank_xz > 0)           ? rank_xz - 1 : MPI_PROC_NULL;
     comm_xz_1d_.east_rank = (rank_xz < size_xz - 1) ? rank_xz + 1 : MPI_PROC_NULL;
 
+    // Always use CPU backend for pressure TDMA z.  The CUDA backend copies host
+    // arrays to device before solve; PaScaLTDMAManyCUDA::solve() then uses
+    // device pointers in MPI_Sendrecv calls.  On gpu01 the OpenMPI was compiled
+    // against CUDA 10.0 which is incompatible with A100 (sm_80, needs CUDA 11+),
+    // making every device-pointer MPI call ~200 ms via a slow fallback path.
+    // The CPU backend stays entirely on host memory and avoids this bottleneck.
     tdma_z_ = std::make_unique<linear_solver::tdma::PaScaLTDMACpuBackend>(comm_xz_1d_);
 
     const std::size_t tsz = (std::size_t)n3_I_ * std::max(n_sys_Y_, 1);

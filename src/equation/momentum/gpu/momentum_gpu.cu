@@ -200,8 +200,9 @@ __global__ void k_mom_adi_ob(
         double nu, double dt,
         bool z_staggered)
 {
-    const int row = blockIdx.x * blockDim.x + threadIdx.x;
-    const int sys = blockIdx.y * blockDim.y + threadIdx.y;
+    // sys in threadIdx.x → warp has adjacent sys → coalesced writes to A/B/C/D[row*n_sys+sys]
+    const int sys = blockIdx.x * blockDim.x + threadIdx.x;
+    const int row = blockIdx.y * blockDim.y + threadIdx.y;
 
     int i, j, k, n_row_max, n_sys_max;
     if (d == mpmstd::Direction::X) {
@@ -379,8 +380,8 @@ __global__ void k_m_scatter(
         int n1i, int n2i, int n3i,
         int n1t, int n2t, int n3t)
 {
-    const int row = blockIdx.x * blockDim.x + threadIdx.x;
-    const int sys = blockIdx.y * blockDim.y + threadIdx.y;
+    const int sys = blockIdx.x * blockDim.x + threadIdx.x;
+    const int row = blockIdx.y * blockDim.y + threadIdx.y;
 
     int i, j, k, n_row_max, n_sys_max;
     if (d == mpmstd::Direction::X) {
@@ -631,8 +632,8 @@ __global__ void k_mom_adi_var(
         double Cmu, double dt,
         bool z_staggered)
 {
-    const int row = blockIdx.x * blockDim.x + threadIdx.x;
-    const int sys = blockIdx.y * blockDim.y + threadIdx.y;
+    const int sys = blockIdx.x * blockDim.x + threadIdx.x;
+    const int row = blockIdx.y * blockDim.y + threadIdx.y;
 
     int i, j, k, n_row_max, n_sys_max;
     if (d == mpmstd::Direction::X) {
@@ -1074,15 +1075,14 @@ static void adi_component_ob(
             default:           n_row = n3i; n_sys = n1i * n2i; break;
         }
 
-        // Build ADI bands
+        // Build ADI bands (sys in x-thread → coalesced)
         const dim3 blk(32, 16);
-        const dim3 grd((n_row + 31)/32, (n_sys + 15)/16);
+        const dim3 grd((n_sys + 31)/32, (n_row + 15)/16);
         k_mom_adi_ob<<<grd, blk>>>(
                 dir, d_m_A_, d_m_B_, d_m_C_, d_m_D_,
                 in, d_q, q_adv, dxa, dmxa,
                 n1i, n2i, n3i, n1t, n2t, n3t,
                 nu, dt, zs);
-        CUDA_CHK(cudaDeviceSynchronize());
 
         // BC modification (GPU kernel) + TDMA solve
         if (!bc.topology.is_periodic(dir)) {
@@ -1101,12 +1101,10 @@ static void adi_component_ob(
         } else {
             cuda_tdma_mom(domain.tdma, dir).solve_many_cyclic_device(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys, n_row);
         }
-        CUDA_CHK(cudaDeviceSynchronize());
 
-        // Scatter solution back to 3D field
+        // Scatter (same grid: sys in x-thread)
         k_m_scatter<<<grd, blk>>>(dir, outb, d_m_D_,
                                    n1i, n2i, n3i, n1t, n2t, n3t);
-        CUDA_CHK(cudaDeviceSynchronize());
         std::swap(in, outb);
     }
 
@@ -1115,7 +1113,7 @@ static void adi_component_ob(
     const int blk1 = 256;
     const int grd1 = (int)((nf + blk1 - 1) / blk1);
     k_m_copy_field<<<grd1, blk1>>>(out_device, in, (int)nf);
-    CUDA_CHK(cudaDeviceSynchronize());
+    CUDA_CHK(cudaDeviceSynchronize());  // sync before returning — caller reads out_device
 }
 
 // ===========================================================================
@@ -1165,7 +1163,7 @@ static void adi_component_var(
         }
 
         const dim3 blk(32, 16);
-        const dim3 grd((n_row + 31)/32, (n_sys + 15)/16);
+        const dim3 grd((n_sys + 31)/32, (n_row + 15)/16);
         k_mom_adi_var<<<grd, blk>>>(
                 dir, own_dir,
                 d_m_A_, d_m_B_, d_m_C_, d_m_D_,
@@ -1173,7 +1171,6 @@ static void adi_component_var(
                 dxa, dmxa, dxo, dmxo,
                 n1i, n2i, n3i, n1t, n2t, n3t,
                 Cmu, dt, zs);
-        CUDA_CHK(cudaDeviceSynchronize());
 
         if (!bc.topology.is_periodic(dir)) {
             const auto& axis_dir = domain.sub.topology().axis(dir);
@@ -1191,11 +1188,9 @@ static void adi_component_var(
         } else {
             cuda_tdma_mom(domain.tdma, dir).solve_many_cyclic_device(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys, n_row);
         }
-        CUDA_CHK(cudaDeviceSynchronize());
 
         k_m_scatter<<<grd, blk>>>(dir, outb, d_m_D_,
                                    n1i, n2i, n3i, n1t, n2t, n3t);
-        CUDA_CHK(cudaDeviceSynchronize());
         std::swap(in, outb);
     }
 
@@ -1203,7 +1198,7 @@ static void adi_component_var(
     const int blk1 = 256;
     const int grd1 = (int)((nf + blk1 - 1) / blk1);
     k_m_copy_field<<<grd1, blk1>>>(out_device, in, (int)nf);
-    CUDA_CHK(cudaDeviceSynchronize());
+    CUDA_CHK(cudaDeviceSynchronize());  // sync before returning — caller reads out_device
 }
 
 #endif // MPMSTD_BACKEND_CUDA
@@ -1246,19 +1241,17 @@ void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuField
             mom.dU.data(), d_U, d_U, d_V, d_W,
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, nu, static_cast<double>(dt), false);
-    CUDA_CHK(cudaDeviceSynchronize());
 
     k_mom_rhs_ob<<<grd, blk>>>(
             mom.dV.data(), d_V, d_U, d_V, d_W,
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, nu, static_cast<double>(dt), false);
-    CUDA_CHK(cudaDeviceSynchronize());
 
     k_mom_rhs_ob<<<grd, blk>>>(
             mom.dW.data(), d_W, d_U, d_V, d_W,
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, nu, static_cast<double>(dt), true);
-    CUDA_CHK(cudaDeviceSynchronize());
+    CUDA_CHK(cudaDeviceSynchronize());  // sync before returning — add_buoyancy_force reads dW
 #endif
 }
 

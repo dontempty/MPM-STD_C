@@ -1,0 +1,45 @@
+# DHVC GPU — Ra=1e7, np1=1 np2=1 np3=2 (2×A100), 864x192x416 (864=2^5*3^3 FFT-optimal, no factor-7)
+[domain]
+Lx = 8.0
+Ly = 4.0
+Lz = 1.0
+[mesh]
+n1m = 864
+n2m = 192
+n3m = 416
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 2
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e7
+Pr = 0.7
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+[bc.z.plus]
+T = -0.5
+[time]
+t_start  = 0.0
+t_end    = 500.0
+dt_start = 0.001
+MaxCFL   = 0.4
+n_steps  = 50000
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/dhvc/out_1e7/"
+nmonitor    = 100
+nstat_start = 20000
+nstat       = 10

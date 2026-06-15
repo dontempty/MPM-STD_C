@@ -29,6 +29,7 @@
 #include "equation/pressure/solve.hpp"
 #include "physics/buoyancy/buoyancy.hpp"
 #include "physics/forcing/forcing.hpp"   // channel_total_volume_cpu, apply_mass_flow_correction_cpu (zero-net-flux)
+#include "physics/properties/properties.hpp"  // CpuPropertyFields for NOB var path with unit props
 #include "driver/cfl.hpp"
 #include "post/statistics.hpp"
 
@@ -121,6 +122,22 @@ int main(int argc, char** argv) {
   core::CpuMomentumSystem momentum(sub);
   core::CpuScalarSystem   scalar_system(sub);
   core::PressureSystem    pressure;
+
+  // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
+  // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With constant properties the var
+  // kernels reduce to the correct PaScaL_TCS scheme with semi-implicit
+  // convection and −M·q^n residual correction, fixing the OB dt collapse.
+  physics::CpuPropertyFields props(sub);
+  {
+    const auto nt = sub.n_total();
+    const std::size_t n = (std::size_t)nt[0] * nt[1] * nt[2];
+    std::fill(props.mu.data(),        props.mu.data()        + n, real_t{1});
+    std::fill(props.inv_rho.data(),   props.inv_rho.data()   + n, real_t{1});
+    std::fill(props.kappa.data(),     props.kappa.data()     + n, real_t{1});
+    std::fill(props.inv_rhocp.data(), props.inv_rhocp.data() + n, real_t{1});
+    std::fill(props.dkappa.data(),    props.dkappa.data()    + n, real_t{0});
+    std::fill(props.dinv_rhocp.data(),props.dinv_rhocp.data()+ n, real_t{0});
+  }
   post::Stats             stats;
   post::init_statistics_cpu(stats, domain);
 
@@ -190,15 +207,19 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    // (1) energy: T^n → T^{n+1}
-    equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
-    equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
+    // (1) energy: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
+    equation::assemble_scalar_var_diff_cpu(domain, fields,
+        props.kappa, props.dkappa, props.inv_rhocp, props.dinv_rhocp,
+        scalar_system, dt);
+    equation::solve_scalar_var_cpu(domain, bc, fields,
+        props.kappa, props.dkappa, props.inv_rhocp, props.dinv_rhocp,
+        scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    // (2) momentum predictor + OB buoyancy (F=θ on U) composed in main
-    equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    // (2) momentum predictor + OB buoyancy (NOB var path with unit props)
+    equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);
-    equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     // zero net streamwise flux (closed DHVC): subtract the bulk U the net
     // buoyancy would drive in the periodic streamwise direction.
