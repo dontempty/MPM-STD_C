@@ -1,0 +1,24 @@
+=== build microbench ===
+
+=== nsys profile (50 steps × 96 FFT) ===
+microbench: N2g=192 h1p=193 n3_I=48 nstep=50 slab=37056 | 48 FFT exec/step
+done: 50 steps × 96 exec = 4800 cufftExecZ2Z
+Generating '/tmp/nsys-report-cf74.qdstrm'
+[1/1] [0%                          ] cufft_mb.nsys-rep[1/1] [0%                          ] cufft_mb.nsys-rep[1/1] [==========49%               ] cufft_mb.nsys-rep[1/1] [========================99% ] cufft_mb.nsys-rep[1/1] [=15%                        ] cufft_mb.nsys-rep[1/1] [=====================86%    ] cufft_mb.nsys-rep[1/1] [========================100%] cufft_mb.nsys-rep[1/1] [========================100%] cufft_mb.nsys-rep
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/cufft_mb.nsys-rep
+
+############ GPU MemOps (H2D/D2H/D2D) — cuFFT alone ############
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
++----------+-----------------+-------+-----------+-----------+----------+----------+-------------+--------------------+
+| Time (%) | Total Time (ns) | Count | Avg (ns)  | Med (ns)  | Min (ns) | Max (ns) | StdDev (ns) |     Operation      |
++----------+-----------------+-------+-----------+-----------+----------+----------+-------------+--------------------+
+|     97.3 |         925,099 |     2 | 462,549.5 | 462,549.5 |    1,824 |  923,275 |   651,564.3 | [CUDA memcpy HtoD] |
+|      2.7 |          25,568 |     1 |  25,568.0 |  25,568.0 |   25,568 |   25,568 |         0.0 | [CUDA memset]      |
++----------+-----------------+-------+-----------+-----------+----------+----------+-------------+--------------------+
+
+
+############ CUDA API (cuMemcpyAsync count) ############
+=== per-step: divide counts by 50. dhvc ref: ~628 H2D/D2H per step, 96 FFT/step ===
+=== CUFFT_VERIFY DONE ===

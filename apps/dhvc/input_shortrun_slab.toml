@@ -1,0 +1,51 @@
+# Tier 1 A/B — short slab warm-start run (2000 steps) to confirm the early KE/div/Re
+# trajectory tracks the replicate-method 1e7 (job 29572) log. No dir_out (won't write
+# a restart — purely a trajectory check). Grid = 1e7 (832x416x192), np 1x1x4.
+[domain]
+Lx = 8.0
+Ly = 4.0
+Lz = 1.0
+[mesh]
+n1m = 832
+n2m = 416
+n3m = 192
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 4
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e7
+Pr = 0.7
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+[bc.z.plus]
+T = -0.5
+[time]
+t_start  = 0.0
+t_end    = 240.0
+dt_start = 0.005
+MaxCFL   = 0.4
+n_steps  = 2000
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/dhvc/out_shortrun/"
+nmonitor    = 100
+t_stat_start = 9999.0
+nstat        = 10
+t_stat_out   = 30.0
+[restart]
+dir_in       = "apps/dhvc/restart_1e6_t240"
+warmstart_io = "slab"

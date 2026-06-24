@@ -123,6 +123,9 @@ int main(int argc, char** argv) {
   core::CpuScalarSystem   scalar_system(sub);
   core::PressureSystem    pressure;
 
+  // Accumulated pressure Pⁿ for the incremental (van Kan) projection (zero-init).
+  core::CpuField P_acc(sub, "P_acc");
+
   // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
   // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With constant properties the var
   // kernels reduce to the correct PaScaL_TCS scheme with semi-implicit
@@ -218,7 +221,8 @@ int main(int argc, char** argv) {
 
     // (2) momentum predictor + OB buoyancy (NOB var path with unit props)
     equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
-    physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);
+    physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
+    equation::add_pressure_gradient_cpu(domain, momentum, P_acc, dt);  // incremental: −dt·∇Pⁿ
     equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     // zero net streamwise flux (closed DHVC): subtract the bulk U the net
@@ -232,6 +236,7 @@ int main(int argc, char** argv) {
 
     // (3) pressure: div → Poisson → project
     equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    equation::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     time += static_cast<double>(dt);
     ++step;

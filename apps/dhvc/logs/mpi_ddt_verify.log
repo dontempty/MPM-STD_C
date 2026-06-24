@@ -1,0 +1,12 @@
+=== build strided-ddt mpi test ===
+
+=== nsys per-rank profile: 50 strided device-ptr MPI_Alltoallw ===
+[done] 50 device-ptr MPI_Alltoallw (STRIDED ddt: 512 blk x 8, stride 32)
+
+############ rank0 GPU MemOps — STRIDED ddt Alltoallw ############
+| Time (%) | Total Time (ns) | Count  | Avg (ns) | Med (ns) | Min (ns) | Max (ns) | StdDev (ns) |     Operation      |
+|     44.3 |      51,878,757 | 26,112 |  1,986.8 |  1,953.0 |    1,663 |    3,392 |        83.4 | [CUDA memcpy DtoD] |
+|     32.4 |      37,910,868 | 26,112 |  1,451.9 |  1,439.0 |    1,343 |    2,592 |        83.7 | [CUDA memcpy DtoH] |
+|     23.3 |      27,230,270 | 26,112 |  1,042.8 |  1,025.0 |      991 |    1,824 |        42.6 | [CUDA memcpy HtoD] |
+=== interpret: 50 alltoallw. host-staged → many H2D+D2H (per-block). cuda-aware → D2D/~0 ===
+=== MPI_DDT DONE ===

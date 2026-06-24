@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);
+    physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);

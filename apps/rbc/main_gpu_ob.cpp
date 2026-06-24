@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
     equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
-    physics::add_buoyancy_force_gpu(gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
     equation::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
     equation::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);

@@ -1,0 +1,24 @@
+=== Compiling rbc_gpu_nob + dhvc_gpu ===
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+  LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/channel
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/cavity
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/dhvc
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/validate
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_cpu_ob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_cpu_nob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_gpu_ob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/rbc_gpu_nob
+  APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/dhvc_gpu
+"apps/dhvc/main_gpu.cu", line 589: warning: variable "t_ss" was set but never used [set_but_not_used]
+      double t_ss = 0.0; int n_time_steps = 10;
+             ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+=== compile done ===
+-rwxrwxr-x 1 wel1come1234 wel1come1234 1792016 Jun 24 15:34 build/cuda/bin/apps/dhvc_gpu
+-rwxrwxr-x 1 wel1come1234 wel1come1234 1747280 Jun 24 15:34 build/cuda/bin/apps/rbc_gpu_nob

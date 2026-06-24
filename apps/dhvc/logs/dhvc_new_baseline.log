@@ -1,0 +1,58 @@
+=== NEW BASELINE (A-LAYOUT: [n_sys×2] + MPI_Ialltoallv) ===
+=== cold-start 300 steps, 1e6 grid (384x192x96), np=1x1x2 ===
+=== Compare: OLD 34.7 ms/step ===
+[dhvc_gpu] Ra=1.00e+06 Pr=0.7 nu=8.3666e-04 alpha=1.1952e-03 n=384x192x96 GPU
+[SCA #1] X(bld=0.74 tdma=1.96 sct=0.08) Y(bld=0.69 tdma=1.13 sct=0.06) Z(bld=0.92 tdma=167.84 sct=0.18) ms
+[SCA #1] X(bld=0.75 tdma=1.98 sct=0.09) Y(bld=0.70 tdma=1.15 sct=0.07) Z(bld=0.93 tdma=167.72 sct=0.18) ms
+[SCA #2] X(bld=0.70 tdma=1.42 sct=0.06) Y(bld=0.69 tdma=0.84 sct=0.06) Z(bld=0.92 tdma=4.35 sct=0.17) ms
+[SCA #2] X(bld=0.71 tdma=1.45 sct=0.06) Y(bld=0.70 tdma=0.85 sct=0.07) Z(bld=0.93 tdma=4.27 sct=0.18) ms
+[SCA #3] X(bld=0.70 tdma=1.40 sct=0.06) Y(bld=0.69 tdma=0.84 sct=0.06) Z(bld=0.92 tdma=4.25 sct=0.17) ms
+[SCA #3] X(bld=0.71 tdma=1.45 sct=0.06) Y(bld=0.70 tdma=0.85 sct=0.07) Z(bld=0.93 tdma=4.16 sct=0.18) ms
+[SCA #4] X(bld=0.70 tdma=1.42 sct=0.06) Y(bld=0.69 tdma=0.83 sct=0.06) Z(bld=0.92 tdma=4.14 sct=0.17) ms
+[SCA #4] X(bld=0.71 tdma=1.44 sct=0.06) Y(bld=0.70 tdma=0.86 sct=0.07) Z(bld=0.93 tdma=4.05 sct=0.18) ms
+[SCA #5] X(bld=0.70 tdma=1.42 sct=0.06) Y(bld=0.69 tdma=0.84 sct=0.06) Z(bld=0.92 tdma=3.65 sct=0.17) ms
+[SCA #5] X(bld=0.54 tdma=1.13 sct=0.06) Y(bld=0.53 tdma=0.67 sct=0.06) Z(bld=0.70 tdma=4.82 sct=0.13) ms
+[SCA #6] X(bld=0.48 tdma=1.00 sct=0.05) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.61 tdma=4.54 sct=0.11) ms
+[SCA #6] X(bld=0.54 tdma=1.13 sct=0.06) Y(bld=0.53 tdma=0.68 sct=0.06) Z(bld=0.70 tdma=4.07 sct=0.13) ms
+[SCA #7] X(bld=0.48 tdma=1.00 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.13 sct=0.11) ms
+[SCA #7] X(bld=0.54 tdma=1.13 sct=0.06) Y(bld=0.53 tdma=0.67 sct=0.06) Z(bld=0.70 tdma=3.67 sct=0.12) ms
+[SCA #8] X(bld=0.48 tdma=1.00 sct=0.05) Y(bld=0.48 tdma=0.60 sct=0.06) Z(bld=0.61 tdma=4.54 sct=0.11) ms
+[SCA #8] X(bld=0.54 tdma=1.12 sct=0.06) Y(bld=0.53 tdma=0.67 sct=0.06) Z(bld=0.70 tdma=4.08 sct=0.12) ms
+[SCA #9] X(bld=0.48 tdma=0.99 sct=0.05) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=3.95 sct=0.10) ms
+[SCA #9] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.01 sct=0.10) ms
+[SCA #10] X(bld=0.48 tdma=0.99 sct=0.05) Y(bld=0.47 tdma=0.61 sct=0.06) Z(bld=0.60 tdma=3.84 sct=0.10) ms
+[SCA #10] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.91 sct=0.10) ms
+[TIMING] 10 steps  avg=100.0 ms/step
+[TIMING_BREAKDOWN] per step:  cfl=0.1  scalar=27.6  mom=28.8  corr=0.2  sync=1.8  pres=41.5  ms
+[TIMING] t_end=999  rough total: 32.04 h (n_steps cap=300)
+[TIMING] stats out: from t=9999.0 every t=30.0 (to t_end=999)
+[SCA #11] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.46 tdma=0.59 sct=0.05) Z(bld=0.59 tdma=3.81 sct=0.10) ms
+[SCA #11] X(bld=0.47 tdma=0.97 sct=0.05) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=3.81 sct=0.10) ms
+[SCA #12] X(bld=0.47 tdma=0.97 sct=0.06) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.70 sct=0.10) ms
+[SCA #12] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.69 sct=0.10) ms
+[SCA #13] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.63 sct=0.10) ms
+[SCA #13] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=3.63 sct=0.11) ms
+[SCA #14] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.07 sct=0.10) ms
+[SCA #14] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.08 sct=0.10) ms
+[SCA #15] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.07 sct=0.10) ms
+[SCA #15] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.07 sct=0.10) ms
+[SCA #16] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.09 sct=0.10) ms
+[SCA #16] X(bld=0.47 tdma=0.97 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.10 sct=0.10) ms
+[SCA #17] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.00 sct=0.10) ms
+[SCA #17] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.99 sct=0.10) ms
+[SCA #18] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.92 sct=0.10) ms
+[SCA #18] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.91 sct=0.10) ms
+[SCA #19] X(bld=0.47 tdma=0.99 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.78 sct=0.10) ms
+[SCA #19] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.80 sct=0.10) ms
+[SCA #20] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=3.67 sct=0.10) ms
+[SCA #20] X(bld=0.47 tdma=0.97 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.67 sct=0.10) ms
+step=50 t=0.0433 dt=0.000866 div=8.52e-14 Re=767.331(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=3s ms/step=53.7
+step=100 t=0.0866 dt=0.000866 div=8.52e-14 Re=767.327(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=4s ms/step=33.5
+step=150 t=0.13 dt=0.000866 div=8.53e-14 Re=767.322(avg=0.000) KE=2.184e+01 Nu=1.001 Trms=0.337 wall=6s ms/step=33.1
+step=200 t=0.173 dt=0.000866 div=8.52e-14 Re=767.317(avg=0.000) KE=2.184e+01 Nu=1.001 Trms=0.337 wall=8s ms/step=32.9
+step=250 t=0.217 dt=0.000866 div=8.52e-14 Re=767.312(avg=0.000) KE=2.184e+01 Nu=1.001 Trms=0.337 wall=9s ms/step=33.2
+step=300 t=0.26 dt=0.000866 div=8.52e-14 Re=767.307(avg=0.000) KE=2.184e+01 Nu=1.001 Trms=0.337 wall=11s ms/step=33.1
+[TIMING_SS] 290 steps (steady-state)  total=35.2 ms/step
+[TIMING_TOTAL] compute = 11.2 s (0.00 h)  |  300 steps  |  avg 37.33 ms/step
+[dhvc_gpu] done: Ra=1.00e+06  Re_dstar=0.0000  (target=11.0085)
+=== DONE ===

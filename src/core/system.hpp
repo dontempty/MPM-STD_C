@@ -85,13 +85,17 @@ enum class Transform { Fft, Dct, Tdma };
 struct PressureSystem {
   std::array<Transform, 3> transform{Transform::Tdma, Transform::Tdma, Transform::Tdma};
   std::shared_ptr<equation::pressure::PressureSolver> engine;   // lazy (CPU engine)
-  std::unique_ptr<CpuField> dPhat;  // prev-step dP for NOB correction; null = OB
+  std::unique_ptr<CpuField> dPhat;  // prev-step dP predictor for NOB correction; null = OB
+  std::unique_ptr<CpuField> dP0;    // running half-average of dPhat for the 2nd-order
+                                    // extrapolation dPhat=2*dP-dP0 (PaScaL_TCS §820-821)
 
   // GPU engine + dPhat: type-erased (shared_ptr<void>) to avoid GPU headers in core.
   // Holds a PressureSolverGpu* (GPU build only); null until first GPU solve.
   std::shared_ptr<void> engine_gpu;
-  // Holds a GpuField* for dPhat (prev-step dP for GPU NOB correction); null = OB.
+  // Holds a GpuField* for dPhat (prev-step dP predictor for GPU NOB correction); null = OB.
   std::shared_ptr<void> dPhat_gpu_field;
+  // Holds a GpuField* for dP0 (companion of dPhat for the GPU 2nd-order extrapolation).
+  std::shared_ptr<void> dP0_gpu_field;
 };
 
 } // namespace mpmstd::core

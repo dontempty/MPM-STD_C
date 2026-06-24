@@ -1,4 +1,5 @@
 #include "equation/pressure/pressure_engine.hpp"
+#include "core/boundary_ops.hpp"   // exchange_halo_cpu / apply_ghost_cpu (dPhat sync)
 #include "common/macros.hpp"
 #include "linear_solver/tdma/pascal_tdma_cpu_backend.hpp"
 #ifdef MPMSTD_BACKEND_CUDA
@@ -435,16 +436,30 @@ void PressureSolver::add_extra_term_nob_(const real_t* ir, const real_t* ph)
 void PressureSolver::solve_nob(real_t dt,
                                 core::CpuField& U, core::CpuField& V,
                                 core::CpuField& W, core::CpuField& P,
-                                const real_t* inv_rho, core::CpuField& dPhat)
+                                const real_t* inv_rho, core::CpuField& dPhat,
+                                core::CpuField& dP0)
 {
   cur_U_ = &U; cur_V_ = &V; cur_W_ = &W; cur_dt_ = dt;
   compute_divergence_rhs_pencil_();
   add_extra_term_nob_(inv_rho, dPhat.data());
   solve_spectral_unpack_(P);
   project_nob_(dt, U, V, W, P, inv_rho, dPhat.data());
-  // Save new dP as dPhat for the next step
+  // 2nd-order extrapolation of the predictor for the next step (PaScaL_TCS §820-821):
+  //   dP0 = (dPhat + dP0)/2 ;  dPhat = 2*dP - dP0.  (dP is the just-solved P.)
   const std::size_t N = (std::size_t)n1_tot_ * n2_tot_ * n3_tot_;
-  std::copy(P.data(), P.data() + N, dPhat.data());
+  real_t* ph = dPhat.data();
+  real_t* p0 = dP0.data();
+  const real_t* dp = P.data();
+  for (std::size_t q = 0; q < N; ++q) {
+    const real_t new_p0 = real_t{0.5} * (ph[q] + p0[q]);
+    p0[q] = new_p0;
+    ph[q] = real_t{2} * dp[q] - new_p0;
+  }
+  // dPhat halo exchange — REQUIRED so the next step's extra-term/projection cancel
+  // across MPI boundaries (PaScaL_TCS main.f90:199 ghostcell_update(dPhat)). The old
+  // dPhat:=P got this for free (P was synced); the 2*dP-dP0 predictor is local.
+  core::exchange_halo_cpu(dPhat, sub_);
+  core::apply_ghost_cpu(dPhat, problem_.P, sub_);
 }
 
 

@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     if (nob) equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
     else     equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
     if (nob) physics::add_buoyancy_force_nob_gpu(gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
-    else     physics::add_buoyancy_force_gpu(gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    else     physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
     if (nob) equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
     else     equation::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
     equation::update_velocity_gpu(gpu_fields, gpu_momentum);
@@ -340,7 +340,7 @@ int main(int argc, char** argv) {
     if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
     else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
     if (nob) physics::add_buoyancy_force_nob_cpu(momentum, fields[core::Var::T], props.inv_rho, buoy, dt);
-    else     physics::add_buoyancy_force_cpu(momentum, fields[core::Var::T], buoy, dt);
+    else     physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
     if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
     else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);

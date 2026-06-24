@@ -1,0 +1,40 @@
+=== DHVC 10-step cold-start correctness check (new PaScaL_TDMA layout) ===
+Expected: div ~ 1e-12~14, no NaN, step completes normally
+[dhvc_gpu] Ra=1.00e+06 Pr=0.7 nu=8.3666e-04 alpha=1.1952e-03 n=384x192x96 GPU
+[SCA #1] X(bld=0.73 tdma=3.03 sct=0.09) Y(bld=0.69 tdma=1.20 sct=0.06) Z(bld=0.92 tdma=158.02 sct=0.18) ms
+[SCA #1] X(bld=0.74 tdma=3.11 sct=0.09) Y(bld=0.70 tdma=1.21 sct=0.07) Z(bld=0.93 tdma=157.89 sct=0.18) ms
+step=1 t=0.000864 dt=0.000864 div=1.90e-12 Re=767.339(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=807.2
+[SCA #2] X(bld=0.70 tdma=1.42 sct=0.06) Y(bld=0.69 tdma=0.84 sct=0.06) Z(bld=0.92 tdma=4.53 sct=0.17) ms
+[SCA #2] X(bld=0.71 tdma=1.45 sct=0.06) Y(bld=0.70 tdma=0.85 sct=0.07) Z(bld=0.93 tdma=4.45 sct=0.18) ms
+step=2 t=0.00173 dt=0.000866 div=2.06e-12 Re=767.338(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=55.2
+[SCA #3] X(bld=0.70 tdma=1.41 sct=0.06) Y(bld=0.69 tdma=0.84 sct=0.06) Z(bld=0.92 tdma=4.17 sct=0.17) ms
+[SCA #3] X(bld=0.53 tdma=1.11 sct=0.06) Y(bld=0.52 tdma=0.66 sct=0.06) Z(bld=0.68 tdma=5.41 sct=0.12) ms
+step=3 t=0.0026 dt=0.000866 div=8.65e-14 Re=767.338(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=54.0
+[SCA #4] X(bld=0.70 tdma=1.41 sct=0.06) Y(bld=0.69 tdma=0.83 sct=0.06) Z(bld=0.79 tdma=3.85 sct=0.10) ms
+[SCA #4] X(bld=0.53 tdma=1.11 sct=0.06) Y(bld=0.52 tdma=0.66 sct=0.06) Z(bld=0.68 tdma=4.96 sct=0.12) ms
+step=4 t=0.00346 dt=0.000866 div=8.52e-14 Re=767.338(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=46.3
+[SCA #5] X(bld=0.47 tdma=0.99 sct=0.06) Y(bld=0.46 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=3.90 sct=0.10) ms
+[SCA #5] X(bld=0.47 tdma=0.97 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=3.93 sct=0.10) ms
+step=5 t=0.00433 dt=0.000866 div=8.53e-14 Re=767.338(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=42.5
+[SCA #6] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=4.22 sct=0.10) ms
+[SCA #6] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.22 sct=0.10) ms
+step=6 t=0.0052 dt=0.000866 div=8.53e-14 Re=767.337(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=42.8
+[SCA #7] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=3.74 sct=0.10) ms
+[SCA #7] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.46 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=3.74 sct=0.10) ms
+step=7 t=0.00606 dt=0.000866 div=8.53e-14 Re=767.337(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=42.6
+[SCA #8] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.22 sct=0.10) ms
+[SCA #8] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=4.23 sct=0.10) ms
+step=8 t=0.00693 dt=0.000866 div=8.52e-14 Re=767.337(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=1s ms/step=42.7
+[SCA #9] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.15 sct=0.11) ms
+[SCA #9] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.16 sct=0.11) ms
+step=9 t=0.0078 dt=0.000866 div=8.52e-14 Re=767.337(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=2s ms/step=42.4
+[SCA #10] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.60 sct=0.06) Z(bld=0.59 tdma=4.02 sct=0.10) ms
+[SCA #10] X(bld=0.47 tdma=0.98 sct=0.05) Y(bld=0.46 tdma=0.59 sct=0.06) Z(bld=0.59 tdma=4.02 sct=0.10) ms
+step=10 t=0.00866 dt=0.000866 div=8.52e-14 Re=767.336(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=2s ms/step=42.6
+[TIMING] 10 steps  avg=165.3 ms/step
+[TIMING_BREAKDOWN] per step:  cfl=0.1  scalar=26.4  mom=27.3  corr=0.2  sync=1.7  pres=66.2  ms
+[TIMING] t_end=999  rough total: 52.94 h (n_steps cap=10)
+[TIMING] stats out: from t=9999.0 every t=30.0 (to t_end=999)
+[TIMING_TOTAL] compute = 1.7 s (0.00 h)  |  10 steps  |  avg 165.30 ms/step
+[dhvc_gpu] done: Ra=1.00e+06  Re_dstar=0.0000  (target=11.0085)
+=== DONE ===

@@ -1,0 +1,2 @@
+=== A4 binary, 300 steps (compare to baseline 35.90 ms/step) ===
+slurmstepd: error: *** JOB 29650 ON gpu01 CANCELLED AT 2026-06-24T13:01:50 ***

@@ -43,11 +43,12 @@ public:
              core::CpuField& P) override;
 
   // NOB: adds ∇·[(1-invRho)·∇dPhat] to Poisson RHS, applies (invRhoc-1)*∇dPhat
-  // in projection, and updates dPhat := new dP for the next step.
+  // in projection, then extrapolates the predictor for next step (PaScaL_TCS §820-821):
+  //   dP0 = (dPhat + dP0)/2 ;  dPhat = 2*dP - dP0.
   void solve_nob(real_t dt,
                  core::CpuField& U, core::CpuField& V,
                  core::CpuField& W, core::CpuField& P,
-                 const real_t* inv_rho, core::CpuField& dPhat);
+                 const real_t* inv_rho, core::CpuField& dPhat, core::CpuField& dP0);
 
 private:
   void compute_divergence_rhs_pencil_();

@@ -1,0 +1,24 @@
+=== build ===
+=== nsys profile (3 methods, N=36864, 50 iter each) ===
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/mpi_method_cmp_0.nsys-rep
+[1/1] [========================100%] mpi_method_cmp_1.nsys-rep
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/mpi_method_cmp_1.nsys-rep
+
+############ GPU MemOps — rank 0 (all 3 methods combined) ############
+| Time (%) | Total Time (ns) | Count | Avg (ns) | Med (ns) | Min (ns) | Max (ns) | StdDev (ns) |     Operation      |
+|     20.5 |       3,759,975 |   972 |  3,868.3 |  3,936.0 |    1,951 |   13,633 |       628.0 | [CUDA memcpy HtoD] |
+|     18.9 |       3,452,645 |   972 |  3,552.1 |  3,584.0 |    2,432 |   13,504 |       484.9 | [CUDA memcpy DtoH] |
+|      6.4 |       1,177,999 |   306 |  3,849.7 |  3,936.0 |    3,456 |    4,608 |       153.0 | [CUDA memcpy DtoD] |
+
+############ CUDA API memcpy calls — rank 0 ############
+|     67.8 |     151,613,406 |        37 | 4,097,659.6 |   136,849.0 |    89,652 | 143,040,357 | 23,477,492.7 | cuMemHostRegister_v2   |
+|     13.7 |      30,734,522 |     2,402 |    12,795.4 |     9,320.5 |     3,530 |      31,729 |      6,627.5 | cuMemcpyAsync          |
+|      4.5 |      10,056,195 |        36 |   279,338.8 |   167,612.0 |    64,065 |   3,931,954 |    628,782.2 | cuMemHostUnregister    |
+
+=== CUDA trace timeline (method markers from printf, check per-section counts) ===
+  Alltoall   : calls 1..50    (after warmup 0)
+  Alltoallv  : calls 51..100  (after warmup 50)
+  Isend/Irecv: calls 101..150 (after warmup 100)
+=== DONE ===

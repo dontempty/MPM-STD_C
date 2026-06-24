@@ -1,0 +1,82 @@
+
+########################################################
+## ncu: k_mom_adi_var
+########################################################
+[SCA #15] X(bld=0.48 tdma=0.99 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.07) Z(bld=0.60 tdma=2.96 sct=0.11) ms
+[SCA #16] X(bld=0.48 tdma=1.00 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=2.96 sct=0.11) ms
+[SCA #17] X(bld=0.48 tdma=0.99 sct=0.06) Y(bld=0.48 tdma=0.61 sct=0.06) Z(bld=0.60 tdma=2.95 sct=0.11) ms
+[SCA #18] X(bld=0.48 tdma=0.99 sct=0.07) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=2.94 sct=0.11) ms
+[SCA #19] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=2.92 sct=0.11) ms
+[SCA #20] X(bld=0.48 tdma=0.99 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=2.87 sct=0.11) ms
+step=20 t=0.0173 dt=0.000866 div=8.52e-14 Re=767.335(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=13s ms/step=40.5
+[TIMING_SS] 10 steps (steady-state)  total=44.1 ms/step
+[TIMING_TOTAL] compute = 12.8 s (0.00 h)  |  20 steps  |  avg 640.80 ms/step
+[dhvc_gpu] done: Ra=1.00e+06  Re_dstar=0.0000  (target=11.0085)
+==PROF== Report: /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/ncu_k_mom_adi_var_1.ncu-rep
+==PROF== Report: /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/ncu_k_mom_adi_var_0.ncu-rep
+--- key metrics (rank 0) ---
+    Memory Throughput                   %        47.25
+    DRAM Throughput                     %        47.25
+    Duration                      usecond       300.58
+    L1/TEX Cache Throughput             %        27.85
+    L2 Cache Throughput                 %        71.93
+    Compute (SM) Throughput             %        39.76
+    Memory Throughput           Gbyte/second       732.36
+    L1/TEX Hit Rate                        %        38.58
+    L2 Compression Success Rate            %            0
+    L2 Compression Ratio                                0
+    L2 Hit Rate                            %        69.76
+          The memory access pattern for loads from L1TEX to L2 is not optimal. The granularity of an L1TEX request to   
+          L2 is a 128 byte cache line. That is 4 consecutive 32-byte sectors per L2 request. However, this kernel only  
+          eligible warps, avoid possible load imbalances due to highly different execution durations per warp.          
+    Registers Per Thread             register/thread              64
+    Waves Per SM                                                  32
+    Block Limit SM                        block           32
+    Block Limit Registers                 block            2
+    Block Limit Shared Mem                block           16
+    Block Limit Warps                     block            4
+    Theoretical Occupancy                     %           50
+    Achieved Occupancy                        %        45.19
+    Achieved Active Warps Per SM           warp        28.92
+    OPT   This kernel's theoretical occupancy (50.0%) is limited by the number of required registers. See the CUDA Best 
+          total 17989632 sectors). Check the L2 Theoretical Sectors Global Excessive table for the primary source       
+
+########################################################
+## ncu: tdma_cyclic_many_kernel
+########################################################
+[SCA #11] X(bld=0.49 tdma=1.00 sct=0.08) Y(bld=0.48 tdma=0.62 sct=0.07) Z(bld=0.60 tdma=3.24 sct=0.12) ms
+[SCA #12] X(bld=0.49 tdma=1.00 sct=0.07) Y(bld=0.47 tdma=0.61 sct=0.07) Z(bld=0.60 tdma=2.99 sct=0.12) ms
+[SCA #13] X(bld=0.49 tdma=1.00 sct=0.07) Y(bld=0.47 tdma=0.61 sct=0.08) Z(bld=0.61 tdma=2.96 sct=0.13) ms
+[SCA #14] X(bld=0.49 tdma=1.00 sct=0.07) Y(bld=0.47 tdma=0.61 sct=0.07) Z(bld=0.61 tdma=3.07 sct=0.12) ms
+[SCA #15] X(bld=0.50 tdma=1.00 sct=0.07) Y(bld=0.47 tdma=0.61 sct=0.07) Z(bld=0.60 tdma=3.10 sct=0.12) ms
+[SCA #16] X(bld=0.49 tdma=0.99 sct=0.07) Y(bld=0.47 tdma=0.61 sct=0.07) Z(bld=0.60 tdma=3.10 sct=0.12) ms
+[SCA #17] X(bld=0.49 tdma=1.01 sct=0.07) Y(bld=0.48 tdma=0.62 sct=0.07) Z(bld=0.60 tdma=3.00 sct=0.13) ms
+[SCA #18] X(bld=0.49 tdma=1.00 sct=0.07) Y(bld=0.48 tdma=0.61 sct=0.07) Z(bld=0.61 tdma=2.82 sct=0.12) ms
+[SCA #19] X(bld=0.49 tdma=1.00 sct=0.07) Y(bld=0.48 tdma=0.61 sct=0.07) Z(bld=0.61 tdma=2.88 sct=0.12) ms
+[SCA #20] X(bld=0.49 tdma=1.00 sct=0.07) Y(bld=0.48 tdma=0.62 sct=0.07) Z(bld=0.61 tdma=3.03 sct=0.12) ms
+==PROF== Report: /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/ncu_tdma_cyclic_many_kernel_0.ncu-rep
+==PROF== Report: /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/ncu_tdma_cyclic_many_kernel_1.ncu-rep
+--- key metrics (rank 0) ---
+    Memory Throughput                   %        31.68
+    DRAM Throughput                     %        31.68
+    Duration                      usecond       852.48
+    L1/TEX Cache Throughput             %        11.44
+    L2 Cache Throughput                 %        37.99
+    Compute (SM) Throughput             %         3.02
+    Memory Throughput           Gbyte/second       487.26
+    L1/TEX Hit Rate                        %        44.27
+    L2 Compression Success Rate            %            0
+    L2 Compression Ratio                                0
+    L2 Hit Rate                            %        53.75
+    Registers Per Thread             register/thread              46
+    Waves Per SM                                                0.13
+    Block Limit SM                        block           32
+    Block Limit Registers                 block           10
+    Block Limit Shared Mem                block           32
+    Block Limit Warps                     block           16
+    Theoretical Occupancy                     %        62.50
+    Achieved Occupancy                        %         8.40
+    Achieved Active Warps Per SM           warp         5.37
+          This kernel's theoretical occupancy (62.5%) is limited by the number of required registers. The difference    
+          between calculated theoretical (62.5%) and measured achieved occupancy (8.4%) can be the result of warp       
+=== NCU DONE ===

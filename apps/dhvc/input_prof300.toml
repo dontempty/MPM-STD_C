@@ -1,0 +1,48 @@
+# nsys profiling config — 1e6 grid (384x192x96, np 1x1x2), cold start, 20 steps.
+# Short by design: per-step kernel MIX is identical every step, so 20 steps captures
+# the per-kernel time distribution. No stats, no restart (clean trace).
+[domain]
+Lx = 8.0
+Ly = 4.0
+Lz = 1.0
+[mesh]
+n1m = 384
+n2m = 192
+n3m = 96
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 2
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e6
+Pr = 0.7
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+[bc.z.plus]
+T = -0.5
+[time]
+t_start  = 0.0
+t_end    = 999.0
+dt_start = 0.02
+MaxCFL   = 0.4
+n_steps  = 300
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/dhvc/out_prof/"
+nmonitor    = 50
+t_stat_start = 9999.0
+nstat        = 10
+t_stat_out   = 30.0

@@ -3,6 +3,8 @@
 
 #include <mpi.h>
 #include <stdexcept>
+#include <cstdio>
+#include <vector>
 
 // P1 — parallel binary restart IO (faithful port of post::write_scalar/
 // read_scalar). File = global interior, row-major (axis 0 slowest), raw real_t,
@@ -73,6 +75,68 @@ void read_restart_cpu(core::CpuField& f, const core::Subdomain& sub, const std::
   MPI_File_read_all(fh, f.data(), 1, memtype, MPI_STATUS_IGNORE);
   MPI_File_close(&fh);
   MPI_Type_free(&filetype); MPI_Type_free(&memtype);
+}
+
+void write_restart_gathered_cpu(const core::CpuField& f, const core::Subdomain& sub, const std::string& path) {
+  MPI_Comm comm = sub.topology().cart_comm();
+  int rank = 0, nproc = 1;
+  MPI_Comm_rank(comm, &rank); MPI_Comm_size(comm, &nproc);
+  const auto ng = sub.n_global();
+  const auto ni = sub.n_interior();
+  const auto off = sub.global_offset();
+  const auto nt = sub.n_total();
+  const int  h  = kHaloWidth;
+  const MPI_Datatype MT = (sizeof(real_t) == sizeof(double)) ? MPI_DOUBLE : MPI_FLOAT;
+
+  // pack this rank's interior (skip halo) into a contiguous C-order buffer
+  const std::size_t nloc = (std::size_t)ni[0] * ni[1] * ni[2];
+  std::vector<real_t> sendbuf(nloc);
+  {
+    const int n2t = nt[1], n3t = nt[2];
+    const real_t* d = f.data();
+    std::size_t p = 0;
+    for (int i = 0; i < ni[0]; ++i)
+      for (int j = 0; j < ni[1]; ++j)
+        for (int k = 0; k < ni[2]; ++k)
+          sendbuf[p++] = d[(((std::size_t)(i + h) * n2t) + (j + h)) * n3t + (k + h)];
+  }
+  // gather per-rank (offset[3], n_interior[3]) → root
+  int meta[6] = {off[0], off[1], off[2], ni[0], ni[1], ni[2]};
+  std::vector<int> allmeta(rank == 0 ? 6 * nproc : 0);
+  MPI_Gather(meta, 6, MPI_INT, allmeta.data(), 6, MPI_INT, 0, comm);
+  // gatherv the packed interiors → root
+  std::vector<int> counts, displs;
+  std::vector<real_t> gathered;
+  long total = 0;
+  if (rank == 0) {
+    counts.resize(nproc); displs.resize(nproc);
+    for (int r = 0; r < nproc; ++r) {
+      counts[r] = allmeta[6*r+3] * allmeta[6*r+4] * allmeta[6*r+5];
+      displs[r] = (int)total; total += counts[r];
+    }
+    gathered.resize((std::size_t)total);
+  }
+  MPI_Gatherv(sendbuf.data(), (int)nloc, MT,
+              gathered.data(), counts.data(), displs.data(), MT, 0, comm);
+  // root: scatter each rank's block into the global C-order array, then one fwrite
+  if (rank == 0) {
+    std::vector<real_t> glob((std::size_t)ng[0] * ng[1] * ng[2]);
+    for (int r = 0; r < nproc; ++r) {
+      const int o0=allmeta[6*r], o1=allmeta[6*r+1], o2=allmeta[6*r+2];
+      const int m0=allmeta[6*r+3], m1=allmeta[6*r+4], m2=allmeta[6*r+5];
+      const real_t* src = &gathered[(std::size_t)displs[r]];
+      std::size_t p = 0;
+      for (int i = 0; i < m0; ++i)
+        for (int j = 0; j < m1; ++j)
+          for (int k = 0; k < m2; ++k)
+            glob[(((std::size_t)(o0 + i) * ng[1]) + (o1 + j)) * ng[2] + (o2 + k)] = src[p++];
+    }
+    std::FILE* fp = std::fopen(path.c_str(), "wb");
+    if (!fp) throw std::runtime_error("write_restart_gathered_cpu: cannot open '" + path + "'");
+    std::fwrite(glob.data(), sizeof(real_t), glob.size(), fp);
+    std::fclose(fp);
+  }
+  MPI_Barrier(comm);
 }
 
 } // namespace mpmstd::post

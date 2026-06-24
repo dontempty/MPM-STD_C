@@ -61,6 +61,7 @@ static double      d_m_ob_nu_  = -1.0;  // sentinel: re-fill when nu changes
 // ---------------------------------------------------------------------------
 static constexpr int kH = 1;
 
+
 // ---------------------------------------------------------------------------
 //  Utilities used inside kernels
 // ---------------------------------------------------------------------------
@@ -120,6 +121,18 @@ void ensure_ob_property_bufs_mom(std::size_t nf, double nu)
     }
 }
 
+// ###########################################################################
+// ## OB CONSTANT-PROPERTY MOMENTUM KERNELS — DEAD FOR DHVC                  ##
+// ## k_mom_rhs_ob / k_mom_adi_ob / k_block_couple_d{U,V}_ob and their       ##
+// ## wrappers (assemble_momentum_const_visc_gpu, solve_momentum_gpu) use    ##
+// ## the divergent OB scheme: conservative-flux explicit convection         ##
+// ## (conv_factor=1), pure Laplacian (no own×2 / no transposed cross-       ##
+// ## stress), and NO −M·qⁿ delta-form residual — the root of the Report 18  ##
+// ## explicit-convection dt collapse. DHVC (dhvc_gpu, apps/dhvc/main_gpu.cu)##
+// ## does NOT use these: it routes through the _var (NOB-faithful) kernels  ##
+// ## with unit properties (μ≡1, 1/ρ≡1). These OB kernels are LIVE ONLY for  ##
+// ## the rbc_gpu_ob binary (apps/rbc/main_gpu_ob.cu). DO NOT call from DHVC. ##
+// ###########################################################################
 // ===========================================================================
 //  KERNEL 1: OB explicit momentum RHS  (compute_mpmstd_rhs, one thread / cell)
 //  rhs[c] = dt * nu * (Lx + Ly + Lz)(q)[c]
@@ -711,24 +724,34 @@ __global__ void k_mom_adi_var(
                  : (d == mpmstd::Direction::Y) ? idx3m(i,j+1,k,n2t,n3t)
                                                : idx3m(i,j,k+1,n2t,n3t);
 
-    const double q5 = 0.5*(q_adv[gm] + q_adv[gi]);
-    const double q6 = 0.5*(q_adv[gi] + q_adv[gp]);
-
+    double q5, q6;
     double ac, bc, cc;
     if (own) {
+        // own-direction: plain face mean (matches u1/v5/w5 in k_mom_rhs_var own branch)
+        q5 = 0.5*(q_adv[gm] + q_adv[gi]);
+        q6 = 0.5*(q_adv[gi] + q_adv[gp]);
         const double dq5 = (q[gi]-q[gm])/dxa[a-1];
         const double dq6 = (q[gp]-q[gi])/dxa[a];
         ac = cq*(-q5/dxa[a-1] + 0.5*dq5);
         cc = cq*( q6/dxa[a]   + 0.5*dq6);
         bc = cq*( 0.5*dq6 + 0.5*dq5 - q6/dxa[a] + q5/dxa[a-1]);
-    } else if (z_staggered) {
-        ac = cq*(-q5/dxa[a-1]);
-        cc = cq*( q6/dxa[a]);
-        bc = cq*(-q6/dxa[a] + q5/dxa[a-1]);
     } else {
-        ac = cq*(-q5/dmxa[a]);
-        cc = cq*( q6/dmxa[a+1]);
-        bc = cq*(-q6/dmxa[a+1] + q5/dmxa[a]);
+        // cross-direction: advecting velocity interpolated VOLUME-WEIGHTED along the
+        // OWN axis (matches k_mom_rhs_var w5/w6/v3/v4 at L444-447 and PaScaL_TCS
+        // f90:301-302, reused in the M bands at f90:390/392/394). The previous plain
+        // swept-axis mean made the implicit M-operator inconsistent with the faithful
+        // −M·qⁿ residual and with PaScaL — an O(dx) convection-linearization divergence.
+        q5 = 0.5*(dxo[bo-1]*q_adv[gi] + dxo[bo]*q_adv[gi - ostride])/dmxo[bo];
+        q6 = 0.5*(dxo[bo-1]*q_adv[gp] + dxo[bo]*q_adv[gp - ostride])/dmxo[bo];
+        if (z_staggered) {
+            ac = cq*(-q5/dxa[a-1]);
+            cc = cq*( q6/dxa[a]);
+            bc = cq*(-q6/dxa[a] + q5/dxa[a-1]);
+        } else {
+            ac = cq*(-q5/dmxa[a]);
+            cc = cq*( q6/dmxa[a+1]);
+            bc = cq*(-q6/dmxa[a+1] + q5/dmxa[a]);
+        }
     }
 
     A[p] = ad + ac;
@@ -1210,7 +1233,9 @@ static void adi_component_var(
 namespace mpmstd::equation {
 
 // ---------------------------------------------------------------------------
-//  assemble_momentum_const_visc_gpu
+//  assemble_momentum_const_visc_gpu  — OB const-property wrapper.
+//  *** DEAD FOR DHVC *** (see the OB-kernels banner above). LIVE ONLY for the
+//  rbc_gpu_ob binary. DHVC uses assemble_momentum_var_visc_gpu instead.
 //  Fills mom.dU/dV/dW with the OB explicit BW-ADI RHS.
 //  Buoyancy is added to mom.dW between assemble and solve.
 // ---------------------------------------------------------------------------

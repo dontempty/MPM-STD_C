@@ -1,0 +1,60 @@
+=== [1/5] BUILD (lib + dhvc_gpu, incl. A1 + timing changes) ===
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+  LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
+"apps/dhvc/main_gpu.cu", line 589: warning: variable "t_ss" was set but never used [set_but_not_used]
+      double t_ss = 0.0; int n_time_steps = 10;
+             ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+BUILD_EXIT:0
+
+=== [2/5] RUN OFF (default mapping) ===
+[warm-start] interpolated 384x192x96 -> 384x192x96 from apps/dhvc/restart_1e6_t240 (io=slab)
+[warm-start] projected interpolated field divergence-free (dt0=2.00e-02)
+[TIMING] 10 steps  avg=49.5 ms/step
+[TIMING_BREAKDOWN] per step:  cfl=0.1  scalar=10.3  mom=28.6  corr=0.2  sync=1.9  pres=8.5  ms
+[TIMING] t_end=999  rough total: 4.74 h (n_steps cap=300)
+[TIMING] stats out: from t=9999.0 every t=30.0 (to t_end=999)
+step=50 t=0.146 dt=0.00295 div=1.80e-14 Re=8.798(avg=0.000) KE=1.355e-01 Nu=5.914 Trms=0.212 wall=2s ms/step=43.4
+step=100 t=0.294 dt=0.00294 div=1.83e-14 Re=8.890(avg=0.000) KE=1.355e-01 Nu=5.937 Trms=0.212 wall=4s ms/step=37.0
+step=150 t=0.44 dt=0.00297 div=1.93e-14 Re=8.991(avg=0.000) KE=1.356e-01 Nu=6.002 Trms=0.212 wall=6s ms/step=32.9
+step=200 t=0.587 dt=0.00287 div=1.86e-14 Re=9.098(avg=0.000) KE=1.357e-01 Nu=6.090 Trms=0.212 wall=7s ms/step=33.0
+step=250 t=0.73 dt=0.00284 div=1.79e-14 Re=9.090(avg=0.000) KE=1.358e-01 Nu=6.172 Trms=0.212 wall=9s ms/step=32.9
+step=300 t=0.869 dt=0.00273 div=1.61e-14 Re=9.055(avg=0.000) KE=1.360e-01 Nu=6.227 Trms=0.212 wall=11s ms/step=32.9
+[TIMING_SS] 290 steps (steady-state)  total=35.4 ms/step
+[TIMING_TOTAL] compute = 10.8 s (0.00 h)  |  300 steps  |  avg 35.90 ms/step
+[restart] wrote apps/dhvc/restart_a1_test  (step=300 t=0.8685; U/V/W/T/P + meta)
+
+=== [3/5] RUN ON (MPMSTD_KMAJOR=1, k-major) ===
+[warm-start] interpolated 384x192x96 -> 384x192x96 from apps/dhvc/restart_1e6_t240 (io=slab)
+[warm-start] projected interpolated field divergence-free (dt0=2.00e-02)
+[TIMING] 10 steps  avg=48.3 ms/step
+[TIMING_BREAKDOWN] per step:  cfl=0.1  scalar=9.7  mom=28.2  corr=0.2  sync=1.8  pres=8.3  ms
+[TIMING] t_end=999  rough total: 4.62 h (n_steps cap=300)
+[TIMING] stats out: from t=9999.0 every t=30.0 (to t_end=999)
+step=50 t=0.146 dt=0.00295 div=2.04e-14 Re=8.798(avg=0.000) KE=1.355e-01 Nu=5.914 Trms=0.212 wall=2s ms/step=42.2
+step=100 t=0.294 dt=0.00294 div=1.87e-14 Re=8.890(avg=0.000) KE=1.355e-01 Nu=5.937 Trms=0.212 wall=4s ms/step=39.7
+step=150 t=0.44 dt=0.00297 div=1.89e-14 Re=8.991(avg=0.000) KE=1.356e-01 Nu=6.002 Trms=0.212 wall=6s ms/step=33.0
+step=200 t=0.587 dt=0.00287 div=1.91e-14 Re=9.098(avg=0.000) KE=1.357e-01 Nu=6.090 Trms=0.212 wall=7s ms/step=33.0
+step=250 t=0.73 dt=0.00284 div=1.77e-14 Re=9.090(avg=0.000) KE=1.358e-01 Nu=6.172 Trms=0.212 wall=9s ms/step=33.1
+step=300 t=0.869 dt=0.00273 div=1.78e-14 Re=9.055(avg=0.000) KE=1.360e-01 Nu=6.227 Trms=0.212 wall=11s ms/step=33.0
+[TIMING_SS] 290 steps (steady-state)  total=35.8 ms/step
+[TIMING_TOTAL] compute = 10.9 s (0.00 h)  |  300 steps  |  avg 36.19 ms/step
+[restart] wrote apps/dhvc/restart_a1_test  (step=300 t=0.8685; U/V/W/T/P + meta)
+
+=== [4/5] BYTE-FOR-BYTE FIELD COMPARE (must be identical) ===
+  U.bin: ***DIFFERS***
+  V.bin: ***DIFFERS***
+  W.bin: ***DIFFERS***
+  T.bin: ***DIFFERS***
+  P.bin: ***DIFFERS***
+
+=== [5/5] ms/step OFF vs ON ===
+OFF: avg 35.90 ms/step  | last monitor: ms/step=32.9
+ON : avg 36.19 ms/step  | last monitor: ms/step=33.0
+OFF [TIMING_BREAKDOWN] per step:  cfl=0.1  scalar=10.3  mom=28.6  corr=0.2  sync=1.9  pres=8.5  ms
+ON  [TIMING_BREAKDOWN] per step:  cfl=0.1  scalar=9.7  mom=28.2  corr=0.2  sync=1.8  pres=8.3  ms
+=== A1 RESULT: FAIL — fields differ, A1 mapping has a BUG ===

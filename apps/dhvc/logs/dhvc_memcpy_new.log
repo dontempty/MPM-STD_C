@@ -1,0 +1,44 @@
+=== 5-step profile ===
+[1/1] [========================100%] memcpy_new_5step_1.nsys-rep
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/memcpy_new_5step_1.nsys-rep
+=== 40-step profile ===
+[1/1] [========================100%] memcpy_new_40step_0.nsys-rep
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/memcpy_new_40step_0.nsys-rep
+
+############ 5-step GPU MemOps (rank 0) ############
+| Time (%) | Total Time (ns) | Count | Avg (ns) | Med (ns)  | Min (ns) | Max (ns)  | StdDev (ns) |     Operation      |
+|     61.6 |      59,832,410 | 1,524 | 39,260.1 |   8,513.0 |    1,920 | 7,661,469 |   426,025.3 | [CUDA memcpy HtoD] |
+|     22.3 |      21,621,795 |   355 | 60,906.5 | 106,018.0 |    2,208 |   107,137 |    48,419.5 | [CUDA memcpy DtoD] |
+|     11.8 |      11,447,262 | 1,635 |  7,001.4 |   6,529.0 |    1,568 |    13,024 |     2,179.8 | [CUDA memcpy DtoH] |
+
+############ 40-step GPU MemOps (rank 0) ############
+| Time (%) | Total Time (ns) | Count  | Avg (ns) | Med (ns) | Min (ns) | Max (ns)  | StdDev (ns) |     Operation      |
+|     40.7 |     138,902,301 | 12,024 | 11,552.1 |  6,624.0 |    1,920 | 7,602,780 |   147,331.4 | [CUDA memcpy HtoD] |
+|     31.5 |     107,599,875 |  2,840 | 37,887.3 | 57,857.0 |    1,984 |   107,105 |    30,456.7 | [CUDA memcpy DtoD] |
+|     19.0 |      64,957,270 | 13,080 |  4,966.2 |  4,193.0 |    1,503 |    13,151 |     2,045.9 | [CUDA memcpy DtoH] |
+
+############ CUDA API (memcpy calls, rank 0, 5-step) ############
+NOTICE: Existing SQLite export found: apps/dhvc/prof/memcpy_new_5step_0.sqlite
+        It is assumed file was previously exported from: apps/dhvc/prof/memcpy_new_5step_0.nsys-rep
+Processing [apps/dhvc/prof/memcpy_new_5step_0.sqlite] with [/opt/nvidia/hpc-sdk/Linux_x86_64/23.7/profilers/Nsight_Systems/host-linux-x64/reports/cuda_api_sum.py]... 
+| Time (%) | Total Time (ns) | Num Calls |   Avg (ns)   |   Med (ns)   |  Min (ns)  |  Max (ns)   | StdDev (ns)  |          Name          |
+|      8.8 |      66,889,204 |     3,185 |     21,001.3 |     21,475.0 |      3,531 |     104,747 |     15,716.3 | cuMemcpyAsync          |
+|      6.4 |      49,150,873 |       195 |    252,055.8 |      8,278.0 |      6,536 |   7,880,530 |  1,226,645.5 | cudaMemcpy             |
+|      2.9 |      22,048,688 |       195 |    113,070.2 |    120,973.0 |      7,199 |     224,040 |     85,975.5 | cudaMemcpy3D           |
+|      0.2 |       1,433,343 |         4 |    358,335.8 |     47,655.0 |     12,934 |   1,325,099 |    644,965.3 | cuMemcpyHtoD_v2        |
+
+############ CUDA API (memcpy calls, rank 0, 40-step) ############
+NOTICE: Existing SQLite export found: apps/dhvc/prof/memcpy_new_40step_0.sqlite
+        It is assumed file was previously exported from: apps/dhvc/prof/memcpy_new_40step_0.nsys-rep
+Processing [apps/dhvc/prof/memcpy_new_40step_0.sqlite] with [/opt/nvidia/hpc-sdk/Linux_x86_64/23.7/profilers/Nsight_Systems/host-linux-x64/reports/cuda_api_sum.py]... 
+| Time (%) | Total Time (ns) | Num Calls |   Avg (ns)   |   Med (ns)   |  Min (ns)  |  Max (ns)   | StdDev (ns)  |          Name          |
+|     23.4 |     533,908,280 |    25,480 |     20,954.0 |     21,301.0 |      3,522 |  16,073,296 |    101,829.4 | cuMemcpyAsync          |
+|      5.0 |     113,305,951 |     1,560 |     72,632.0 |     71,099.5 |      7,112 |     222,490 |     53,476.8 | cudaMemcpy3D           |
+|      2.7 |      60,683,213 |     1,420 |     42,734.7 |      8,091.5 |      6,174 |   7,846,888 |    443,862.1 | cudaMemcpy             |
+|      0.1 |       1,148,603 |         4 |    287,150.8 |     48,886.5 |     13,790 |   1,037,040 |    500,547.0 | cuMemcpyHtoD_v2        |
+
+=== interpret: (40step_count - 5step_count) / 35 = per-step memcpy ===
+=== OLD: ~300 H2D + 327 D2H per step from strided ddtype host-staging ===
+=== DONE ===

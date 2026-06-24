@@ -1,16 +1,18 @@
-# DHVC GPU — Ra=1e7, np1=1 np2=1 np3=2 (2×A100), 864x192x416 (864=2^5*3^3 FFT-optimal, no factor-7)
+# DHVC GPU — Ra=1e7, paper DNS grid (Kim et al. 2023 Table 1: Nx×Ny×Nz=832×192×416,
+# Ny=wall-normal, Nz=span → our n1m×n2m×n3m = 832×416×192, z=wall). 4×A100 / 2 nodes
+# (np 1×1×4). Warm-start from the developed 1e6 t=240 field (cross-mesh interp).
 [domain]
 Lx = 8.0
 Ly = 4.0
 Lz = 1.0
 [mesh]
-n1m = 864
-n2m = 192
-n3m = 416
+n1m = 832
+n2m = 416
+n3m = 192
 [mpi]
 np1 = 1
 np2 = 1
-np3 = 2
+np3 = 4
 [uniform_mesh]
 uniform1 = 1
 uniform2 = 1
@@ -32,14 +34,18 @@ T = 0.5
 T = -0.5
 [time]
 t_start  = 0.0
-t_end    = 500.0
-dt_start = 0.001
+t_end    = 240.0
+dt_start = 0.005
 MaxCFL   = 0.4
-n_steps  = 50000
+n_steps  = 2000000
 [init]
 perturb = 0.05
 [output]
 dir_stats   = "apps/dhvc/out_1e7/"
 nmonitor    = 100
-nstat_start = 20000
-nstat       = 10
+t_stat_start = 60.0
+nstat        = 10
+t_stat_out   = 30.0
+[restart]
+dir_in  = "apps/dhvc/restart_1e6_t240"
+dir_out = "apps/dhvc/restart_1e7_t240"

@@ -1,0 +1,52 @@
+# DHVC GPU — Ra=1e8, np1=1 np2=1 np3=4 (4×A100 across 2 nodes). DNS mesh
+# 1536×768×340 (≈401M cells). Short window: run to t_end=150, stats t=60→150
+# (t60,90,120,150). 4-GPU diagnostic — watch dt recovery + per-step before committing.
+[domain]
+Lx = 8.0
+Ly = 4.0
+Lz = 1.0
+[mesh]
+n1m = 1536
+n2m = 340
+n3m = 768
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 4
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e8
+Pr = 0.7
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+[bc.z.plus]
+T = -0.5
+[time]
+t_start  = 0.0
+t_end    = 150.0
+dt_start = 0.002
+MaxCFL   = 0.4
+n_steps  = 20000000
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/dhvc/out_1e8/"
+nmonitor    = 100
+t_stat_start = 60.0
+nstat        = 10
+t_stat_out   = 30.0
+[restart]
+dir_in       = "apps/dhvc/restart_1e7_t240"
+dir_out      = "apps/dhvc/restart_1e8_t150"
+warmstart_io = "slab"

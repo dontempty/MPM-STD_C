@@ -1,0 +1,35 @@
+=== ompi_info cuda support ===
+config:cli:" '--prefix=/proj/nv/libraries/Linux_x86_64/23.7/openmpi/230483-rel-4' '--enable-shared' '--enable-static' '--without-tm' '--enable-mpi-cxx' '--disable-wrapper-runpath' '--without-ucx' '--without-libnl' '--without-xpmem' '--without-cray-xpmem' '--with-wrapper-ldflags=-Wl,-rpath -Wl,$ORIGIN:$ORIGIN/../../lib:$ORIGIN/../../../lib:$ORIGIN/../../../compilers/lib:$ORIGIN/../../../../compilers/lib:$ORIGIN/../../../../../compilers/lib' '--enable-mpirun-prefix-by-default' '--with-libevent=internal' '--with-slurm' '--without-libnl' '--with-cuda=/proj/cuda/10.0/Linux_x86_64'"
+options:mpi_ext:affinity, cuda
+mca:btl:smcuda:version:"mca:2.1.0"
+mca:btl:smcuda:version:"api:3.0.0"
+mca:btl:smcuda:version:"component:3.1.5"
+=== build mpi cuda-aware test ===
+
+=== query (no profiler) ===
+[query] MPIX_Query_cuda_support() = 1  (compile MPIX_CUDA_AWARE_SUPPORT=1)
+[query] ranks=2
+[done] 50 device-ptr MPI_Alltoall (n=37056/peer)
+
+=== nsys per-rank profile of 50 device-ptr MPI_Alltoall ===
+[1/1] [0%                          ] mpi_ca_1.nsys-rep[1/1] [0%                          ] mpi_ca_0.nsys-rep[1/1] [0%                          ] mpi_ca_1.nsys-rep[1/1] [9%                          ] mpi_ca_1.nsys-rep[1/1] [0%                          ] mpi_ca_0.nsys-rep[1/1] [8%                          ] mpi_ca_0.nsys-rep[1/1] [==18%                       ] mpi_ca_1.nsys-rep[1/1] [=17%                        ] mpi_ca_0.nsys-rep[1/1] [========================97% ] mpi_ca_1.nsys-rep[1/1] [========================100%] mpi_ca_1.nsys-rep[1/1] [========================97% ] mpi_ca_0.nsys-rep[1/1] [========================100%] mpi_ca_0.nsys-rep[1/1] [========================100%] mpi_ca_0.nsys-rep
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/mpi_ca_0.nsys-rep
+[1/1] [========================100%] mpi_ca_1.nsys-rep
+Generated:
+    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/mpi_ca_1.nsys-rep
+
+############ rank0 GPU MemOps (H2D/D2H = host-staging evidence) ############
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
++----------+-----------------+-------+----------+----------+----------+----------+-------------+--------------------+
+| Time (%) | Total Time (ns) | Count | Avg (ns) | Med (ns) | Min (ns) | Max (ns) | StdDev (ns) |     Operation      |
++----------+-----------------+-------+----------+----------+----------+----------+-------------+--------------------+
+|     90.6 |         523,427 |   203 |  2,578.5 |  2,592.0 |    2,368 |    3,168 |       122.0 | [CUDA memcpy DtoD] |
+|      5.1 |          29,440 |     3 |  9,813.3 | 11,904.0 |    5,056 |   12,480 |     4,130.0 | [CUDA memcpy HtoD] |
+|      3.8 |          22,207 |     3 |  7,402.3 |  8,832.0 |    3,263 |   10,112 |     3,641.5 | [CUDA memcpy DtoH] |
+|      0.5 |           2,976 |     1 |  2,976.0 |  2,976.0 |    2,976 |    2,976 |         0.0 | [CUDA memset]      |
++----------+-----------------+-------+----------+----------+----------+----------+-------------+--------------------+
+
+=== interpret: 50 alltoalls. host-staged → ~50+ H2D + ~50+ D2H. cuda-aware → ~0 ===
+=== MPI_CA DONE ===

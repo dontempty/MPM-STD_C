@@ -1,5 +1,6 @@
 #include "physics/buoyancy/buoyancy.hpp"
 #include "common/macros.hpp"
+#include "common/direction.hpp"
 
 // OB Boussinesq buoyancy modifier. Composed in main AFTER momentum assemble,
 // BEFORE solve: adds the body force F = coeff*(T - T_ref) to the gravity-axis
@@ -9,8 +10,8 @@
 
 namespace mpmstd::physics {
 
-void add_buoyancy_force_cpu(core::CpuMomentumSystem& mom, const core::CpuField& T,
-                            const BuoyancyParams& p, real_t dt) {
+void add_buoyancy_force_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom,
+                            const core::CpuField& T, const BuoyancyParams& p, real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
   const real_t* t = T.data();
@@ -18,11 +19,19 @@ void add_buoyancy_force_cpu(core::CpuMomentumSystem& mom, const core::CpuField& 
                                : (p.gravity_axis == 1) ? mom.rhs_v : mom.rhs_w;
   real_t* rhs = rhs_vec.data();
   const real_t coeff = p.coeff, t_ref = p.T_ref;
+  // PaScaL_TCS f90:348 — interpolate T onto the gravity-axis component face:
+  //   Tc = 0.5*(dxg[ig-1]*T[c] + dxg[ig]*T[c-gstride])/dmxg[ig]
+  const Direction gd = static_cast<Direction>(p.gravity_axis);
+  const real_t* dxg  = domain.grid.dx_ptr(gd);
+  const real_t* dmxg = domain.grid.dmx_ptr(gd);
+  const int gstride = (p.gravity_axis == 0) ? n2 * n3 : (p.gravity_axis == 1) ? n3 : 1;
   for (int i = h; i < n1 - h; ++i)
     for (int j = h; j < n2 - h; ++j)
       for (int k = h; k < n3 - h; ++k) {
         const int c = (i * n2 + j) * n3 + k;
-        rhs[c] += dt * coeff * (t[c] - t_ref);
+        const int ig = (p.gravity_axis == 0) ? i : (p.gravity_axis == 1) ? j : k;
+        const real_t Tc = real_t{0.5}*(dxg[ig-1]*t[c] + dxg[ig]*t[c - gstride])/dmxg[ig];
+        rhs[c] += dt * coeff * (Tc - t_ref);
       }
 }
 

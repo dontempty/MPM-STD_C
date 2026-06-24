@@ -34,13 +34,19 @@
 #include "driver/cfl.hpp"
 #include "physics/properties/properties.hpp"
 #include "post/statistics.hpp"
+#include "post/io.hpp"            // write_restart_cpu (checkpoint)
 
 #include <cuda_runtime.h>
 #include <mpi.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -250,7 +256,8 @@ static double re_dstar_from_profile(
 inline void gpu_monitor_dhvc(GpuDhvcAccum& ga, const core::GpuFields& gf,
     int step, double time, real_t dt, double nu, double alpha, double Ra,
     bool is_root, MPI_Comm comm, FILE* mon_fp,
-    const std::vector<double>& zc_global)
+    const std::vector<double>& zc_global,
+    double cum_wall_s, double recent_ms_step)
 {
     cudaMemset(ga.d_diag, 0, 4*sizeof(double));
     const dim3 blk(8,8,4), grd((ga.nx+7)/8,(ga.ny+7)/8,(ga.nzl+3)/4);
@@ -305,11 +312,13 @@ inline void gpu_monitor_dhvc(GpuDhvcAccum& ga, const core::GpuFields& gf,
     const double Trms = std::sqrt(g3g[2]/ncell);
 
     if (!is_root) return;
-    std::printf("step=%d t=%.3g dt=%.3g div=%.2e Re=%.3f(avg=%.3f) KE=%.3e Nu=%.3f Trms=%.3f\n",
-                step, time, double(dt), glb4[3], re_inst, re_dstar, KE, Nu, Trms);
+    std::printf("step=%d t=%.3g dt=%.3g div=%.2e Re=%.3f(avg=%.3f) KE=%.3e Nu=%.3f Trms=%.3f wall=%.0fs ms/step=%.1f\n",
+                step, time, double(dt), glb4[3], re_inst, re_dstar, KE, Nu, Trms, cum_wall_s, recent_ms_step);
     if (mon_fp) {
-        std::fprintf(mon_fp, "%d,%.6g,%.6g,%.6e,%.6f,%.6f,%.6e,%.6f,%.6f\n",
-                     step, time, double(dt), glb4[3], re_dstar, re_inst, KE, Nu, Trms);
+        // columns: step,time,dt,div,Re_avg,Re_inst,KE,Nu,Trms,wall_s,ms_per_step
+        std::fprintf(mon_fp, "%d,%.6g,%.6g,%.6e,%.6f,%.6f,%.6e,%.6f,%.6f,%.3f,%.3f\n",
+                     step, time, double(dt), glb4[3], re_dstar, re_inst, KE, Nu, Trms,
+                     cum_wall_s, recent_ms_step);
         std::fflush(mon_fp);
     }
 }
@@ -384,6 +393,8 @@ int main(int argc, char** argv) {
     const double t_stat_out   = cfg.get_or<double>("output","t_stat_out", 30.0);
     double       t_next_out   = t_stat_start;   // next physical time to write stats
     const std::string dir_stats = cfg.get_or<std::string>("output","dir_stats","apps/dhvc/statistics/");
+    const std::string restart_out = cfg.get_or<std::string>("restart","dir_out","");  // checkpoint at run end
+    const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in","");   // warm-start source (any mesh)
     if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
     MPI_Barrier(topo.cart_comm());
 
@@ -395,8 +406,9 @@ int main(int argc, char** argv) {
     cpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
     cpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-    // Initial condition: analytical base state + perturbation
-    {
+    // Initial condition: analytical base state + perturbation (cold start), OR a
+    // warm start interpolated from a previous (possibly coarser) run's restart.
+    if (restart_in.empty()) {
         const double Lx=cfg.get<double>("domain","Lx"), Ly=cfg.get<double>("domain","Ly"), Lz=cfg.get<double>("domain","Lz");
         const double T_lo=bc.T.face(Direction::Z,Side::Minus).value;
         const double T_hi=bc.T.face(Direction::Z,Side::Plus ).value;
@@ -415,6 +427,71 @@ int main(int argc, char** argv) {
                                       +std::sin(4.0*M_PI*x/Lx)*std::sin(2.0*M_PI*y/Ly));
             V[c]+=static_cast<real_t>(pert);
             W[c]+=static_cast<real_t>(0.5*amp*env*std::sin(2.0*M_PI*x/Lx));
+        }
+    } else {
+        // WARM START — read the source restart (any mesh) + interpolate (staggered,
+        // trilinear, x/y periodic, z clamp) onto this run's grid. U,V,W,T,P(=P_acc).
+        const double Lx=cfg.get<double>("domain","Lx"), Ly=cfg.get<double>("domain","Ly"), Lz=cfg.get<double>("domain","Lz");
+        const double gz=cfg.get_or<double>("mesh_stretch","gamma3",0.0);
+        int sdim[3]={0,0,0};
+        if (mpi.is_root()) {
+            std::ifstream mf(restart_in + "/meta.txt"); std::string k; double v;
+            while (mf>>k>>v) { if(k=="n1m")sdim[0]=(int)v; else if(k=="n2m")sdim[1]=(int)v; else if(k=="n3m")sdim[2]=(int)v; }
+        }
+        MPI_Bcast(sdim,3,MPI_INT,0,topo.cart_comm());
+        if (sdim[0]<=0||sdim[1]<=0||sdim[2]<=0) throw std::runtime_error("warm start: bad/missing meta.txt dims in " + restart_in);
+        post::SrcMesh sm = post::make_src_mesh(sdim[0],sdim[1],sdim[2], Lx,Ly,Lz, gz);
+        std::vector<real_t> buf;
+        const core::Var vars[5]={core::Var::U,core::Var::V,core::Var::W,core::Var::T,core::Var::P};
+        const char*     names[5]={"U","V","W","T","P"};
+        const int       stag[5] ={0,1,2,-1,-1};   // U:x-face V:y-face W:z-face T,P:center
+
+        // I/O path: "slab" (Tier 1, default) reads only this rank's source z-slab via
+        // collective MPI-IO (per-rank memory ~ full_field/N_z, no Bcast); "replicate"
+        // (legacy) reads the whole field on every rank + Bcast. Both feed the IDENTICAL
+        // trilinear interpolation — only the source z indexing differs.
+        const std::string ws_io = cfg.get_or<std::string>("restart","warmstart_io","slab");
+        const bool use_slab = (ws_io != "replicate");
+        int kz0 = 0, slab_n3 = -1;
+        if (use_slab) {
+            // This rank's target z-extent (interior faces bound every staggered node).
+            const int n3t = static_cast<int>(sub.n_total()[2]), h = kHaloWidth;
+            const auto& tzf = grid.xf(Direction::Z);
+            const double z_min = static_cast<double>(tzf[h]);
+            const double z_max = static_cast<double>(tzf[n3t - h]);
+            post::compute_src_z_box(sm, z_min, z_max, /*margin=*/2, kz0, slab_n3);
+        }
+        for (int q=0;q<5;++q) {
+            const std::string fpath = restart_in + "/" + std::string(names[q]) + ".bin";
+            if (use_slab) post::read_source_slab(buf, sdim[0],sdim[1],sdim[2], kz0, slab_n3, fpath, topo.cart_comm());
+            else          post::read_global_field(buf, sdim[0],sdim[1],sdim[2], fpath, topo.cart_comm());
+            post::interp_global_to_field(cpu_fields[vars[q]], grid, buf, sm, stag[q], kz0, slab_n3);
+        }
+        if (mpi.is_root())
+            std::printf("[warm-start] interpolated %dx%dx%d -> %dx%dx%d from %s (io=%s)\n",
+                        sdim[0],sdim[1],sdim[2], n_global[0],n_global[1],n_global[2],
+                        restart_in.c_str(), use_slab ? "slab" : "replicate");
+
+        // dry-run: dump per-var interior checksums (for slab-vs-replicate A/B), then exit.
+        if (cfg.get_or<int>("restart","warmstart_dryrun",0)) {
+            const auto nt=sub.n_total(); const int n1=nt[0],n2=nt[1],n3=nt[2],h=kHaloWidth;
+            if (mpi.is_root()) std::printf("[warm-start dryrun] var: sum  sumsq  min  max  (global interior, io=%s)\n", use_slab?"slab":"replicate");
+            for (int q=0;q<5;++q) {
+                const real_t* d = cpu_fields[vars[q]].data();
+                double s=0, s2=0, mn=1e300, mx=-1e300;
+                for (int i=h;i<n1-h;++i) for (int j=h;j<n2-h;++j) for (int k=h;k<n3-h;++k) {
+                    const double v=(double)d[((std::size_t)i*n2+j)*n3+k];
+                    s+=v; s2+=v*v; mn=std::min(mn,v); mx=std::max(mx,v);
+                }
+                double gs,gs2,gmn,gmx;
+                MPI_Reduce(&s,&gs,1,MPI_DOUBLE,MPI_SUM,0,topo.cart_comm());
+                MPI_Reduce(&s2,&gs2,1,MPI_DOUBLE,MPI_SUM,0,topo.cart_comm());
+                MPI_Reduce(&mn,&gmn,1,MPI_DOUBLE,MPI_MIN,0,topo.cart_comm());
+                MPI_Reduce(&mx,&gmx,1,MPI_DOUBLE,MPI_MAX,0,topo.cart_comm());
+                if (mpi.is_root()) std::printf("[warm-start dryrun] %s: %.15e %.15e %.15e %.15e\n", names[q],gs,gs2,gmn,gmx);
+            }
+            MPI_Barrier(topo.cart_comm());
+            return 0;   // RAII (topo, then mpi=MpiContext) frees comm + MPI_Finalize on return
         }
     }
     {
@@ -454,6 +531,14 @@ int main(int argc, char** argv) {
     core::GpuScalarSystem   gpu_scalar(sub);
     core::PressureSystem    pressure;
 
+    // Accumulated pressure Pⁿ for the incremental (van Kan) projection. The
+    // predictor subtracts dt·∇P_acc; after each solve we add the increment δp.
+    core::GpuField gpu_P_acc(sub, "P_acc");
+    if (restart_in.empty())
+        cudaMemset(gpu_P_acc.data(), 0, gpu_P_acc.n_elements() * sizeof(double));
+    else
+        gpu_P_acc.to_device(cpu_fields[core::Var::P].data());   // seed accumulated pressure from interp
+
     // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
     // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With DeltaT=0 the default
     // PropertyModel evaluates to unit constants on every cell → the var kernels
@@ -462,6 +547,15 @@ int main(int argc, char** argv) {
     physics::GpuPropertyFields gpu_props(sub);
     physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T],
                                    physics::PropertyModel{});
+
+    // Warm start: the interpolated velocity is not discretely divergence-free →
+    // one pressure projection cleans it before time marching (methodology step 4).
+    if (!restart_in.empty()) {
+        const real_t dt0 = static_cast<real_t>(cfg.get_or<double>("time","dt_start",0.001));
+        equation::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt0);
+        if (mpi.is_root())
+            std::printf("[warm-start] projected interpolated field divergence-free (dt0=%.2e)\n", dt0);
+    }
 
     // GPU statistics accumulator (no full-field D2H during loop)
     GpuDhvcAccum gpu_accum(sub, grid, gpu_grid_arrays);
@@ -499,6 +593,11 @@ int main(int argc, char** argv) {
         return std::chrono::duration<double,std::milli>(hrc::now()-t).count();
     };
     double ts_cfl=0, ts_scalar=0, ts_mom=0, ts_corr=0, ts_sync=0, ts_pres=0;
+    // Whole-run compute timer (never reset, unlike t00) + per-monitor-interval rate.
+    MPI_Barrier(topo.cart_comm());
+    const auto t_loop_start = hrc::now();
+    auto t_last_mon = t_loop_start;
+    int  last_mon_step = 0;
 
     while (time < t_end && step < n_steps) {
         const bool do_timing = (step < n_time_steps);
@@ -521,7 +620,8 @@ int main(int argc, char** argv) {
         // (2) Momentum predictor + OB buoyancy  (NOB var path with unit props)
         equation::assemble_momentum_var_visc_gpu(domain, gpu_fields,
             gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
-        physics::add_buoyancy_force_gpu(gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+        physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+        equation::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_P_acc, dt);  // incremental: −dt·∇Pⁿ
         equation::solve_momentum_var_gpu(domain, bc, gpu_fields,
             gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
         equation::update_velocity_gpu(gpu_fields, gpu_momentum);
@@ -548,6 +648,7 @@ int main(int argc, char** argv) {
 
         // (5) Pressure
         equation::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
+        equation::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
         if (do_timing) { cudaDeviceSynchronize(); ts_pres += ms_since(tPrev); }
 
         time += double(dt); ++step;
@@ -556,10 +657,16 @@ int main(int argc, char** argv) {
         if (time >= t_stat_start)
             gpu_accum_dhvc(gpu_accum, gpu_fields, dt);   // every step, dt-weighted
 
-        // (7) Monitor: ~1.6 KB D2H, write monitor.csv
-        if (step % nmonitor == 0)
+        // (7) Monitor: ~1.6 KB D2H, write monitor.csv (+ live wall-clock / ms-per-step)
+        if (step % nmonitor == 0) {
+            cudaDeviceSynchronize();                          // all step work done → wall is exact
+            const double cum_wall_s     = ms_since(t_loop_start) / 1000.0;
+            const double recent_ms_step = ms_since(t_last_mon) / std::max(1, step - last_mon_step);
             gpu_monitor_dhvc(gpu_accum, gpu_fields, step, time, dt, nu, alpha_T, Ra,
-                             mpi.is_root(), topo.cart_comm(), mon_fp, zc_global);
+                             mpi.is_root(), topo.cart_comm(), mon_fp, zc_global,
+                             cum_wall_s, recent_ms_step);
+            t_last_mon = hrc::now(); last_mon_step = step;
+        }
 
         // (8) Stats: cumulative-average profile file-out every t_stat_out of PHYSICAL
         //     TIME from t_stat_start, so QoI convergence is trackable from the .dat seq.
@@ -590,7 +697,45 @@ int main(int argc, char** argv) {
         std::printf("[TIMING_SS] %d steps (steady-state)  total=%.1f ms/step\n",
                     step - n_time_steps, ms_since(t00)/(step - n_time_steps));
 
+    // ── total compute time for the whole run (loop start → here) ─────────────────
+    cudaDeviceSynchronize();
+    MPI_Barrier(topo.cart_comm());
+    const double total_s = ms_since(t_loop_start) / 1000.0;
+    if (mpi.is_root()) {
+        const double avg_ms = total_s * 1000.0 / std::max(1, step);
+        std::printf("[TIMING_TOTAL] compute = %.1f s (%.2f h)  |  %d steps  |  avg %.2f ms/step\n",
+                    total_s, total_s / 3600.0, step, avg_ms);
+    }
+
     if (mon_fp) std::fclose(mon_fp);
+
+    // ── checkpoint write (restart file at run end, t=t_end) ──────────────────────
+    // U,V,W,T + P (= accumulated pressure P_acc for the incremental scheme). Global
+    // C-order MPI-IO (decomposition-independent). meta.txt carries t/step/mesh/Ra for
+    // continuation + the (future) cross-mesh interpolation warm-start.
+    if (!restart_out.empty()) {
+        gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
+        gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
+        gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
+        gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
+        gpu_P_acc.to_host(cpu_fields[core::Var::P].data());   // P.bin = accumulated pressure
+        std::error_code ec; std::filesystem::create_directories(restart_out, ec);
+        MPI_Barrier(topo.cart_comm());
+        post::write_restart_gathered_cpu(cpu_fields[core::Var::U], sub, restart_out + "/U.bin");
+        post::write_restart_gathered_cpu(cpu_fields[core::Var::V], sub, restart_out + "/V.bin");
+        post::write_restart_gathered_cpu(cpu_fields[core::Var::W], sub, restart_out + "/W.bin");
+        post::write_restart_gathered_cpu(cpu_fields[core::Var::T], sub, restart_out + "/T.bin");
+        post::write_restart_gathered_cpu(cpu_fields[core::Var::P], sub, restart_out + "/P.bin");
+        if (mpi.is_root()) {
+            std::ofstream mf(restart_out + "/meta.txt");
+            mf << std::setprecision(17)
+               << "step " << step << "\n" << "time " << time << "\n"
+               << "n1m " << n_global[0] << "\n" << "n2m " << n_global[1] << "\n"
+               << "n3m " << n_global[2] << "\n" << "Ra " << Ra << "\n";
+            std::printf("[restart] wrote %s  (step=%d t=%.4f; U/V/W/T/P + meta)\n",
+                        restart_out.c_str(), step, time);
+        }
+    }
 
     const double re_dstar = post::compute_re_delta_star_cpu(stats, nu, domain);
     if (mpi.is_root())

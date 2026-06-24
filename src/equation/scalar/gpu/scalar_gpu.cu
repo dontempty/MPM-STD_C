@@ -274,6 +274,14 @@ cuda_tdma(mpmstd::linear_solver::tdma::TdmaRegistry& tdma,
 
 namespace mpmstd::equation {
 
+// ###########################################################################
+// ## OB CONSTANT-DIFFUSIVITY SCALAR — DEAD FOR DHVC                         ##
+// ## assemble_scalar_const_diff_gpu / solve_scalar_gpu use the OB energy    ##
+// ## scheme. DHVC (dhvc_gpu) routes through assemble_scalar_var_diff_gpu +  ##
+// ## solve_scalar_var_gpu with κ≡1, dκ≡0 (the NOB-faithful 0.5-skew semi-   ##
+// ## implicit + −M·Tⁿ residual scheme). These OB scalar fns are LIVE ONLY   ##
+// ## for the rbc_gpu_ob binary. DO NOT call from DHVC.                      ##
+// ###########################################################################
 void assemble_scalar_const_diff_gpu(const core::Domain& domain, core::GpuFields& fields,
                                      core::GpuScalarSystem& sys, real_t dt) {
 #ifdef MPMSTD_BACKEND_CUDA

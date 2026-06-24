@@ -202,6 +202,20 @@ __global__ void k_project_nob_pres(
   W[c] -= dt * ((Pc - P[czm])/dmx3[k] + (irc_z - 1.0)*(ph - dPhat[czm])/dmx3[k]);
 }
 
+// 2nd-order extrapolation of the NOB pressure predictor (PaScaL_TCS §820-821):
+//   dP0   = (dPhat + dP0)/2
+//   dPhat = 2*dP - dP0          (dP = the just-solved P)
+// Runs over every cell incl. halo (linear → stays halo-consistent like P).
+__global__ void k_dphat_extrapolate(double* __restrict__ dPhat, double* __restrict__ dP0,
+                                     const double* __restrict__ dP, std::size_t n)
+{
+  const std::size_t q = (std::size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (q >= n) return;
+  const double new_p0 = 0.5 * (dPhat[q] + dP0[q]);
+  dP0[q]   = new_p0;
+  dPhat[q] = 2.0 * dP[q] - new_p0;
+}
+
 // ── GPU pressure fast-path kernels ───────────────────────────────────────────
 // Used when np1==1 && np2==1: all pencil buffers stay on device.
 
@@ -264,12 +278,14 @@ public:
              const boundary::Problem& problem,
              const parallel::mpi::Subdomain& sub);
 
-  // NOB pressure solve (variable density): adds ExtraTerm, NOB projection, updates dPhat
+  // NOB pressure solve (variable density): adds ExtraTerm, NOB projection, then
+  // extrapolates the predictor for next step (PaScaL_TCS §820-821):
+  //   dP0 = (dPhat + dP0)/2 ;  dPhat = 2*dP - dP0.
   void solve_nob(real_t dt, core::GpuFields& gpu_fields,
                  const boundary::Problem& problem,
                  const parallel::mpi::Subdomain& sub,
                  const core::GpuField& inv_rho,
-                 core::GpuField& dPhat);
+                 core::GpuField& dPhat, core::GpuField& dP0);
 
 private:
   void transpose_C_to_I_();
@@ -1304,7 +1320,7 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
                                    const boundary::Problem& problem,
                                    const parallel::mpi::Subdomain& sub,
                                    const core::GpuField& inv_rho,
-                                   core::GpuField& dPhat)
+                                   core::GpuField& dPhat, core::GpuField& dP0)
 {
   using hrc = std::chrono::high_resolution_clock;
   auto ms_ = [](hrc::time_point t0){
@@ -1350,9 +1366,19 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
   project_nob_gpu_(d_U, d_V, d_W, gpu_fields[core::Var::P].data(), d_ph, d_ir,
                    static_cast<double>(dt));
   auto T7 = hrc::now();
-  // 9. dPhat D2D
-  CUDA_CHK(cudaMemcpy(dPhat.data(), gpu_fields[core::Var::P].data(),
-                      nf * sizeof(double), cudaMemcpyDeviceToDevice));
+  // 9. Extrapolate predictor for next step (PaScaL_TCS §820-821):
+  //    dP0 = (dPhat + dP0)/2 ;  dPhat = 2*dP - dP0   (dP = just-solved P)
+  {
+    const int blk = 256;
+    const int grd = (int)((nf + blk - 1) / blk);
+    k_dphat_extrapolate<<<grd, blk>>>(dPhat.data(), dP0.data(),
+                                      gpu_fields[core::Var::P].data(), nf);
+  }
+  // dPhat halo exchange — REQUIRED for the next step's extra-term/projection to
+  // cancel across MPI boundaries (PaScaL_TCS main.f90:199 ghostcell_update(dPhat)).
+  // The old dPhat:=P got this for free since P was already synced; the 2*dP-dP0
+  // predictor is computed locally, so its halo must be exchanged explicitly.
+  core::sync_field_gpu(dPhat, problem.P, sub);
   core::sync_field_gpu(gpu_fields[core::Var::U], problem.U, sub);
   core::sync_field_gpu(gpu_fields[core::Var::V], problem.V, sub);
   core::sync_field_gpu(gpu_fields[core::Var::W], problem.W, sub);

@@ -10,6 +10,6 @@
 cd /shared/home/wel1come1234/workspace/MPM-STD_C
 module load nvhpc/23.7
 
-echo "=== DHVC GPU Ra=1e6 (150K steps, nstat_start=50K, instantaneous monitor, 2xA100 gpu02) ==="
+echo "=== DHVC GPU Ra=1e6 FAITHFUL run-only (conv+buoy binary, t_end=330, stats from t=60, 2xA100 gpu01) ==="
 mpirun -np 2 build/cuda/bin/apps/dhvc_gpu apps/dhvc/input_fig7_gpu_1e6.toml 2>&1 \
   | grep --line-buffered -E "step=|dhvc_gpu\]|rror|Killed|CANCELLED|BLOW|nan"

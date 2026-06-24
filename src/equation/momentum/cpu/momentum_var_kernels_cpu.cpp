@@ -343,21 +343,29 @@ void build_adi_bands_var(Direction d, Direction own_dir,
       if (z_staggered) { ad = -inh*ir/dmxa[a]*mm/dxa[a-1]; cd = -inh*ir/dmxa[a]*mp/dxa[a]; }
       else             { ad = -inh*ir/dxa[a]*mm/dmxa[a];   cd = -inh*ir/dxa[a]*mp/dmxa[a+1]; }
     }
-    const real_t q5 = kHalf*(q_adv[gm]+q_adv[gi]);        // lo-face advecting vel
-    const real_t q6 = kHalf*(q_adv[gi]+q_adv[gp]);        // hi-face advecting vel
+    real_t q5, q6;
     real_t ac, cc, bc;
     if (own) {
+      q5 = kHalf*(q_adv[gm]+q_adv[gi]);                   // own-dir: plain face mean
+      q6 = kHalf*(q_adv[gi]+q_adv[gp]);
       const real_t dq5 = (q[gi]-q[gm])/dxa[a-1];          // ∂q lo
       const real_t dq6 = (q[gp]-q[gi])/dxa[a];            // ∂q hi
       ac = cq*(-q5/dxa[a-1] + kHalf*dq5);
       cc = cq*( q6/dxa[a]   + kHalf*dq6);
       bc = cq*( kHalf*dq6 + kHalf*dq5 - q6/dxa[a] + q5/dxa[a-1]);
-    } else if (z_staggered) {
-      ac = cq*(-q5/dxa[a-1]); cc = cq*( q6/dxa[a]);
-      bc = cq*(-q6/dxa[a] + q5/dxa[a-1]);
     } else {
-      ac = cq*(-q5/dmxa[a]); cc = cq*( q6/dmxa[a+1]);
-      bc = cq*(-q6/dmxa[a+1] + q5/dmxa[a]);
+      // cross-dir: advecting vel VOLUME-WEIGHTED along the OWN axis (ref f90:301-302,
+      // reused in the M bands f90:390/392/394; matches the RHS w5/w6/v3/v4). The old
+      // plain swept-axis mean diverged from PaScaL and from the faithful −M·qⁿ residual.
+      q5 = volw_o(q_adv, gi, bo);
+      q6 = volw_o(q_adv, gp, bo);
+      if (z_staggered) {
+        ac = cq*(-q5/dxa[a-1]); cc = cq*( q6/dxa[a]);
+        bc = cq*(-q6/dxa[a] + q5/dxa[a-1]);
+      } else {
+        ac = cq*(-q5/dmxa[a]); cc = cq*( q6/dmxa[a+1]);
+        bc = cq*(-q6/dmxa[a+1] + q5/dmxa[a]);
+      }
     }
     av = ad + ac;  cv = cd + cc;  bv = (real_t{1} - ad - cd) + bc;
   };
