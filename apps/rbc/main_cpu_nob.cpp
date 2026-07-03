@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
   physics::CpuPropertyFields props(sub);
   const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   physics::BuoyancyParams buoy;
-  buoy.gravity_axis = 2; buoy.coeff = 1; buoy.T_ref = 0;
+  buoy.gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2); buoy.coeff = 1; buoy.T_ref = 0;
   buoy.a12pera11 = (std::fabs(pmodel.a[2]) < real_t{1e-14}) ? real_t{0} : pmodel.a[2] / pmodel.a[1];
   buoy.delta_T   = static_cast<real_t>(DeltaT);
 

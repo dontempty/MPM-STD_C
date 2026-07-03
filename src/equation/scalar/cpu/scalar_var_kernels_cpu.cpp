@@ -173,7 +173,11 @@ void build_energy_adi_bands_var(Direction      d,
                                 real_t         Ct, real_t dt,
                                 bool           is_stage1) {
   // Compute the sweep-axis bands (am,ac,ap) and the packed RHS Dval at (i,j,k).
+  // z_wall_lo / z_wall_hi: PaScaL_TCS jem/jep mask — zero dkPP at wall-adjacent
+  // Z faces so the wall κ̂-gradient correction is dropped on the implicit side,
+  // matching module_solve_thermal.f90 Stage 3 lines 490-491 (dble(jep/jem)=0).
   auto build_cell = [&](int i, int j, int k,
+                        bool z_wall_lo, bool z_wall_hi,
                         real_t& am, real_t& ac, real_t& ap, real_t& Dval) {
     const int c  = idx3(i,   j,   k,   n1_tot, n2_tot, n3_tot);
     const int xm = idx3(i-1, j,   k,   n1_tot, n2_tot, n3_tot);
@@ -190,13 +194,21 @@ void build_energy_adi_bands_var(Direction      d,
                                         dx1[i-1], dx1[i], dx1[i+1], dmx1[i], dmx1[i+1]);
     const FaceStencil fy = face_stencil(T, kappa, dkappa, ym, c, yp,
                                         dx2[j-1], dx2[j], dx2[j+1], dmx2[j], dmx2[j+1]);
-    const FaceStencil fz = face_stencil(T, kappa, dkappa, zm, c, zp,
-                                        dx3[k-1], dx3[k], dx3[k+1], dmx3[k], dmx3[k+1]);
+    FaceStencil fz = face_stencil(T, kappa, dkappa, zm, c, zp,
+                                  dx3[k-1], dx3[k], dx3[k+1], dmx3[k], dmx3[k+1]);
+    if (z_wall_lo) fz.dkPP_lo = real_t{0};   // PaScaL jem=0: drop dκ̂ at lower wall face
+    if (z_wall_hi) fz.dkPP_hi = real_t{0};   // PaScaL jep=0: drop dκ̂ at upper wall face
 
     real_t eAMx,eACx,eAPx, eAMy,eACy,eAPy, eAMz,eACz,eAPz;
     axis_bands(fx, irc_h, dx1[i-1],dx1[i],dx1[i+1], dmx1[i],dmx1[i+1], U[c],U[xp], eAMx,eACx,eAPx);
     axis_bands(fy, irc_h, dx2[j-1],dx2[j],dx2[j+1], dmx2[j],dmx2[j+1], V[c],V[yp], eAMy,eACy,eAPy);
     axis_bands(fz, irc_h, dx3[k-1],dx3[k],dx3[k+1], dmx3[k],dmx3[k+1], W[c],W[zp], eAMz,eACz,eAPz);
+    // PaScaL jep/jem full mask: zero complete Z off-diagonal at wall cells for
+    // Stages 2&3 only (Stage 1 needs eAPz/eAMz in M·θⁿ to encode wall BC via ghost).
+    if (!is_stage1) {
+      if (z_wall_lo) eAMz = real_t{0};
+      if (z_wall_hi) eAPz = real_t{0};
+    }
 
     const real_t div_sum = div_bare(fx, dx1[i]) + div_bare(fy, dx2[j]) + div_bare(fz, dx3[k]);
 
@@ -229,6 +241,8 @@ void build_energy_adi_bands_var(Direction      d,
   };
 
   // dispatch over the sweep axis (same (sys,row) packing as the const path)
+  // z_wall_lo/hi flags are carried into ALL stages so that Stage-1 M·θⁿ packing
+  // and Stage-3 implicit bands both use the same masked fz at wall-adjacent cells.
   if (d == Direction::X) {
     const int n_sys = n2_int * n3_int;
     for (int ii = 0; ii < n1_int; ++ii) {
@@ -237,7 +251,8 @@ void build_energy_adi_bands_var(Direction      d,
         for (int kk = 0; kk < n3_int; ++kk) {
           const int j = jj + kHaloWidth, k = kk + kHaloWidth;
           const int p = ii * n_sys + (jj * n3_int + kk);
-          real_t am, ac, ap, Dv; build_cell(i, j, k, am, ac, ap, Dv);
+          real_t am, ac, ap, Dv;
+          build_cell(i, j, k, kk==0, kk==n3_int-1, am, ac, ap, Dv);
           A[p]=am; B[p]=ac; C[p]=ap; D[p]=Dv;
         }
     }
@@ -249,19 +264,22 @@ void build_energy_adi_bands_var(Direction      d,
         for (int kk = 0; kk < n3_int; ++kk) {
           const int i = ii + kHaloWidth, k = kk + kHaloWidth;
           const int p = jj * n_sys + (ii * n3_int + kk);
-          real_t am, ac, ap, Dv; build_cell(i, j, k, am, ac, ap, Dv);
+          real_t am, ac, ap, Dv;
+          build_cell(i, j, k, kk==0, kk==n3_int-1, am, ac, ap, Dv);
           A[p]=am; B[p]=ac; C[p]=ap; D[p]=Dv;
         }
     }
-  } else { // Direction::Z  (wall-normal)
+  } else { // Direction::Z  (wall-normal) — PaScaL Stage 3 with jem/jep dkPP mask
     const int n_sys = n1_int * n2_int;
     for (int kk = 0; kk < n3_int; ++kk) {
       const int k = kk + kHaloWidth;
+      const bool wall_lo = (kk == 0);
+      const bool wall_hi = (kk == n3_int - 1);
       for (int ii = 0; ii < n1_int; ++ii)
         for (int jj = 0; jj < n2_int; ++jj) {
           const int i = ii + kHaloWidth, j = jj + kHaloWidth;
           const int p = kk * n_sys + (ii * n2_int + jj);
-          real_t am, ac, ap, Dv; build_cell(i, j, k, am, ac, ap, Dv);
+          real_t am, ac, ap, Dv; build_cell(i, j, k, wall_lo, wall_hi, am, ac, ap, Dv);
           A[p]=am; B[p]=ac; C[p]=ap; D[p]=Dv;
         }
     }

@@ -3,6 +3,8 @@
 #include "equation/momentum/kernels.hpp"
 #include "core/boundary_ops.hpp"   // sync_field_cpu, modify_tdma_row_cpu
 
+#include <mpi.h>
+
 #include <algorithm>
 #include <cstddef>
 
@@ -168,6 +170,23 @@ void solve_momentum_cpu(const core::Domain& domain, const core::BoundaryConditio
 }
 
 // ---- variable-viscosity solve (NOB): 3-sweep var ADI + block coupling -------
+// The lower z-wall W face lives at INTERIOR index k=kHaloWidth on the MAC grid
+// (the upper wall face sits in the ghost slot), so the z-sweep solves that row
+// like a regular interior row and leaves a spurious wall-face increment there.
+// The face is pinned (W=0), so its increment must be zero BEFORE dW is consumed
+// by couple_dd_dV_var / block_couple_dU_var; otherwise it leaks into dV/dU with
+// 1/dmx3 wall-shear amplification — the bottom-wall-only U spike (Report/27).
+static void zero_dw_lower_wall_face(real_t* dW, const core::Domain& domain,
+                                    const core::BoundaryCondition& bc) {
+  if (bc.topology.is_periodic(Direction::Z)) return;
+  if (domain.sub.topology().axis(Direction::Z).west_rank != MPI_PROC_NULL) return;
+  const auto nt = domain.sub.n_total();
+  const int n1 = nt[0], n2 = nt[1], n3 = nt[2], h = kHaloWidth;
+  for (int i = 0; i < n1; ++i)
+    for (int j = 0; j < n2; ++j)
+      dW[(i * n2 + j) * n3 + h] = real_t{0};
+}
+
 void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
                             core::CpuFields& fields, const core::CpuField& mu_field,
                             const core::CpuField& inv_rho_field,
@@ -195,6 +214,7 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
                        dx1, dmx1, dx3, dmx3, n1, n2, n3, Cmu, dt);
   adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, Direction::Z, true, bc.W, domain, bc, Cmu, dt, mom.dW.data());
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
+  zero_dw_lower_wall_face(mom.dW.data(), domain, bc);
 
   // 3) dV (own Y, span) — inject M31 (dU) + M32 (dW) into rhs_v, then solve.
   mk::couple_dd_dV_var(mom.rhs_v.data(), mom.dU.data(), mom.dW.data(), Vp, mu, irho,
@@ -208,6 +228,7 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
   mk::block_couple_dW_var(mom.dW.data(), mom.dV.data(), fields[core::Var::W].data(), mu, irho,
                           dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
+  zero_dw_lower_wall_face(mom.dW.data(), domain, bc);   // block_dW rewrote k=h too
   mk::block_couple_dU_var(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(), mu, irho,
                           dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
 }

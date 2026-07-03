@@ -313,7 +313,7 @@ int main(int argc, char** argv) {
   physics::CpuPropertyFields props(sub);   // CPU copy for pressure step
   const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   physics::BuoyancyParams buoy;
-  buoy.gravity_axis = 2; buoy.coeff = 1; buoy.T_ref = 0;
+  buoy.gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2); buoy.coeff = 1; buoy.T_ref = 0;
   buoy.a12pera11 = (std::fabs(pmodel.a[2]) < real_t{1e-14}) ? real_t{0} : pmodel.a[2] / pmodel.a[1];
   buoy.delta_T   = static_cast<real_t>(DeltaT);
 
@@ -417,6 +417,12 @@ int main(int argc, char** argv) {
     cudaDeviceSynchronize();
     t_scalar += ms_since(t_s0);
 
+    // Re-evaluate properties from the just-solved T^{n+1} so momentum viscosity/density
+    // (mu, inv_rho) and the NOB buoyancy inv_rho use T^{n+1} — matches PaScaL_TCS
+    // momentum_coeffi(T) called AFTER thermal_solver (MPM-STD staggered-time scheme).
+    // Energy above already used the T^n properties from line 408.
+    physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+
     auto t_m0 = hrc::now();
     equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
     physics::add_buoyancy_force_nob_gpu(gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
@@ -445,6 +451,9 @@ int main(int argc, char** argv) {
     t_zero_w += ms_since(t_zw0);
 
     // G4: GPU pressure solve (NOB — no H↔D transfers for pressure)
+    // Report/25: faithful NOB pressure restored. ExtraTerm (Poisson) and the
+    // (invRhoc-1)*∇dPhat velocity term are a cancelling PAIR (div=0 exact), not
+    // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
     equation::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.inv_rho);
     cudaDeviceSynchronize();

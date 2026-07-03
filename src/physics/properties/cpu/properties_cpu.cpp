@@ -22,10 +22,22 @@ static inline double npoly(const real_t k[6], double t) {
 
 PropertyModel PropertyModel::glycerol(real_t DeltaT) {
   PropertyModel m;
-  m.a[0]=1.2477e3;  m.a[1]=-4.789e-4;  m.a[2]=-0.3795e-6; m.a[3]=0;          m.a[4]=0;            m.a[5]=0;            // ρ
-  m.b[0]=2.5108e3;  m.b[1]=22.511e-4;  m.b[2]=0;          m.b[3]=0;          m.b[4]=0;            m.b[5]=0;            // Cp
-  m.c[0]=2.9351e-3; m.c[1]=3.863e-4;   m.c[2]=0;          m.c[3]=0;          m.c[4]=0;            m.c[5]=0;            // κ
-  m.d[0]=238.71e-6; m.d[1]=-702.83e-4; m.d[2]=2393.1e-6;  m.d[3]=-6923.0e-8; m.d[4]=33131.3e-10;  m.d[5]=-71517.5e-12; // μ-factor
+
+  // ── OB baseline (active by default) ─────────────────────────────────────────
+  // Mirrors PaScaL_TCS module_global.f90 l.117-120: all coefficients = 1/0 so
+  // every property ≡ 1 regardless of DeltaT → equivalent to constant-property OB.
+  m.a[0]=1.0;       m.a[1]=0;          m.a[2]=0;          m.a[3]=0; m.a[4]=0; m.a[5]=0; // ρ
+  m.b[0]=1.0;       m.b[1]=0;          m.b[2]=0;          m.b[3]=0; m.b[4]=0; m.b[5]=0; // Cp
+  m.c[0]=1.0;       m.c[1]=0;          m.c[2]=0;          m.c[3]=0; m.c[4]=0; m.c[5]=0; // κ
+  m.d[0]=1.0;       m.d[1]=0;          m.d[2]=0;          m.d[3]=0; m.d[4]=0; m.d[5]=0; // μ-factor
+
+  // ── Glycerol NOB — uncomment block below to activate ────────────────────────
+  // Mirrors PaScaL_TCS module_global.f90 l.129-132.
+  m.a[0]=1.2477e3;  m.a[1]=-4.789e-4;  m.a[2]=-0.3795e-6; m.a[3]=0;          m.a[4]=0;           m.a[5]=0;            // ρ
+  m.b[0]=2.5108e3;  m.b[1]=22.511e-4;  m.b[2]=0;          m.b[3]=0;          m.b[4]=0;           m.b[5]=0;            // Cp
+  m.c[0]=2.9351e-3; m.c[1]=3.863e-4;   m.c[2]=0;          m.c[3]=0;          m.c[4]=0;           m.c[5]=0;            // κ
+  m.d[0]=238.71e-6; m.d[1]=-702.83e-4; m.d[2]=2393.1e-6;  m.d[3]=-6923.0e-8; m.d[4]=33131.3e-10; m.d[5]=-71517.5e-12; // μ-factor
+
   m.DeltaT = DeltaT;
   return m;
 }

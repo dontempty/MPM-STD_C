@@ -65,6 +65,9 @@ axis_bands(const FaceStencil& f, real_t irc_h,
 
 // Per-cell RHS and band computation — called by both CPU and GPU kernels.
 // Writes (am, ac, ap, Dval) for the sweep-axis (d) band at cell (i,j,k).
+// z_wall_lo / z_wall_hi: PaScaL_TCS jem/jep mask — when set, fz.dkPP_{lo,hi}
+// is zeroed so that wall-adjacent cells drop the dκ̂ correction from the
+// implicit operator (matches module_solve_thermal.f90 Stage 3 lines 490-491).
 MPMSTD_HD void
 build_cell_var(Direction d,
                int i, int j, int k,
@@ -77,6 +80,7 @@ build_cell_var(Direction d,
                const real_t* dx2, const real_t* dmx2,
                const real_t* dx3, const real_t* dmx3,
                real_t Ct, real_t dt, bool is_stage1,
+               bool z_wall_lo, bool z_wall_hi,
                real_t& am, real_t& ac, real_t& ap, real_t& Dval) {
   const int c  = idx3(i,  j,  k,  n2_tot, n3_tot);
   const int xm = idx3(i-1,j,  k,  n2_tot, n3_tot);
@@ -91,12 +95,22 @@ build_cell_var(Direction d,
 
   const FaceStencil fx = face_stencil(T,kappa,dkappa,xm,c,xp,dx1[i-1],dx1[i],dx1[i+1],dmx1[i],dmx1[i+1]);
   const FaceStencil fy = face_stencil(T,kappa,dkappa,ym,c,yp,dx2[j-1],dx2[j],dx2[j+1],dmx2[j],dmx2[j+1]);
-  const FaceStencil fz = face_stencil(T,kappa,dkappa,zm,c,zp,dx3[k-1],dx3[k],dx3[k+1],dmx3[k],dmx3[k+1]);
+  FaceStencil fz = face_stencil(T,kappa,dkappa,zm,c,zp,dx3[k-1],dx3[k],dx3[k+1],dmx3[k],dmx3[k+1]);
+  if (z_wall_lo) fz.dkPP_lo = real_t{0};
+  if (z_wall_hi) fz.dkPP_hi = real_t{0};
 
   real_t eAMx,eACx,eAPx, eAMy,eACy,eAPy, eAMz,eACz,eAPz;
   axis_bands(fx,irc_h,dx1[i-1],dx1[i],dx1[i+1],dmx1[i],dmx1[i+1],U[c],U[xp],eAMx,eACx,eAPx);
   axis_bands(fy,irc_h,dx2[j-1],dx2[j],dx2[j+1],dmx2[j],dmx2[j+1],V[c],V[yp],eAMy,eACy,eAPy);
   axis_bands(fz,irc_h,dx3[k-1],dx3[k],dx3[k+1],dmx3[k],dmx3[k+1],W[c],W[zp],eAMz,eACz,eAPz);
+  // PaScaL jep/jem full mask (module_solve_thermal.f90 lines 511-512): zero the
+  // complete Z off-diagonal at wall cells for Stages 2&3 (not Stage 1, where
+  // eAPz/eAMz are needed in M·θⁿ to encode the wall BC in D via the ghost).
+  // With ap/am pre-zeroed here, modify_tdma_row folds 0 → no diagonal inflation.
+  if (!is_stage1) {
+    if (z_wall_lo) eAMz = real_t{0};
+    if (z_wall_hi) eAPz = real_t{0};
+  }
 
   const real_t div_sum = div_bare(fx,dx1[i]) + div_bare(fy,dx2[j]) + div_bare(fz,dx3[k]);
 

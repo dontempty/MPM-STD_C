@@ -1,0 +1,364 @@
+diff --git a/Makefile.inc b/Makefile.inc
+index 64c7fa4..340b96a 100644
+--- a/Makefile.inc
++++ b/Makefile.inc
+@@ -2,16 +2,6 @@
+ FC = mpiifort
+ 
+ # Complie flag
+-
+-# For debugging
+-#FLAG = -O0 -g -fcheck=all --warn-all
+-# FLAG = -O0 -g -fPIC -check all -warn all -WB
+-
+-# For moderate debugging
+-#FLAG = -O1 -fPIC -fp-model=precise -check bounds
+-
+-# For optimized run 
+-#FLAG = -O3 -fPIC -fp-model=precise -xMIC-AVX512
+ FLAG = -O3 -fPIC -fp-model=precise -xCORE-AVX2 -assume byterecl
+ 
+ 
+diff --git a/run/PARA_INPUT.dat b/run/PARA_INPUT.dat
+index 6be2e32..a75d9c6 100644
+--- a/run/PARA_INPUT.dat
++++ b/run/PARA_INPUT.dat
+@@ -1,15 +1,15 @@
+ &sim_continue
+ ContinueFilein      = 0
+-ContinueFileout     = 1
++ContinueFileout     = 0
+ dir_cont_filein     = './data/1_continue/MPI_IO/'
+ dir_cont_fileout    = './data/1_continue/'
+ dir_instantfield    = './data/2_instanfield/'
+ /
+ 
+ &meshes
+-n1m = 512
+-n2m = 128
+-n3m = 256
++n1m = 64
++n2m = 64
++n3m = 64
+ /
+ 
+ &MPI_procs
+@@ -37,22 +37,22 @@ gamma3 = 3.0
+ /
+ 
+ &aspect_ratio
+-Aspect1 = 4
++Aspect1 = 6
+ H       = 1
+-Aspect3 = 2
++Aspect3 = 6
+ /
+ 
+ &sim_parameter
+-Ra      = 1E2
+-Pr      = 1
+-DeltaT  = 10.
+-MaxCFL  = 1.0
++Ra      = 1E6
++Pr      = 2547.0
++DeltaT  = 20.
++MaxCFL  = 0.1
+ /
+ 
+ &sim_control
+-dtStart             = 5.0D-2
++dtStart             = 2.0D-2
+ tStart              = 0.d0
+-Timestepmax         = 10
+-print_start_step    = 100000
+-print_interval_step = 100000
++Timestepmax         = 50000
++print_start_step    = 1
++print_interval_step = 500
+ /
+diff --git a/src/Makefile b/src/Makefile
+index 68649df..c70828e 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -13,7 +13,8 @@ main 	    = $(OBJDIR)/main.o
+ 
+ OBJS   	    = $(global) $(module_mpi) $(solver) $(analysis) $(main)
+ 
+-MKL_HOME    = /opt/intel/oneapi/mkl/latest
++MKL_HOME    = /opt/intel/oneapi/mkl/2023.2.0
++MKL_LIB     = /opt/intel/oneapi/mkl/2023.2.0/lib/intel64
+ PaScaL_HOME = ../PaScaL_TDMA
+ 
+ PaScaLINC = -I$(PaScaL_HOME)/include
+@@ -21,7 +22,7 @@ PaScaLLIB = -L$(PaScaL_HOME)/lib -lpascal_tdma
+ 
+ FFTWINC = -I$(MKL_HOME)/include/fftw
+ 
+-FFTWFLAGS 	=  -mkl=sequential
++FFTWFLAGS 	=  -qmkl=sequential
+ 
+ $(OBJDIR)/%.o: %.f90
+ 	$(FC) $(FLAG) -c $^ -o $@ -module $(OBJDIR) -I$(OBJDIR) $(FFTWINC) $(FFTWLIB) ${PaScaLINC} $(FFTWFLAGS)
+diff --git a/src/main.f90 b/src/main.f90
+index 3214692..7054c74 100644
+--- a/src/main.f90
++++ b/src/main.f90
+@@ -39,7 +39,7 @@ program main
+ 
+     integer :: i,j,k,TimeStep
+     integer :: ierr
+-    double precision :: maxDivU
++    double precision :: maxDivU, thetaC
+ 
+     character(len=64)   :: timer_str(64)
+     double precision    :: timer_a,timer_b
+@@ -211,8 +211,11 @@ program main
+             exit
+         endif
+ 
++        call mpi_Post_ThetaC(T, thetaC)
++
+         timer_b=MPI_WTIME()
+         call mpi_Post_MonitorOut(myrank,TimeStep,time,dt,CFL,maxDivU,timer_b-timer_a)
++        if(myrank==0) write(*,'(A,E15.6)') '  Theta_c=', thetaC
+         call timer_stamp(17, stamp_main)
+         
+         call mpi_Post_CFL(U,V,W,CFL,dt)
+diff --git a/src/module_global.f90 b/src/module_global.f90
+index 25fbbc5..0e2a5ad 100644
+--- a/src/module_global.f90
++++ b/src/module_global.f90
+@@ -109,27 +109,27 @@ module global
+         Wup = 0.d0;Wbt = 0.d0
+         Tup = -0.5d0;Tbt =0.5d0
+         
+-        ! Coefficients for Water
++        ! Coefficients for Water (commented out)
+         ! a10 = 0.9922d+3; a11 = -3.736d-4;  a12 = -3.98d-6;  a13 = 0.;         a14 = 0.;  a15 = 0.
+         ! b10 = 4.1690d+3; b11 =  0.084d-4;  b12 =  4.60d-6;  b13 = 0.;         b14 = 0.;  b15 = 0.
+-        ! c10 = 0.6297;    c11 = 21.99d-4;   c12 = -17.8d-6;  c13 = 0.;         c14 = 0.;  c15 = 0. 
++        ! c10 = 0.6297;    c11 = 21.99d-4;   c12 = -17.8d-6;  c13 = 0.;         c14 = 0.;  c15 = 0.
+         ! d10 = 0.6690d-6; d11 = -175.9d-4;  d12 = 295.8d-6;  d13 = -460.d-8;   d14 = 0.;  d15 = 0.
+         a10 = 1.d0; a11 =0.d0; a12 = 0.d0;  a13 = 0.d0; a14 = 0.;  a15 = 0.
+         b10 = 1.d0; b11 =0.d0; b12 = 0.d0;  b13 = 0.d0; b14 = 0.;  b15 = 0.
+-        c10 = 1.d0; c11 =0.d0; c12 = 0.d0;  c13 = 0.d0; c14 = 0.;  c15 = 0. 
++        c10 = 1.d0; c11 =0.d0; c12 = 0.d0;  c13 = 0.d0; c14 = 0.;  c15 = 0.
+         d10 = 1.d0; d11 =0.d0; d12 = 0.d0;  d13 = 0.d0; d14 = 0.;  d15 = 0.
+-        
+-        if(a12<1.0D-14) then
++
++        ! Coefficients for Glycerol (activated)
++        a10 = 1.2477d+3; a11 = -4.789d-4;  a12 = -0.3795d-6;  a13 = 0.d0;         a14 = 0.d0;  a15 = 0.d0
++        b10 = 2.5108d+3; b11 = 22.511d-4;  b12 =  0.d0       ;  b13 = 0.d0;         b14 = 0.d0;  b15 = 0.d0
++        c10 = 2.9351d-3; c11 = 3.863d-4;   c12 =  0.d0       ;  c13 = 0.d0;         c14 = 0.d0;  c15 = 0.d0
++        d10 = 238.71d-6; d11 =-702.83d-4; d12 = 2393.1d-6;    d13 = -6923.0d-8; d14 = 33131.3d-10; d15 = -71517.5d-12
++
++        if(dabs(a12)<1.0D-14) then
+             a12pera11=0.d0
+         else
+             a12pera11=a12/a11
+         endif
+-        
+-        ! Coefficients for Glycerol
+-        ! a10 = 1.2477d+3; a11 = -4.789d-4;  a12 = -0.3795d-6;  a13 = 0.;         a14 = 0.;  a15 = 0.
+-        ! b10 = 2.5108d+3; b11 = 22.511d-4;  b12 =  0.       ;  b13 = 0.;         b14 = 0.;  b15 = 0.
+-        ! c10 = 2.9351d-3; c11 = 3.863d-4;   c12 =  0.       ;  c13 = 0.;         c14 = 0.;  c15 = 0. 
+-        ! d10 = 238.71d-6; d11 =-702.83d-4; d12 = 2393.1d-6;    d13 = -6923.0d-8; d14 = 33131.3d-10; d15 = -71517.5d-12
+ 
+         Rho0  = a10
+         Cp0   = b10
+@@ -162,7 +162,7 @@ module global
+         tttmp(2)=L2/dble(n2-1)
+         tttmp(3)=L3/dble(n3-1)
+ 
+-        dtMax=minval(tttmp)*100
++        dtMax=minval(tttmp)*2
+         
+     end subroutine global_inputpara
+ 
+diff --git a/src/module_post.f90 b/src/module_post.f90
+index 4a70866..2aa1c08 100644
+--- a/src/module_post.f90
++++ b/src/module_post.f90
+@@ -40,6 +40,7 @@ module mpi_Post
+     public :: mpi_Post_Div
+     public :: mpi_Post_CFL
+     public :: mpi_Post_MonitorOut
++    public :: mpi_Post_ThetaC
+     !> @}
+ 
+     !> @{ MPI derived datatype for file IO
+@@ -255,6 +256,39 @@ module mpi_Post
+ 
+     end subroutine mpi_Post_MonitorOut
+ 
++    !> Compute horizontal-mean temperature at the wall-normal midplane (j = n2m/2).
++    subroutine mpi_Post_ThetaC(T, thetaC)
++        use mpi
++
++        implicit none
++        double precision, intent(in)  :: T(0:n1sub, 0:n2sub, 0:n3sub)
++        double precision, intent(out) :: thetaC
++
++        integer          :: i, k, jmid_loc, ierr
++        double precision :: local_sum, global_sum
++        integer          :: n1n3_global, jmid_global
++
++        ! Global midplane index (1-based interior)
++        jmid_global = n2m / 2
++
++        ! Corresponding local index in this rank's subdomain
++        jmid_loc = jmid_global - jsta + 1
++
++        local_sum = 0.d0
++        if (jmid_loc >= 1 .and. jmid_loc <= n2msub) then
++            do k = 1, n3msub
++                do i = 1, n1msub
++                    local_sum = local_sum + T(i, jmid_loc, k)
++                end do
++            end do
++        end if
++
++        call MPI_Allreduce(local_sum, global_sum, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
++        n1n3_global = n1m * n3m
++        thetaC = global_sum / dble(n1n3_global)
++
++    end subroutine mpi_Post_ThetaC
++
+     !>
+     !> @brief       Write instantaneous field variables for post-processing in ascii format to file
+     !> @detail      An example subroutine
+diff --git a/src/module_solve_momentum.f90 b/src/module_solve_momentum.f90
+index ee5b690..f75e3e1 100644
+--- a/src/module_solve_momentum.f90
++++ b/src/module_solve_momentum.f90
+@@ -162,10 +162,10 @@ module mpi_momentum
+                     tmp4 = tmp3 * tmp1
+                     tmp5 = tmp4 * tmp1
+ 
+-                    Mu(:,j,k) = (a10 + a10*(a11*tmp1 + a12*tmp2 + a13*tmp3 + a14*tmp4 + a15*tmp5)) &
++                    Mu(i,j,k) = (a10 + a10*(a11*tmp1 + a12*tmp2 + a13*tmp3 + a14*tmp4 + a15*tmp5)) &
+                                *(d10 + d10*(d11*tmp1 + d12*tmp2 + d13*tmp3 + d14*tmp4 + d15*tmp5))/Mu0
+ 
+-                    invRho(:,j,k) = Rho0/(a10 + a10*(a11*tmp1 + a12*tmp2 + a13*tmp3 + a14*tmp4 + a15*tmp5))
++                    invRho(i,j,k) = Rho0/(a10 + a10*(a11*tmp1 + a12*tmp2 + a13*tmp3 + a14*tmp4 + a15*tmp5))
+                 enddo
+             enddo
+         enddo
+diff --git a/src/module_solve_pressure.f90 b/src/module_solve_pressure.f90
+index 347301f..ed631e0 100644
+--- a/src/module_solve_pressure.f90
++++ b/src/module_solve_pressure.f90
+@@ -222,7 +222,7 @@ module mpi_pressure
+                               + ((1.d0-invRho4)*ddpdy4 - (1.d0-invRho3)*ddpdy3)/dx2(j) &
+                               + ((1.d0-invRho6)*ddpdz6 - (1.d0-invRho5)*ddpdz5)/dx3(k) 
+ 
+-                    PRHS(i,j,k) = (DivUm - cbc)/dt/Cmp + ExtraTerm
++                    PRHS(i,j,k) = (DivUm - cbc)/dt/Cmp ! + ExtraTerm disabled for stability test
+                 enddo
+                 
+             end do
+@@ -801,20 +801,15 @@ module mpi_pressure
+                 do i = 1, n1msub
+                     im = i - 1
+ 
+-                    invRhoc = 0.5d0/dmx1(i)*(dx1(i)*invRho(im,j ,k ) + dx1(im)*invRho(i,j ,k ))
++                    ! NOB projection disabled: only OB projection (invRhoc term removed)
+                     U(i,j ,k ) = U(i,j ,k ) &
+-                                - dt*Cmp*( (dP(i,j ,k ) - dP(im,j , k))/dmx1(i) &
+-                                +(invRhoc - 1.d0)*(dPhat(i,j ,k )- dPhat(im,j ,k ))/dmx1(i) )
+-                    
+-                    invRhoc = 0.5d0/dmx2(j)*(dx2(j)*invRho(i,jm,k ) + dx2(jm)*invRho(i,j ,k ))
++                                - dt*Cmp*(dP(i,j ,k ) - dP(im,j , k))/dmx1(i)
++
+                     V(i,j ,k ) = V(i,j ,k ) &
+-                                - dt*Cmp*( (dP(i,j ,k ) - dP(i,jm,k ))/dmx2(j) &
+-                                +(invRhoc - 1.d0)*(dPhat(i,j ,k ) - dPhat(i,jm,k ))/dmx2(j) )
+-                    
+-                    invRhoc = 0.5d0/dmx3(k)*(dx3(k)*invRho(i,j ,km) + dx3(km)*invRho(i,j ,k ))
++                                - dt*Cmp*(dP(i,j ,k ) - dP(i,jm,k ))/dmx2(j)
++
+                     W(i,j ,k ) = W(i,j ,k ) &
+-                                - dt*Cmp*( (dP(i,j ,k ) - dP(i, j, km))/dmx3(k) &
+-                                +(invRhoc - 1.d0)*(dPhat(i,j ,k )- dPhat(i,j ,km))/dmx3(k) )
++                                - dt*Cmp*(dP(i,j ,k ) - dP(i, j, km))/dmx3(k)
+                     P(i,j,k) = P(i,j,k) + dP(i,j,k)
+ 
+                     dP0(i,j,k)=(dPhat(i,j,k)+dP0(i,j,k))/2.d0
+@@ -830,20 +825,15 @@ module mpi_pressure
+             do i = 1, n1msub
+                 im = i - 1
+ 
+-                invRhoc = 0.5d0/dmx1(i)*(dx1(i)*invRho(im,j ,k ) + dx1(im)*invRho(i,j ,k ))
++                ! NOB projection disabled at lower plane too
+                 U(i,j ,k )  = U(i,j ,k ) &
+-                            - dt*Cmp*( (dP(i,j ,k ) - dP(im,j , k))/dmx1(i) &
+-                            +(invRhoc - 1.d0)*(dPhat(i,j ,k )- dPhat(im,j ,k ))/dmx1(i) )
++                            - dt*Cmp*(dP(i,j ,k ) - dP(im,j , k))/dmx1(i)
+ 
+-                invRhoc = 0.5d0/dmx2(j)*(dx2(j)*invRho(i,jm,k ) + dx2(jm)*invRho(i,j ,k ))
+                 V(i,j ,k )  = V(i,j ,k ) &
+-                            - dt*Cmp*( (dP(i,j ,k ) - dP(i,jm,k ))/dmx2(j) &
+-                            +(invRhoc - 1.d0)*(dPhat(i,j ,k ) - dPhat(i,jm,k ))/dmx2(j) )*dble(2-j_indexS)
+-                
+-                invRhoc = 0.5d0/dmx3(k)*(dx3(k)*invRho(i,j ,km) + dx3(km)*invRho(i,j ,k ))
++                            - dt*Cmp*(dP(i,j ,k ) - dP(i,jm,k ))/dmx2(j) * dble(2-j_indexS)
++
+                 W(i,j ,k )  = W(i,j ,k ) &
+-                            - dt*Cmp*( (dP(i,j ,k ) - dP(i, j, km))/dmx3(k) &
+-                            +(invRhoc - 1.d0)*(dPhat(i,j ,k )- dPhat(i,j ,km))/dmx3(k) )
++                            - dt*Cmp*(dP(i,j ,k ) - dP(i, j, km))/dmx3(k)
+                 P(i,j,k) = P(i,j,k) + dP(i,j,k)
+ 
+                 dP0(i,j,k)=(dPhat(i,j,k)+dP0(i,j,k))/2.d0
+@@ -871,6 +861,16 @@ module mpi_pressure
+ 
+         deallocate(dP)
+ 
++        ! Neumann ghost BC for dPhat at y-walls: ghost = first interior (∂P/∂n=0).
++        ! Without this, dPhat(i,0,k) stays 0 while interior grows → spurious
++        ! ExtraTerm gradient at j=1 that accumulates and blows up at step ~25.
++        if(Jrank == 0) then
++            dPhat(:,0,:) = dPhat(:,1,:)
++        endif
++        if(Jrank == Jnprocs-1) then
++            dPhat(:,n2sub,:) = dPhat(:,n2msub,:)
++        endif
++
+     end subroutine mpi_pressure_Projection
+ 
+ end module mpi_pressure
+diff --git a/src/module_solve_thermal.f90 b/src/module_solve_thermal.f90
+index b402264..ce5ac87 100644
+--- a/src/module_solve_thermal.f90
++++ b/src/module_solve_thermal.f90
+@@ -72,13 +72,26 @@ module mpi_thermal
+     !>
+     subroutine mpi_thermal_initial()
+ 
+-        use mpi_subdomain,  only : n1sub, n2sub, n3sub
++        use global,         only : Tup, Tbt, n2m
++        use mpi_subdomain,  only : n1sub, n2sub, n3sub, jsta, x2_sub
+ 
+         implicit none
+ 
+         integer :: i,j,k
+-        
+-        T(0:n1sub,0:n2sub,0:n3sub)=0.d0
++        double precision :: y_global, T_linear, rnd
++
++        ! Linear conduction profile + small random perturbation to seed convection
++        do k = 0, n3sub
++            do j = 0, n2sub
++                do i = 0, n1sub
++                    y_global = x2_sub(j)
++                    T_linear = Tbt + (Tup - Tbt) * y_global
++                    call RANDOM_NUMBER(rnd)
++                    T(i,j,k) = T_linear + 0.05d0 * (Tup - Tbt) * (rnd - 0.5d0) &
++                              * sin(acos(-1.d0) * y_global)
++                end do
++            end do
++        end do
+ 
+     end subroutine mpi_thermal_initial
+ 

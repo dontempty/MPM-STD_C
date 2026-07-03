@@ -41,3 +41,14 @@ apps/*/stats_ob/
 apps/*/stats_*/
 apps/validate/*.bin
 dump_mpm_*.bin
+
+# ── RBC verification-run outputs (2026-07 θ_c investigation) ─────
+# Regenerable run products; conclusions & key numbers live in Report/25-29.
+apps/rbc/restart_*/
+apps/rbc/logs/
+apps/rbc/e*/
+apps/rbc/fig9_*_out*/
+apps/rbc/fig9_nob_gpu_*/
+
+# ── Papers (copyrighted publisher PDFs — keep local only) ────────
+Report/Paper/

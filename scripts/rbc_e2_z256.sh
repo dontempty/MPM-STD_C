@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH -J rbc_e2_z256
+#SBATCH -w gpu02
+#SBATCH --gres=gpu:a100:2
+#SBATCH --ntasks=2
+#SBATCH --cpus-per-task=4
+#SBATCH -t 24:00:00
+#SBATCH -o /shared/home/wel1come1234/workspace/MPM-STD_C/apps/rbc/logs/rbc_e2_z256.log
+cd /shared/home/wel1come1234/workspace/MPM-STD_C
+module load nvhpc/23.7
+echo "=== E2: 128x128x256 (doubled wall-normal), DeltaT=20K cold start ==="
+echo "=== tests whether discrete BL resolution causes the sqrt(R) contrast loss ==="
+mkdir -p apps/rbc/e2_z256
+mpirun -np 2 build/cuda/bin/apps/rbc_gpu_nob apps/rbc/input_e2_z256.toml 2>&1 \
+  | grep --line-buffered -E "step=|Nu|restart|nan|NaN|error" | awk 'NR%20==1 || /restart|nan|error/'
+echo "=== E2 done ==="

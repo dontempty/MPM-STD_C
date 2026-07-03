@@ -159,11 +159,16 @@ __global__ void k_build_adi_var(
     p = row * n_sys_max + sys;
   }
 
+  // PaScaL_TCS jem/jep mask: zero dkPP at wall-adjacent Z faces (all directions)
+  const int kk = k - kH;
+  const bool z_wall_lo = (kk == 0);
+  const bool z_wall_hi = (kk == n3_int - 1);
+
   double am, ac, ap, Dv;
   build_cell_var(d, i, j, k, n1_tot, n2_tot, n3_tot,
                  src, T, U, V, W, kappa, dkappa, inv_rhocp, dinv_rhocp,
                  dx1, dmx1, dx2, dmx2, dx3, dmx3,
-                 Ct, dt, is_stage1, am, ac, ap, Dv);
+                 Ct, dt, is_stage1, z_wall_lo, z_wall_hi, am, ac, ap, Dv);
   A[p] = am; B[p] = ac; C[p] = ap; DD[p] = Dv;
 }
 

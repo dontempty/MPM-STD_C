@@ -987,6 +987,23 @@ __global__ void k_block_dU_var(
 }
 
 // ===========================================================================
+//  KERNEL 11b: pin the lower z-wall W-face increment to zero.
+//  The lower wall W face lives at INTERIOR index k=kH on the MAC grid (the
+//  upper wall face sits in the ghost slot), so the z-sweep solves that row
+//  like a regular interior row and leaves a spurious increment there. The
+//  face is pinned (W=0), so dW must be zero BEFORE it is consumed by
+//  k_dd_dV_var / k_block_dU_var; otherwise it leaks into dV/dU with 1/dmx3
+//  wall-shear amplification — the bottom-wall-only U spike (Report/27).
+// ===========================================================================
+__global__ void k_zero_dw_wall_face(double* dW, int n1t, int n2t, int n3t)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = blockIdx.y * blockDim.y + threadIdx.y;
+    if (i >= n1t || j >= n2t) return;
+    dW[(i * n2t + j) * n3t + kH] = 0.0;
+}
+
+// ===========================================================================
 //  KERNEL 12: copy entire field (device → device, for updating dU/dV/dW fields)
 // ===========================================================================
 __global__ void k_m_copy_field(double* dst, const double* src, int n)
@@ -1469,6 +1486,15 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
                       mom.dW.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t);
     core::sync_field_gpu(mom.dW, bc.W, domain.sub);
 
+    const bool z_wall_lower = !bc.topology.is_periodic(Direction::Z)
+        && (domain.sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL);
+    const dim3 blkw(16, 16);
+    const dim3 grdw((n1t + 15)/16, (n2t + 15)/16);
+    if (z_wall_lower) {
+        k_zero_dw_wall_face<<<grdw, blkw>>>(mom.dW.data(), n1t, n2t, n3t);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
+
     // (3) dd* M31+M32: rhs_v (in mom.dV) += coupling(dU,dW); then ADI → dV
     k_dd_dV_var<<<grd3, blk3>>>(
             mom.dV.data(), mom.dU.data(), mom.dW.data(), d_V, d_mu, d_irho,
@@ -1489,6 +1515,10 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
     core::sync_field_gpu(mom.dW, bc.W, domain.sub);
+    if (z_wall_lower) {   // block_dW rewrote the k=kH wall-face row too
+        k_zero_dw_wall_face<<<grdw, blkw>>>(mom.dW.data(), n1t, n2t, n3t);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
 
     // ---- (5) block_couple_dU_var (dU ← dV, dW) ----------------------------
     k_block_dU_var<<<grd3, blk3>>>(
