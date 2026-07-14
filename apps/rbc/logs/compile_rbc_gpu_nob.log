@@ -1,7 +1,5 @@
 === Compiling rbc_gpu_nob + dhvc_gpu ===
-
-Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
-
+  CXX   src/physics/buoyancy/cpu/buoyancy_cpu.cpp
   LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
   APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/channel
   APP   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/bin/apps/cavity
@@ -20,5 +18,5 @@ Remark: individual warnings can be suppressed with "--diag_suppress <warning-nam
 Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
 
 === compile done ===
--rwxrwxr-x 1 wel1come1234 wel1come1234 1805008 Jul  3 08:45 build/cuda/bin/apps/dhvc_gpu
--rwxrwxr-x 1 wel1come1234 wel1come1234 1756232 Jul  3 08:45 build/cuda/bin/apps/rbc_gpu_nob
+-rwxrwxr-x 1 wel1come1234 wel1come1234 1922344 Jul 10 15:21 build/cuda/bin/apps/dhvc_gpu
+-rwxrwxr-x 1 wel1come1234 wel1come1234 1884816 Jul 10 15:21 build/cuda/bin/apps/rbc_gpu_nob

@@ -1,0 +1,54 @@
+[domain]
+Lx = 6.0
+Ly = 6.0
+Lz = 1.0
+[mesh]
+n1m = 256
+n2m = 256
+n3m = 256
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 2
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e6
+Pr = 2547.0
+nob = 1
+DeltaT = 60.0
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[bc.z.plus]
+T = -0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[time]
+t_start  = 0.0
+t_end    = 1000000.0
+dt_start = 0.01
+MaxCFL   = 0.3
+n_steps  = 1350000
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/rbc/e23_deltat60_settled/"
+nmonitor    = 1000
+nstat_start = 1030000
+nstat_write = 50000
+[restart]
+dir_in  = "apps/rbc/restart_e21_deltat60_256/"
+dir_out = "apps/rbc/restart_e23_deltat60_settled/"
+stats_reset = 1

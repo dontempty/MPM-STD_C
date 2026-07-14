@@ -23,12 +23,22 @@ __global__ void k_zero_w_wall_gpu(double* W, int n2t, int n3t, int h,
   if (has_upper) W[(i*n2t+j)*n3t + (n3t - h)] = 0.0;
 }
 
-// GPU kernel: clamp T to [-0.5, 0.5] (replaces D2H+CPU clamp+H2D each step)
-__global__ void k_clip_T_gpu(double* T, std::size_t n) {
-  const std::size_t idx = (std::size_t)blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= n) return;
-  const double v = T[idx];
-  T[idx] = v < -0.5 ? -0.5 : (v > 0.5 ? 0.5 : v);
+// GPU kernel: clamp T to [-0.5, 0.5] on INTERIOR cells only. The z-wall ghost
+// planes hold the antisymmetric Dirichlet mirror 2*T_wall - T_in, which
+// legitimately exceeds the physical range (0.5155 at the hot wall). Clipping
+// ghosts pinned the effective wall at the ghost CENTER (half a cell outside
+// the face) and halved the wall conductance every step — measured as the 2x
+// wall-gap flux kink in the mean T profile (Report/31).
+__global__ void k_clip_T_gpu(double* T, int n1i, int n2i, int n3i,
+                             int n2t, int n3t) {
+  const int ii = blockIdx.x * blockDim.x + threadIdx.x;
+  const int jj = blockIdx.y * blockDim.y + threadIdx.y;
+  const int kk = blockIdx.z * blockDim.z + threadIdx.z;
+  if (ii >= n1i || jj >= n2i || kk >= n3i) return;
+  const std::size_t c = (((std::size_t)(ii + kHaloWidth)) * n2t + (jj + kHaloWidth)) * n3t
+                      + (kk + kHaloWidth);
+  const double v = T[c];
+  T[c] = v < -0.5 ? -0.5 : (v > 0.5 ? 0.5 : v);
 }
 
 // ── GPU statistics kernels — eliminate per-step 64 MB D2H ────────────────────
@@ -379,6 +389,13 @@ int main(int argc, char** argv) {
   gpu_fields[core::Var::P].to_device(fields[core::Var::P].data());
   gpu_fields[core::Var::T].to_device(fields[core::Var::T].data());
 
+  // Incremental (van Kan) projection: persistent accumulated pressure Pⁿ.
+  // Predictor subtracts dt·(1/ρ̂)∇Pⁿ; the Poisson then solves the increment δp
+  // (Var::P) and Pⁿ⁺¹ = Pⁿ + δp. Seeded from the restart P (zero when absent —
+  // self-starting: the first solve returns the full pressure). Report/32.
+  core::GpuField gpu_P_acc(sub, "P_acc");
+  gpu_P_acc.to_device(fields[core::Var::P].data());
+
   if (mpi.is_root())
     std::printf("[rbc_gpu_nob] Ra=%.2e Pr=%.4g DeltaT=%.1f nu=%.4e alpha=%.4e  n=%dx%dx%d  (GPU hybrid)\n",
                 Ra, Pr, DeltaT, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
@@ -386,7 +403,14 @@ int main(int argc, char** argv) {
   // ── time loop ─────────────────────────────────────────────────────────────
   double time = rmeta.time; int step = rmeta.step;
   rbc::RbcStats stats(sub.n_global()[2]);
-  rbc::apply_stats_from_restart(stats, rmeta);
+  // stats_reset=1: start the running mean completely fresh from this restart
+  // point (ignore the carried-over tc_sum/tc_n/wt_sum) instead of diluting a new
+  // accumulation window with old history — see Report/35's "cumulative mean
+  // dilutes/lags the true trend" finding.
+  const bool stats_reset = cfg.get_or<int>("restart", "stats_reset", 0) != 0;
+  if (!stats_reset) rbc::apply_stats_from_restart(stats, rmeta);
+  else if (mpi.is_root())
+    std::printf("[restart] stats_reset=1 — starting Theta_c/Nu accumulation fresh from step=%d\n", step);
   const real_t* dx3_z = grid.dx_ptr(Direction::Z);
   GpuRbcAccum gpu_accum(sub, gpu_grid_arrays);
 
@@ -425,7 +449,8 @@ int main(int argc, char** argv) {
 
     auto t_m0 = hrc::now();
     equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
-    physics::add_buoyancy_force_nob_gpu(gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
+    physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
+    equation::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_P_acc, gpu_props.inv_rho, dt);
     equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
     equation::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
@@ -433,6 +458,8 @@ int main(int argc, char** argv) {
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
     cudaDeviceSynchronize();
     t_mom += ms_since(t_m0);
+    equation::debug_slabmax_gpu("U.postmom", gpu_fields[core::Var::U], domain, 'U');
+    equation::debug_slabmax_gpu("W.postmom", gpu_fields[core::Var::W], domain, 'W');
 
     // zero_w_wall: GPU kernel — no D2H/H2D
     cudaDeviceSynchronize();
@@ -456,14 +483,21 @@ int main(int argc, char** argv) {
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
     equation::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.inv_rho);
+    equation::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
     t_pressure += ms_since(t_p0);
+    equation::debug_slabmax_gpu("U.postproj", gpu_fields[core::Var::U], domain);
+    equation::debug_slabmax_gpu("W.postproj", gpu_fields[core::Var::W], domain);
 
-    // T clipping: GPU kernel — no D2H/H2D
+    // T clipping: GPU kernel — no D2H/H2D (interior only; ghosts hold the BC mirror)
     auto t_c0 = hrc::now();
     if (DeltaT > 0.0) {
-      const std::size_t nf = (std::size_t)sub.n_total()[0]*sub.n_total()[1]*sub.n_total()[2];
-      k_clip_T_gpu<<<(int)((nf+255)/256), 256>>>(gpu_fields[core::Var::T].data(), nf);
+      const auto nic = sub.n_interior();
+      const auto ntc = sub.n_total();
+      const dim3 blkc(8, 8, 8);
+      const dim3 grdc((nic[0]+7)/8, (nic[1]+7)/8, (nic[2]+7)/8);
+      k_clip_T_gpu<<<grdc, blkc>>>(gpu_fields[core::Var::T].data(),
+                                   nic[0], nic[1], nic[2], ntc[1], ntc[2]);
     }
     cudaDeviceSynchronize();
     t_clip += ms_since(t_c0);
@@ -526,12 +560,13 @@ int main(int argc, char** argv) {
   }
   rbc::print_final(stats, sub, Ra, Pr, alpha_T, mpi.is_root(), "rbc_gpu_nob");
 
-  // Write restart files (U/V/W/T + stats.txt) for continuation runs
+  // Write restart files (U/V/W/T/P + stats.txt) for continuation runs
   if (!restart_out.empty()) {
     gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
     gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
     gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
     gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
+    gpu_P_acc.to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
     rbc::write_restart(fields, sub, stats, step, time, restart_out, topo.cart_comm());
   }
   return 0;

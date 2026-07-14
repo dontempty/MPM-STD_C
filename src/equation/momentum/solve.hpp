@@ -30,4 +30,11 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
 void update_velocity_cpu(core::CpuFields& fields, const core::CpuMomentumSystem& mom);
 void update_velocity_gpu(core::GpuFields& fields, const core::GpuMomentumSystem& mom);
 
+// Report/30 §6 instrumentation: prints max|f| over the top-wall slab (last 6
+// interior k-planes) vs the remaining interior. No-op unless MPMSTD_MOMDBG>=1.
+// With MPMSTD_MOMDBG>=2 and argmax_tag != 0, also prints the interior
+// locations holding the field max (spike locator).
+void debug_slabmax_gpu(const char* tag, const core::GpuField& f, const core::Domain& domain,
+                       char argmax_tag = 0);
+
 } // namespace mpmstd::equation

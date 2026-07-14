@@ -1,0 +1,35 @@
+No protocol specified
+--------------------------------------------------------------------------
+By default, for Open MPI 4.0 and later, infiniband ports on a device
+are not used by default.  The intent is to use UCX for these devices.
+You can override this policy by setting the btl_openib_allow_ib MCA parameter
+to true.
+
+  Local host:              login01
+  Local adapter:           mlx5_0
+  Local port:              1
+
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+WARNING: There was an error initializing an OpenFabrics device.
+
+  Local host:   login01
+  Local device: mlx5_0
+--------------------------------------------------------------------------
+[rbc_cpu_nob] Ra=1.00e+06 Pr=2547 DeltaT=20.0 nu=5.0468e-02 alpha=1.9815e-05  n=32x32x48
+step=200 t=4 dt=0.02 div=2.95e-17 Theta_c=-0.0155 | umax=0.00447 vmax=0.00447 wmax=0.00494(k=22) T=[-0.494,0.494]
+step=400 t=8 dt=0.02 div=5.90e-17 Theta_c=-0.0150 | umax=0.00918 vmax=0.00917 wmax=0.0105(k=22) T=[-0.493,0.493]
+step=600 t=12 dt=0.02 div=1.18e-16 Theta_c=-0.0125 | umax=0.0191 vmax=0.0191 wmax=0.0226(k=22) T=[-0.493,0.493]
+step=800 t=16 dt=0.02 div=2.22e-16 Theta_c=-0.0036 | umax=0.039 vmax=0.0389 wmax=0.0481(k=23) T=[-0.493,0.493]
+step=1000 t=20 dt=0.02 div=4.44e-16 Theta_c=0.0118 | umax=0.0701 vmax=0.0694 wmax=0.0886(k=23) T=[-0.493,0.494]
+step=1200 t=24 dt=0.02 div=7.77e-16 Theta_c=0.0182 | umax=0.0921 vmax=0.0913 wmax=0.128(k=23) T=[-0.493,0.494]
+step=1400 t=28 dt=0.02 div=8.60e-16 Theta_c=0.0165 | umax=0.0826 vmax=0.0814 wmax=0.149(k=23) T=[-0.494,0.500]
+step=1600 t=32 dt=0.02 div=8.26e-16 Theta_c=0.0175 | umax=0.0609 vmax=0.0605 wmax=0.13(k=22) T=[-0.494,0.500]
+step=1800 t=36 dt=0.02 div=5.00e-16 Theta_c=0.0264 | umax=0.0462 vmax=0.0457 wmax=0.093(k=22) T=[-0.500,0.500]
+step=2000 t=40 dt=0.02 div=3.68e-16 Theta_c=0.0336 | umax=0.0325 vmax=0.0333 wmax=0.0677(k=26) T=[-0.500,0.500]
+step=2200 t=44 dt=0.02 div=2.78e-16 Theta_c=0.0357 | umax=0.0274 vmax=0.024 wmax=0.0564(k=27) T=[-0.500,0.500]
+step=2400 t=48 dt=0.02 div=2.22e-16 Theta_c=0.0329 | umax=0.0226 vmax=0.0206 wmax=0.0471(k=27) T=[-0.500,0.500]
+step=2600 t=52 dt=0.02 div=2.22e-16 Theta_c=0.0274 | umax=0.0183 vmax=0.0174 wmax=0.0393(k=28) T=[-0.500,0.500]
+step=2800 t=56 dt=0.02 div=1.69e-16 Theta_c=0.0233 | umax=0.0152 vmax=0.0148 wmax=0.033(k=28) T=[-0.500,0.500]
+step=3000 t=60 dt=0.02 div=1.39e-16 Theta_c=0.0208 | umax=0.0128 vmax=0.0127 wmax=0.0278(k=28) T=[-0.500,0.500]
+[rbc_cpu_nob] done: Ra=1.00e+06 Pr=2547  Theta_c=0.00000

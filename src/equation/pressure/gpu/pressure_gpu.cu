@@ -31,6 +31,34 @@ __global__ void k_pred_pgrad(double* dU, double* dV, double* dW, const double* P
   dW[c] -= dt * (Pc - P[(i*n2t+j)*n3t+k-1])   / dmx3[k];
 }
 
+// NOB incremental-projection predictor: dU/dV/dW -= dt·(1/ρ̂)_face·∇P_acc.
+// PaScaL_TCS mom.f90:331/343 — invRhoc is the dx-weighted face mean of invRho:
+//   invRhoc = 0.5·(dx(im)·invRho(i) + dx(i)·invRho(im))/dmx(i)
+// The OB kernel above omits invRhoc (≡1 there); using it for NOB drops the
+// (1/ρ̂) weight and degrades the projection to first order in time (Report/32).
+__global__ void k_pred_pgrad_var(double* dU, double* dV, double* dW,
+    const double* P, const double* inv_rho,
+    const double* dx1, const double* dx2, const double* dx3,
+    const double* dmx1, const double* dmx2, const double* dmx3,
+    int n2t, int n3t, int nx, int ny, int nz, int h, double dt) {
+  const int kk = blockIdx.x * blockDim.x + threadIdx.x;
+  const int jj = blockIdx.y * blockDim.y + threadIdx.y;
+  const int ii = blockIdx.z;
+  if (kk >= nz || jj >= ny) return;
+  const int i = ii + h, j = jj + h, k = kk + h;
+  const int c   = (i * n2t + j) * n3t + k;
+  const int cxm = ((i-1) * n2t + j) * n3t + k;
+  const int cym = (i * n2t + (j-1)) * n3t + k;
+  const int czm = (i * n2t + j) * n3t + (k-1);
+  const double Pc  = P[c];
+  const double irx = 0.5 * (dx1[i-1] * inv_rho[c] + dx1[i] * inv_rho[cxm]) / dmx1[i];
+  const double iry = 0.5 * (dx2[j-1] * inv_rho[c] + dx2[j] * inv_rho[cym]) / dmx2[j];
+  const double irz = 0.5 * (dx3[k-1] * inv_rho[c] + dx3[k] * inv_rho[czm]) / dmx3[k];
+  dU[c] -= dt * irx * (Pc - P[cxm]) / dmx1[i];
+  dV[c] -= dt * iry * (Pc - P[cym]) / dmx2[j];
+  dW[c] -= dt * irz * (Pc - P[czm]) / dmx3[k];
+}
+
 // P_acc += δp over all cells (ghost/halo included — linear, stays consistent).
 __global__ void k_pacc_add(double* Pacc, const double* dP, long n) {
   const long q = (long)blockIdx.x * blockDim.x + threadIdx.x;
@@ -51,6 +79,23 @@ void add_pressure_gradient_gpu(const core::Domain& domain, core::GpuMomentumSyst
   k_pred_pgrad<<<grd, blk>>>(mom.dU.data(), mom.dV.data(), mom.dW.data(), P_acc.data(),
       dg->d_dmx1(), dg->d_dmx2(), dg->d_dmx3(), n2t, n3t, nx, ny, nz, h,
       static_cast<double>(dt));
+}
+
+void add_pressure_gradient_nob_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
+                                   const core::GpuField& P_acc, const core::GpuField& inv_rho,
+                                   real_t dt) {
+  const auto ni = domain.sub.n_interior();
+  const auto nt = domain.sub.n_total();
+  const int nx = ni[0], ny = ni[1], nz = ni[2];
+  const int n2t = nt[1], n3t = nt[2], h = kHaloWidth;
+  const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+  const dim3 blk(64, 4, 1);
+  const dim3 grd((nz + 63) / 64, (ny + 3) / 4, nx);
+  k_pred_pgrad_var<<<grd, blk>>>(mom.dU.data(), mom.dV.data(), mom.dW.data(),
+      P_acc.data(), inv_rho.data(),
+      dg->d_dx1(), dg->d_dx2(), dg->d_dx3(),
+      dg->d_dmx1(), dg->d_dmx2(), dg->d_dmx3(),
+      n2t, n3t, nx, ny, nz, h, static_cast<double>(dt));
 }
 
 void accumulate_pressure_gpu(core::GpuField& P_acc, const core::GpuField& dP) {

@@ -22,6 +22,7 @@
 #include <cuda_runtime.h>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 
 namespace {
 
@@ -1051,7 +1052,235 @@ __global__ void k_modify_tdma_row_gpu(double* A, double* B, double* C,
     }
 }
 
+// ---------------------------------------------------------------------------
+//  z-staggered wall-face row: on the MAC grid the lower z-wall W face is
+//  INTERIOR row 0 of the z-sweep (face zf[0], pinned δW=0). Make it an
+//  identity row — a regular row lets its spurious unknown pollute the
+//  adjacent rows THROUGH the TDMA during the solve, which the post-solve
+//  pin cannot undo (PaScaL excludes this row via j_indexS; Report/30).
+// ---------------------------------------------------------------------------
+__global__ void k_w_wallface_identity_row(double* A, double* B, double* C, double* D,
+                                          int n_sys) {
+    const int s = blockIdx.x * blockDim.x + threadIdx.x;
+    if (s >= n_sys) return;
+    A[s] = 0.0; C[s] = 0.0; B[s] = 1.0; D[s] = 0.0;
+}
+
+// ---------------------------------------------------------------------------
+//  Report/30 §6 instrumentation: interior max|f| split into a top-wall slab
+//  (last kMomDbgSlab interior k-planes on the rank owning the upper z-wall)
+//  vs the remaining interior. fabs(x) clears the sign bit, so the uint64 bit
+//  pattern of a non-negative double orders like the double. NOTE: nvc++ -cuda
+//  silently no-ops atomicMax(unsigned long long*) (verified on cc80, NVHPC
+//  23.7) — use an atomicCAS loop instead.
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ void dbg_atomic_max_u64(unsigned long long* addr,
+                                                   unsigned long long val)
+{
+    unsigned long long old = *addr;
+    while (old < val) {
+        const unsigned long long assumed = old;
+        old = atomicCAS(addr, assumed, val);
+        if (old == assumed) break;
+    }
+}
+
+__global__ void k_dbg_slabmax(const double* f, unsigned long long* out2,
+                              int n1i, int n2i, int n3i, int n2t, int n3t,
+                              int k_slab0)
+{
+    const int ii = blockIdx.x * blockDim.x + threadIdx.x;
+    const int jj = blockIdx.y * blockDim.y + threadIdx.y;
+    const int kk = blockIdx.z * blockDim.z + threadIdx.z;
+    if (ii >= n1i || jj >= n2i || kk >= n3i) return;
+    const int k = kk + kH;
+    const double v = fabs(f[idx3m(ii + kH, jj + kH, k, n2t, n3t)]);
+    dbg_atomic_max_u64(&out2[(k >= k_slab0) ? 0 : 1],
+                       (unsigned long long)__double_as_longlong(v));
+}
+
+//  Argmax probe (MPMSTD_MOMDBG=2): print interior locations holding ≥99.9% of
+//  the field max — locates where a spike lives. Few hits expected.
+__global__ void k_dbg_argmax(const double* f, double maxv,
+                             int n1i, int n2i, int n3i, int n2t, int n3t,
+                             char tag, int rank)
+{
+    const int ii = blockIdx.x * blockDim.x + threadIdx.x;
+    const int jj = blockIdx.y * blockDim.y + threadIdx.y;
+    const int kk = blockIdx.z * blockDim.z + threadIdx.z;
+    if (ii >= n1i || jj >= n2i || kk >= n3i) return;
+    const int i = ii + kH, j = jj + kH, k = kk + kH;
+    const double v = f[idx3m(i, j, k, n2t, n3t)];
+    if (fabs(v) >= 0.999 * maxv && maxv > 0.0)
+        printf("[MOMDBG r%d] argmax %c i=%d j=%d k=%d v=%+.4e\n",
+               rank, tag, i, j, k, v);
+}
+
+//  E9b bisection switch (MPMSTD_BLKMASK_TOP=1): restore the top-slab planes
+//  (k >= k_slab0, full i/j extent incl. halo) from a pre-stage copy, i.e. make
+//  the block-coupling stage a no-op there. Diagnostic only.
+__global__ void k_dbg_restore_top(double* dst, const double* src,
+                                  int n1t, int n2t, int n3t, int k_slab0)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = blockIdx.y * blockDim.y + threadIdx.y;
+    const int k = blockIdx.z * blockDim.z + threadIdx.z;
+    if (i >= n1t || j >= n2t || k >= n3t || k < k_slab0) return;
+    const int c = (i * n2t + j) * n3t + k;
+    dst[c] = src[c];
+}
+
+//  E9f global under-relaxation (MPMSTD_BLKRELAX=<theta>): blend the block-
+//  coupling correction uniformly — dst = src + theta*(dst - src). No spatial
+//  edge (unlike the mask). Diagnostic / interim stabilization.
+__global__ void k_dbg_blend_full(double* dst, const double* src, double theta, int n)
+{
+    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= n) return;
+    dst[c] = src[c] + theta * (dst[c] - src[c]);
+}
+
+//  Slab inner products: out2[0] += df·f, out2[1] += f·f over the top slab.
+//  g = out2[0]/out2[1] is the projection of the increment onto the existing
+//  pattern — g>0 means the stage pumps the spike, g<0 means it damps it.
+__global__ void k_dbg_slabdot(const double* df, const double* f, double* out2,
+                              int n1i, int n2i, int n3i, int n2t, int n3t,
+                              int k_slab0)
+{
+    const int ii = blockIdx.x * blockDim.x + threadIdx.x;
+    const int jj = blockIdx.y * blockDim.y + threadIdx.y;
+    const int kk = blockIdx.z * blockDim.z + threadIdx.z;
+    if (ii >= n1i || jj >= n2i || kk >= n3i) return;
+    const int k = kk + kH;
+    if (k < k_slab0) return;
+    const int c = idx3m(ii + kH, jj + kH, k, n2t, n3t);
+    atomicAdd(&out2[0], df[c] * f[c]);
+    atomicAdd(&out2[1], f[c] * f[c]);
+}
+
 } // anonymous namespace
+
+// ---------------------------------------------------------------------------
+//  Host side of the Report/30 §6 stage instrumentation. Enabled per-process
+//  by MPMSTD_MOMDBG=1; each call prints one line per rank:
+//      [MOMDBG r<rank>] <tag> top=<max|f| in top 6 interior k-planes> bulk=...
+//  On ranks not owning the upper z-wall the slab is empty (top=0).
+// ---------------------------------------------------------------------------
+static int mom_dbg_level()
+{
+    static int lvl = -1;
+    if (lvl < 0) {
+        const char* e = std::getenv("MPMSTD_MOMDBG");
+        lvl = (e && e[0] && e[0] != '0') ? std::atoi(e) : 0;
+        if (lvl < 0) lvl = 0;
+    }
+    return lvl;
+}
+
+static bool mom_dbg_on() { return mom_dbg_level() >= 1; }
+
+//  E9f: MPMSTD_BLKRELAX=<theta in (0,1)> → uniformly under-relax the block-
+//  coupling correction (1.0 = off/full correction).
+static double mom_blkrelax_theta()
+{
+    static double theta = -1.0;
+    if (theta < 0.0) {
+        const char* e = std::getenv("MPMSTD_BLKRELAX");
+        theta = e && e[0] ? std::atof(e) : 1.0;
+        if (theta <= 0.0 || theta >= 1.0) theta = 1.0;
+    }
+    return theta;
+}
+
+//  E9b bisection: MPMSTD_BLKMASK_TOP=<n> → block-coupling stages become no-ops
+//  in the top n interior k-planes (n=6 if the value is just "1"; 0 = off).
+//  Diagnostic only (see k_dbg_restore_top).
+static int mom_blkmask_top_planes()
+{
+    static int planes = -1;
+    if (planes < 0) {
+        const char* e = std::getenv("MPMSTD_BLKMASK_TOP");
+        if (!e || !e[0] || e[0] == '0') planes = 0;
+        else {
+            const int v = std::atoi(e);
+            planes = (v > 1) ? v : 6;
+        }
+    }
+    return planes;
+}
+
+static void mom_dbg_slabmax(const char* tag, const double* d_f,
+                            const mpmstd::core::Domain& domain,
+                            int n1i, int n2i, int n3i, int n2t, int n3t,
+                            char argmax_tag = 0)
+{
+    if (!mom_dbg_on()) return;
+    static unsigned long long* d_out = nullptr;
+    if (!d_out) CUDA_CHK(cudaMalloc(&d_out, 3 * sizeof(unsigned long long)));
+    CUDA_CHK(cudaMemset(d_out, 0, 3 * sizeof(unsigned long long)));
+
+    constexpr int kMomDbgSlab = 6;
+    const bool owns_upper =
+        domain.sub.topology().axis(mpmstd::Direction::Z).east_rank == MPI_PROC_NULL;
+    // interior k runs [kH, n3i+kH-1]; slab start beyond that range = empty slab
+    const int k_slab0 = owns_upper ? (n3i + kH - kMomDbgSlab) : (n3i + 2 * kH);
+
+    const dim3 blk(8, 8, 8);
+    const dim3 grd((n1i + 7) / 8, (n2i + 7) / 8, (n3i + 7) / 8);
+    k_dbg_slabmax<<<grd, blk>>>(d_f, d_out, n1i, n2i, n3i, n2t, n3t, k_slab0);
+    CUDA_CHK(cudaGetLastError());
+    CUDA_CHK(cudaDeviceSynchronize());
+
+    unsigned long long h[2];
+    CUDA_CHK(cudaMemcpy(h, d_out, sizeof h, cudaMemcpyDeviceToHost));
+    double top, bulk;
+    std::memcpy(&top,  &h[0], sizeof top);
+    std::memcpy(&bulk, &h[1], sizeof bulk);
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    std::printf("[MOMDBG r%d] %-12s top=%.6e bulk=%.6e\n", rank, tag, top, bulk);
+    std::fflush(stdout);
+
+    if (argmax_tag && mom_dbg_level() >= 2) {
+        const double maxv = top > bulk ? top : bulk;
+        k_dbg_argmax<<<grd, blk>>>(d_f, maxv, n1i, n2i, n3i, n2t, n3t,
+                                   argmax_tag, rank);
+        CUDA_CHK(cudaGetLastError());
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
+}
+
+//  g = <df, f>/<f, f> over the top slab — per-stage pump/damp discriminator.
+//  Only the rank owning the upper z-wall prints (the slab is empty elsewhere).
+static void mom_dbg_slabcorr(const char* tag, const double* d_df, const double* d_f,
+                             const mpmstd::core::Domain& domain,
+                             int n1i, int n2i, int n3i, int n2t, int n3t)
+{
+    if (!mom_dbg_on()) return;
+    const bool owns_upper =
+        domain.sub.topology().axis(mpmstd::Direction::Z).east_rank == MPI_PROC_NULL;
+    if (!owns_upper) return;
+
+    static double* d_out = nullptr;
+    if (!d_out) CUDA_CHK(cudaMalloc(&d_out, 2 * sizeof(double)));
+    CUDA_CHK(cudaMemset(d_out, 0, 2 * sizeof(double)));
+
+    constexpr int kMomDbgSlab = 6;
+    const int k_slab0 = n3i + kH - kMomDbgSlab;
+
+    const dim3 blk(8, 8, 8);
+    const dim3 grd((n1i + 7) / 8, (n2i + 7) / 8, (n3i + 7) / 8);
+    k_dbg_slabdot<<<grd, blk>>>(d_df, d_f, d_out, n1i, n2i, n3i, n2t, n3t, k_slab0);
+    CUDA_CHK(cudaGetLastError());
+
+    double h[2];
+    CUDA_CHK(cudaMemcpy(h, d_out, sizeof h, cudaMemcpyDeviceToHost));
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    std::printf("[MOMDBG r%d] %-12s g=%+.6e (df.f=%+.3e f.f=%.3e)\n",
+                rank, tag, h[1] > 0.0 ? h[0] / h[1] : 0.0, h[0], h[1]);
+    std::fflush(stdout);
+}
 
 // ---------------------------------------------------------------------------
 //  Helper: map FaceBc to integer kind for k_modify_tdma_row_gpu
@@ -1136,6 +1365,9 @@ static void adi_component_ob(
                 const int grd1d = (n_sys + blk1d - 1) / blk1d;
                 k_modify_tdma_row_gpu<<<grd1d, blk1d>>>(d_m_A_, d_m_B_, d_m_C_, n_sys, n_row,
                                                          owns_lower, owns_upper, lkind, ukind);
+                if (zs && owns_lower) {   // lower z-wall W-face row → identity (Report/30)
+                    k_w_wallface_identity_row<<<grd1d, blk1d>>>(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys);
+                }
             }
             cuda_tdma_mom(domain.tdma, dir).solve_many_device(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys, n_row);
         } else {
@@ -1174,7 +1406,8 @@ static void adi_component_var(
         double* out_device,
         const mpmstd::core::gpu::GpuGridArrays* dg,
         int n1i, int n2i, int n3i,
-        int n1t, int n2t, int n3t)
+        int n1t, int n2t, int n3t,
+        const char* dbg_tag = nullptr)
 {
     using mpmstd::Direction;
 
@@ -1223,6 +1456,9 @@ static void adi_component_var(
                 const int grd1d = (n_sys + blk1d - 1) / blk1d;
                 k_modify_tdma_row_gpu<<<grd1d, blk1d>>>(d_m_A_, d_m_B_, d_m_C_, n_sys, n_row,
                                                          owns_lower, owns_upper, lkind, ukind);
+                if (zs && owns_lower) {   // lower z-wall W-face row → identity (Report/30)
+                    k_w_wallface_identity_row<<<grd1d, blk1d>>>(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys);
+                }
             }
             cuda_tdma_mom(domain.tdma, dir).solve_many_device(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys, n_row);
         } else {
@@ -1232,6 +1468,13 @@ static void adi_component_var(
         k_m_scatter<<<grd, blk>>>(dir, outb, d_m_D_,
                                    n1i, n2i, n3i, n1t, n2t, n3t);
         std::swap(in, outb);
+
+        if (dbg_tag && mom_dbg_on()) {
+            char tg[32];
+            std::snprintf(tg, sizeof tg, "%s.%c", dbg_tag,
+                          dir == Direction::X ? 'x' : dir == Direction::Y ? 'y' : 'z');
+            mom_dbg_slabmax(tg, in, domain, n1i, n2i, n3i, n2t, n3t);
+        }
     }
 
     const std::size_t nf = (std::size_t)n1t * n2t * n3t;
@@ -1466,12 +1709,17 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
     const dim3 grd3((n1i+7)/8, (n2i+7)/8, (n3i+7)/8);
 
     // RHS staged in mom.dU/dV/dW by assemble_var_visc; ADI overwrites them.
+    mom_dbg_slabmax("rhsU", mom.dU.data(), domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabmax("rhsV", mom.dV.data(), domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabmax("rhsW", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
+
     // (1) dU — own=X, no dd* coupling
     adi_component_var(mom, mom.dU.data(), d_U, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::X, false, bc.U, domain, bc,
                       Cmu, static_cast<double>(dt),
-                      mom.dU.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t);
+                      mom.dU.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiU");
     core::sync_field_gpu(mom.dU, bc.U, domain.sub);
+    mom_dbg_slabcorr("g.adiU", mom.dU.data(), d_U, domain, n1i, n2i, n3i, n2t, n3t);
 
     // (2) dd* M21: rhs_w (in mom.dW) += coupling(dU); then ADI → dW
     k_dd_dW_var<<<grd3, blk3>>>(
@@ -1479,12 +1727,14 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    mom_dbg_slabmax("rhsW+ddU", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
 
     adi_component_var(mom, mom.dW.data(), d_W, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::Z, true, bc.W, domain, bc,
                       Cmu, static_cast<double>(dt),
-                      mom.dW.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t);
+                      mom.dW.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiW");
     core::sync_field_gpu(mom.dW, bc.W, domain.sub);
+    mom_dbg_slabcorr("g.adiW", mom.dW.data(), d_W, domain, n1i, n2i, n3i, n2t, n3t);
 
     const bool z_wall_lower = !bc.topology.is_periodic(Direction::Z)
         && (domain.sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL);
@@ -1501,14 +1751,33 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    mom_dbg_slabmax("rhsV+dd", mom.dV.data(), domain, n1i, n2i, n3i, n2t, n3t);
 
     adi_component_var(mom, mom.dV.data(), d_V, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::Y, false, bc.V, domain, bc,
                       Cmu, static_cast<double>(dt),
-                      mom.dV.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t);
+                      mom.dV.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiV");
     core::sync_field_gpu(mom.dV, bc.V, domain.sub);
 
+    // E9b bisection (MPMSTD_BLKMASK_TOP=1): make the block-coupling stages a
+    // no-op in the top-wall slab by restoring pre-stage planes afterwards.
+    // d_m_stage_ is free here (adi_component_var is done with it).
+    const bool blkmask_top = mom_blkmask_top_planes() > 0
+        && !bc.topology.is_periodic(Direction::Z)
+        && (domain.sub.topology().axis(Direction::Z).east_rank == MPI_PROC_NULL);
+    const double blk_theta = mom_blkrelax_theta();
+    const bool blk_copy = blkmask_top || blk_theta < 1.0;
+    const int k_slab0_top = n3i + kH - mom_blkmask_top_planes();
+    const dim3 blkr(8, 8, 8);
+    const dim3 grdr((n1t + 7) / 8, (n2t + 7) / 8, (n3t + 7) / 8);
+    const std::size_t nf_full = (std::size_t)n1t * n2t * n3t;
+    const int grd1f = (int)((nf_full + 255) / 256);
+
     // ---- (4) block_couple_dW_var (dW ← dV) --------------------------------
+    if (blk_copy) {
+        k_m_copy_field<<<grd1f, 256>>>(d_m_stage_, mom.dW.data(), (int)nf_full);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
     k_block_dW_var<<<grd3, blk3>>>(
             mom.dW.data(), mom.dV.data(), d_W, d_mu, d_irho,
             dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
@@ -1519,13 +1788,39 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
         k_zero_dw_wall_face<<<grdw, blkw>>>(mom.dW.data(), n1t, n2t, n3t);
         CUDA_CHK(cudaDeviceSynchronize());
     }
+    if (blk_theta < 1.0) {
+        k_dbg_blend_full<<<grd1f, 256>>>(mom.dW.data(), d_m_stage_, blk_theta, (int)nf_full);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
+    if (blkmask_top) {
+        k_dbg_restore_top<<<grdr, blkr>>>(mom.dW.data(), d_m_stage_,
+                                          n1t, n2t, n3t, k_slab0_top);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
+    mom_dbg_slabmax("dW.blk", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabcorr("g.blkW", mom.dW.data(), d_W, domain, n1i, n2i, n3i, n2t, n3t);
 
     // ---- (5) block_couple_dU_var (dU ← dV, dW) ----------------------------
+    if (blk_copy) {
+        k_m_copy_field<<<grd1f, 256>>>(d_m_stage_, mom.dU.data(), (int)nf_full);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
     k_block_dU_var<<<grd3, blk3>>>(
             mom.dU.data(), mom.dV.data(), mom.dW.data(), d_U, d_mu, d_irho,
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    if (blk_theta < 1.0) {
+        k_dbg_blend_full<<<grd1f, 256>>>(mom.dU.data(), d_m_stage_, blk_theta, (int)nf_full);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
+    if (blkmask_top) {
+        k_dbg_restore_top<<<grdr, blkr>>>(mom.dU.data(), d_m_stage_,
+                                          n1t, n2t, n3t, k_slab0_top);
+        CUDA_CHK(cudaDeviceSynchronize());
+    }
+    mom_dbg_slabmax("dU.blk", mom.dU.data(), domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabcorr("g.blkU", mom.dU.data(), d_U, domain, n1i, n2i, n3i, n2t, n3t);
 #endif
 }
 
@@ -1557,6 +1852,22 @@ void update_velocity_gpu(core::GpuFields& fields, const core::GpuMomentumSystem&
             fields[core::Var::W].data(), mom.dW.data(),
             n1i, n2i, n3i, n2t, n3t);
     CUDA_CHK(cudaDeviceSynchronize());
+#endif
+}
+
+// ---------------------------------------------------------------------------
+//  debug_slabmax_gpu — Report/30 §6 instrumentation hook for the time loop
+//  (post-update / post-projection probes on U, W). No-op unless MPMSTD_MOMDBG=1.
+// ---------------------------------------------------------------------------
+void debug_slabmax_gpu(const char* tag, const core::GpuField& f, const core::Domain& domain,
+                       char argmax_tag)
+{
+#ifdef MPMSTD_BACKEND_CUDA
+    const auto nt = domain.sub.n_total();
+    const auto ni = domain.sub.n_interior();
+    mom_dbg_slabmax(tag, f.data(), domain, ni[0], ni[1], ni[2], nt[1], nt[2], argmax_tag);
+#else
+    (void)tag; (void)f; (void)domain; (void)argmax_tag;
 #endif
 }
 

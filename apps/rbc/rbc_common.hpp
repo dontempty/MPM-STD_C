@@ -122,10 +122,15 @@ inline void write_restart(const core::CpuFields& fields, const core::Subdomain& 
                           const std::string& dir, MPI_Comm comm) {
   std::error_code ec; std::filesystem::create_directories(dir, ec);
   MPI_Barrier(comm);
-  post::write_restart_cpu(fields[core::Var::U], sub, dir + "/U.bin");
-  post::write_restart_cpu(fields[core::Var::V], sub, dir + "/V.bin");
-  post::write_restart_cpu(fields[core::Var::W], sub, dir + "/W.bin");
-  post::write_restart_cpu(fields[core::Var::T], sub, dir + "/T.bin");
+  // gathered (root-gather + fwrite), NOT the MPI-IO collective write_restart_cpu:
+  // the matching MPI-IO read (read_restart_cpu) deadlocked on this cluster's NFS
+  // at np=2/256^3 (see Report/34 addendum) — DHVC's restart write already uses
+  // this same gathered path for the same reason.
+  post::write_restart_gathered_cpu(fields[core::Var::U], sub, dir + "/U.bin");
+  post::write_restart_gathered_cpu(fields[core::Var::V], sub, dir + "/V.bin");
+  post::write_restart_gathered_cpu(fields[core::Var::W], sub, dir + "/W.bin");
+  post::write_restart_gathered_cpu(fields[core::Var::T], sub, dir + "/T.bin");
+  post::write_restart_gathered_cpu(fields[core::Var::P], sub, dir + "/P.bin");  // accumulated pressure (van Kan)
   int rank; MPI_Comm_rank(comm, &rank);
   if (rank == 0) {
     std::ofstream sf(dir + "/stats.txt");
@@ -146,6 +151,23 @@ inline RestartMeta read_restart(core::CpuFields& fields, const core::BoundaryCon
   post::read_restart_cpu(fields[core::Var::V], sub, dir + "/V.bin");
   post::read_restart_cpu(fields[core::Var::W], sub, dir + "/W.bin");
   post::read_restart_cpu(fields[core::Var::T], sub, dir + "/T.bin");
+  // P.bin (accumulated pressure, van Kan) — optional for backward compatibility
+  // with pre-Report/32 restarts; absent → P stays zero (self-starting projection).
+  // existence must be decided on ONE rank and broadcast: read_restart_cpu/
+  // sync_field_cpu below are collective (MPI_File_read_all / halo exchange), so a
+  // per-rank filesystem::exists() that disagrees across ranks (e.g. NFS attribute-
+  // cache skew) makes some ranks enter the collective while others skip it —
+  // deadlock. See Report/34 sec. "restart read hang".
+  int has_p_bin = 0;
+  {
+    int rank; MPI_Comm_rank(comm, &rank);
+    if (rank == 0) has_p_bin = std::filesystem::exists(dir + "/P.bin") ? 1 : 0;
+    MPI_Bcast(&has_p_bin, 1, MPI_INT, 0, comm);
+  }
+  if (has_p_bin) {
+    post::read_restart_cpu(fields[core::Var::P], sub, dir + "/P.bin");
+    core::sync_field_cpu(fields, core::Var::P, bc, sub);
+  }
   core::sync_field_cpu(fields, core::Var::U, bc, sub);
   core::sync_field_cpu(fields, core::Var::V, bc, sub);
   core::sync_field_cpu(fields, core::Var::W, bc, sub);

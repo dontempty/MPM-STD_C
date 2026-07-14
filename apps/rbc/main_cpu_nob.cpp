@@ -91,6 +91,13 @@ int main(int argc, char** argv) {
     std::printf("[rbc_cpu_nob] Ra=%.2e Pr=%.4g DeltaT=%.1f nu=%.4e alpha=%.4e  n=%dx%dx%d\n",
                 Ra, Pr, DeltaT, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
+  // Incremental (van Kan) projection: persistent accumulated pressure Pⁿ.
+  // Predictor subtracts dt·(1/ρ̂)∇Pⁿ; the Poisson then solves the increment δp
+  // (Var::P) and Pⁿ⁺¹ = Pⁿ + δp. Zero-seeded (no restart support in this app):
+  // self-starting — the first solve returns the full pressure. Matches the
+  // rbc_gpu_nob path (Report/32); CPU was left non-incremental until now.
+  core::CpuField P_acc(sub, "P_acc");
+
   // ── time loop ─────────────────────────────────────────────────────────────
   double time=0.0; int step=0;
   rbc::RbcStats stats(sub.n_global()[2]);
@@ -108,7 +115,8 @@ int main(int argc, char** argv) {
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
     equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
-    physics::add_buoyancy_force_nob_cpu(momentum, fields[core::Var::T], props.inv_rho, buoy, dt);
+    physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.inv_rho, buoy, dt);
+    equation::add_pressure_gradient_nob_cpu(domain, momentum, P_acc, props.inv_rho, dt);
     equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
@@ -117,6 +125,7 @@ int main(int argc, char** argv) {
     rbc::zero_w_wall(fields[core::Var::W], sub);
 
     equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.inv_rho.data());
+    equation::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     if (DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();

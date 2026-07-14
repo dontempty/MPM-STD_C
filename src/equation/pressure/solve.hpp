@@ -35,6 +35,14 @@ void add_pressure_gradient_cpu(const core::Domain& domain, core::CpuMomentumSyst
                                const core::CpuField& P_acc, real_t dt);
 void add_pressure_gradient_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
                                const core::GpuField& P_acc, real_t dt);
+// NOB twin: subtract dt·(1/ρ̂)_face·∇P_acc with the PaScaL dx-weighted face invRho
+// (mom.f90:331/343). The OB version omits the (1/ρ̂) weight (≡1 there).
+void add_pressure_gradient_nob_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom,
+                                   const core::CpuField& P_acc, const core::CpuField& inv_rho,
+                                   real_t dt);
+void add_pressure_gradient_nob_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
+                                   const core::GpuField& P_acc, const core::GpuField& inv_rho,
+                                   real_t dt);
 // Accumulate the pressure increment δp (Fields[P], written by solve_pressure_*) into
 // the persistent P_acc:  P_acc += δp  over ALL cells (ghost/halo are linear copies →
 // stay consistent, no re-exchange). Matches PaScaL_TCS module_solve_pressure.f90:818.

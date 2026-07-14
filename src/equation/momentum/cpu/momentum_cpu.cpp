@@ -95,6 +95,14 @@ void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
     } else {
       core::modify_tdma_row_cpu(dir, fbc, domain.sub.topology().axis(dir),
                                 mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(), n_sys, n_row);
+      // Lower z-wall W face = interior row 0 of the z-sweep → identity row
+      // (see the var twin below / Report/30).
+      if (zs && domain.sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL) {
+        for (int s = 0; s < n_sys; ++s) {
+          mom.A.data()[s] = real_t{0}; mom.C.data()[s] = real_t{0};
+          mom.B.data()[s] = real_t{1}; mom.D.data()[s] = real_t{0};
+        }
+      }
       domain.tdma.get(dir).solve_many(mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(), n_sys, n_row);
     }
     mk::scatter_from_tdma(dir, outb, mom.D.data(), n1, n2, n3, i1, i2, i3);
@@ -134,6 +142,17 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
     } else {
       core::modify_tdma_row_cpu(dir, fbc, domain.sub.topology().axis(dir),
                                 mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(), n_sys, n_row);
+      // z-staggered wall-face row: on the MAC grid the lower z-wall W face is
+      // INTERIOR row 0 of the z-sweep (face zf[0], pinned δW=0). Make it an
+      // identity row — a regular row lets its spurious unknown pollute the
+      // adjacent rows THROUGH the TDMA during the solve, which the post-solve
+      // pin cannot undo (PaScaL excludes this row via j_indexS; Report/30).
+      if (zs && domain.sub.topology().axis(Direction::Z).west_rank == MPI_PROC_NULL) {
+        for (int s = 0; s < n_sys; ++s) {
+          mom.A.data()[s] = real_t{0}; mom.C.data()[s] = real_t{0};
+          mom.B.data()[s] = real_t{1}; mom.D.data()[s] = real_t{0};
+        }
+      }
       domain.tdma.get(dir).solve_many(mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(), n_sys, n_row);
     }
     mk::scatter_from_tdma(dir, outb, mom.D.data(), n1, n2, n3, i1, i2, i3);

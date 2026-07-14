@@ -1,3 +1,0 @@
-  LIB   /shared/home/wel1come1234/workspace/MPM-STD_C/build/cuda/lib/libmpmstd.a
-make: *** No rule to make target 'build/cuda/bin/apps/rbc_gpu_nob'.  Stop.
-BUILD_EXIT:2

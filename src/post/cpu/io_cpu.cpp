@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cstdio>
 #include <vector>
+#include <fstream>
 
 // P1 — parallel binary restart IO (faithful port of post::write_scalar/
 // read_scalar). File = global interior, row-major (axis 0 slowest), raw real_t,
@@ -61,20 +62,45 @@ void write_restart_cpu(const core::CpuField& f, const core::Subdomain& sub, cons
   MPI_Type_free(&filetype); MPI_Type_free(&memtype);
 }
 
+// Restart reads use plain POSIX I/O (root fread + Bcast), NOT MPI-IO: collective
+// AND independent MPI_File_read[_all] with a 3D subarray view both deadlock on
+// this cluster's NFS mount at larger sizes (confirmed: 256^3/np=2 hangs inside
+// the read call itself, after open/set_view both succeed — a ROMIO/NFS locking
+// issue, not an application bug). Root reads the whole global field and
+// broadcasts it; every rank then copies out its own interior block locally.
+// Memory cost = one full global field per rank (same tradeoff as the existing
+// "replicate" warm-start path) — acceptable at these problem sizes.
 void read_restart_cpu(core::CpuField& f, const core::Subdomain& sub, const std::string& path) {
   MPI_Comm comm = sub.topology().cart_comm();
-  MPI_Datatype filetype = make_global_view(sub);
-  MPI_Datatype memtype  = make_local_view(sub);
-  MPI_File fh = MPI_FILE_NULL;
-  if (MPI_File_open(comm, path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh) != MPI_SUCCESS) {
-    MPI_Type_free(&filetype); MPI_Type_free(&memtype);
-    throw std::runtime_error("read_restart_cpu: cannot open '" + path + "'");
+  int rank = 0; MPI_Comm_rank(comm, &rank);
+  const auto n_glb = sub.n_global();
+  const auto n_int = sub.n_interior();
+  const auto n_tot = sub.n_total();
+  const auto off   = sub.global_offset();
+  const MPI_Datatype MT = sizeof(real_t) == sizeof(double) ? MPI_DOUBLE : MPI_FLOAT;
+  const long n_global_elems = (long)n_glb[0] * n_glb[1] * n_glb[2];
+
+  std::vector<real_t> global_buf(n_global_elems);
+  if (rank == 0) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("read_restart_cpu: cannot open '" + path + "'");
+    in.read(reinterpret_cast<char*>(global_buf.data()),
+            static_cast<std::streamsize>(n_global_elems * sizeof(real_t)));
+    if (!in) throw std::runtime_error("read_restart_cpu: short read '" + path + "'");
   }
-  MPI_File_set_view(fh, 0, sizeof(real_t) == sizeof(double) ? MPI_DOUBLE : MPI_FLOAT,
-                    filetype, "native", MPI_INFO_NULL);
-  MPI_File_read_all(fh, f.data(), 1, memtype, MPI_STATUS_IGNORE);
-  MPI_File_close(&fh);
-  MPI_Type_free(&filetype); MPI_Type_free(&memtype);
+  MPI_Bcast(global_buf.data(), n_global_elems, MT, 0, comm);
+
+  const int h = kHaloWidth;
+  const int n2t = n_tot[1], n3t = n_tot[2];
+  real_t* dst = f.data();
+  for (int i = 0; i < n_int[0]; ++i)
+    for (int j = 0; j < n_int[1]; ++j)
+      for (int k = 0; k < n_int[2]; ++k) {
+        const long gi = off[0] + i, gj = off[1] + j, gk = off[2] + k;
+        const long gidx = (gi * n_glb[1] + gj) * n_glb[2] + gk;
+        const long lidx = ((long)(i + h) * n2t + (j + h)) * n3t + (k + h);
+        dst[lidx] = global_buf[gidx];
+      }
 }
 
 void write_restart_gathered_cpu(const core::CpuField& f, const core::Subdomain& sub, const std::string& path) {

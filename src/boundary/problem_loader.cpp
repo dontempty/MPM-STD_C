@@ -216,6 +216,36 @@ Problem load_problem_from_config(const config::Config& cfg) {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // (5b) Velocity-only ghost override: [bc.<axis>.<side>] ghost_uv = ...
+  //      Lets T keep its own policy (e.g. antisymmetric Dirichlet) while the
+  //      cell-centered velocity components use zero-ghost no-slip — the
+  //      channel-validated wall closure (U_ghost = 0 + matrix flag-drop).
+  // -----------------------------------------------------------------------
+  for (int a = 0; a < 3; ++a) {
+    for (int sidx = 0; sidx < 2; ++sidx) {
+      const Direction     d       = static_cast<Direction>(a);
+      const Side          s       = static_cast<Side>(sidx);
+      const std::string   section = std::string("bc.") + kAxisNames[a]
+                                  + "." + kSideNames[sidx];
+      if (!cfg.has(section, "ghost_uv")) continue;
+
+      const std::string gp = cfg.get<std::string>(section, "ghost_uv");
+      GhostPolicy policy{};
+      if      (gp == "zero")          policy = GhostPolicy::ZeroGhost;
+      else if (gp == "antisymmetric") policy = GhostPolicy::Antisymmetric;
+      else throw std::runtime_error(
+        "load_problem_from_config: unknown ghost policy '" + gp +
+        "' in [" + section + "] ghost_uv (expected 'zero' or 'antisymmetric')");
+
+      auto apply = [policy](FaceBc& f) {
+        if (f.kind == BcKind::Dirichlet) f.ghost_policy = policy;
+      };
+      apply(p.U.face(d, s));
+      apply(p.V.face(d, s));
+    }
+  }
+
   return p;
 }
 
