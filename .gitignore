@@ -52,3 +52,21 @@ apps/rbc/fig9_nob_gpu_*/
 
 # ── Papers (copyrighted publisher PDFs — keep local only) ────────
 Report/Paper/
+
+# ── Run-output result directories (regenerable; source-only push) ────────
+apps/*/logs/
+apps/*/prof/
+apps/dhvc/out_*/
+apps/rbc/backup/
+apps/rbc/p[0-9]*/
+apps/rbc/reorder_*/
+apps/rbc/restart_reorder_*/
+
+# ── Profiling captures / databases ──────────────────────────────────────
+*.sqlite
+*.qdrep
+*.nsys-rep
+*.ncu-rep
+apps/*/regress_out/
+apps/*/divcheck_*_out/
+apps/rbc/verify_*.log

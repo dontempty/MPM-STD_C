@@ -1,148 +1,0 @@
-=== nsys profile (cuda,mpi,nvtx) — per rank ===
-[SCA #17] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.38 sct=0.11) ms
-[SCA #17] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.40 sct=0.11) ms
-[SCA #18] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.10 sct=0.11) ms
-[SCA #18] X(bld=0.47 tdma=0.97 sct=0.06) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.60 tdma=4.12 sct=0.11) ms
-[SCA #19] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.59 sct=0.06) Z(bld=0.60 tdma=4.37 sct=0.11) ms
-[SCA #19] X(bld=0.47 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.38 sct=0.11) ms
-[SCA #20] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.09 sct=0.11) ms
-[SCA #20] X(bld=0.48 tdma=0.98 sct=0.06) Y(bld=0.47 tdma=0.60 sct=0.06) Z(bld=0.60 tdma=4.12 sct=0.11) ms
-step=20 t=0.0173 dt=0.000866 div=8.53e-14 Re=767.335(avg=0.000) KE=2.184e+01 Nu=1.000 Trms=0.337 wall=2s ms/step=45.9
-[TIMING_SS] 10 steps (steady-state)  total=49.5 ms/step
-[TIMING_TOTAL] compute = 1.6 s (0.00 h)  |  20 steps  |  avg 79.01 ms/step
-[dhvc_gpu] done: Ra=1.00e+06  Re_dstar=0.0000  (target=11.0085)
-Generating '/tmp/nsys-report-c70b.qdstrm'
-Generating '/tmp/nsys-report-8d6a.qdstrm'
-[1/1] [0%                          ] dhvc_1e6_0.nsys-rep[1/1] [0%                          ] dhvc_1e6_1.nsys-rep[1/1] [0%                          ] dhvc_1e6_0.nsys-rep[1/1] [6%                          ] dhvc_1e6_0.nsys-rep[1/1] [12%                         ] dhvc_1e6_0.nsys-rep[1/1] [6%                          ] dhvc_1e6_0.nsys-rep[1/1] [0%                          ] dhvc_1e6_1.nsys-rep[1/1] [==========48%               ] dhvc_1e6_1.nsys-rep[1/1] [=======================96%  ] dhvc_1e6_1.nsys-rep[1/1] [12%                         ] dhvc_1e6_1.nsys-rep[1/1] [6%                          ] dhvc_1e6_1.nsys-rep[1/1] [==19%                       ] dhvc_1e6_0.nsys-rep[1/1] [=======36%                  ] dhvc_1e6_0.nsys-rep[1/1] [==19%                       ] dhvc_1e6_1.nsys-rep[1/1] [============54%             ] dhvc_1e6_0.nsys-rep[1/1] [=======36%                  ] dhvc_1e6_1.nsys-rep[1/1] [================71%         ] dhvc_1e6_0.nsys-rep[1/1] [============54%             ] dhvc_1e6_1.nsys-rep[1/1] [================71%         ] dhvc_1e6_1.nsys-rep[1/1] [===================81%      ] dhvc_1e6_0.nsys-rep[1/1] [========================100%] dhvc_1e6_0.nsys-rep[1/1] [===================81%      ] dhvc_1e6_1.nsys-rep[1/1] [========================100%] dhvc_1e6_1.nsys-rep[1/1] [========================100%] dhvc_1e6_1.nsys-rep
-Generated:
-    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/dhvc_1e6_1.nsys-rep
-[1/1] [========================100%] dhvc_1e6_0.nsys-rep
-Generated:
-    /shared/home/wel1come1234/workspace/MPM-STD_C/apps/dhvc/prof/dhvc_1e6_0.nsys-rep
-reports:
--rw-rw-r-- 1 wel1come1234 wel1come1234 2055406 Jun 24 12:20 apps/dhvc/prof/dhvc_1e6_0.nsys-rep
--rw-rw-r-- 1 wel1come1234 wel1come1234 2016376 Jun 24 12:20 apps/dhvc/prof/dhvc_1e6_1.nsys-rep
-
-############ KERNEL TIME SUMMARY (rank 0 — where GPU time goes) ############
-Generating SQLite file apps/dhvc/prof/dhvc_1e6_0.sqlite from apps/dhvc/prof/dhvc_1e6_0.nsys-rep
-Exporting 91712 events: [1%                                                    ]Exporting 91712 events: [2%                                                    ]Exporting 91712 events: [3%                                                    ]Exporting 91712 events: [4%                                                    ]Exporting 91712 events: [5%                                                    ]Exporting 91712 events: [=6%                                                   ]Exporting 91712 events: [=7%                                                   ]Exporting 91712 events: [==8%                                                  ]Exporting 91712 events: [==9%                                                  ]Exporting 91712 events: [==10%                                                 ]Exporting 91712 events: [==11%                                                 ]Exporting 91712 events: [===12%                                                ]Exporting 91712 events: [====13%                                               ]Exporting 91712 events: [====14%                                               ]Exporting 91712 events: [=====15%                                              ]Exporting 91712 events: [=====16%                                              ]Exporting 91712 events: [======17%                                             ]Exporting 91712 events: [======18%                                             ]Exporting 91712 events: [=======19%                                            ]Exporting 91712 events: [=======20%                                            ]Exporting 91712 events: [========21%                                           ]Exporting 91712 events: [========22%                                           ]Exporting 91712 events: [=========23%                                          ]Exporting 91712 events: [=========24%                                          ]Exporting 91712 events: [==========25%                                         ]Exporting 91712 events: [===========26%                                        ]Exporting 91712 events: [===========27%                                        ]Exporting 91712 events: [============28%                                       ]Exporting 91712 events: [============29%                                       ]Exporting 91712 events: [=============30%                                      ]Exporting 91712 events: [=============31%                                      ]Exporting 91712 events: [==============32%                                     ]Exporting 91712 events: [==============33%                                     ]Exporting 91712 events: [===============34%                                    ]Exporting 91712 events: [===============35%                                    ]Exporting 91712 events: [================36%                                   ]Exporting 91712 events: [================37%                                   ]Exporting 91712 events: [=================38%                                  ]Exporting 91712 events: [==================39%                                 ]Exporting 91712 events: [==================40%                                 ]Exporting 91712 events: [===================41%                                ]Exporting 91712 events: [===================42%                                ]Exporting 91712 events: [====================43%                               ]Exporting 91712 events: [====================44%                               ]Exporting 91712 events: [=====================45%                              ]Exporting 91712 events: [=====================46%                              ]Exporting 91712 events: [======================47%                             ]Exporting 91712 events: [======================48%                             ]Exporting 91712 events: [=======================49%                            ]Exporting 91712 events: [========================50%                           ]Exporting 91712 events: [========================51%                           ]Exporting 91712 events: [=========================52%                          ]Exporting 91712 events: [=========================53%                          ]Exporting 91712 events: [==========================54%                         ]Exporting 91712 events: [==========================55%                         ]Exporting 91712 events: [===========================56%                        ]Exporting 91712 events: [===========================57%                        ]Exporting 91712 events: [============================58%                       ]Exporting 91712 events: [============================59%                       ]Exporting 91712 events: [=============================60%                      ]Exporting 91712 events: [=============================61%                      ]Exporting 91712 events: [==============================62%                     ]Exporting 91712 events: [===============================63%                    ]Exporting 91712 events: [===============================64%                    ]Exporting 91712 events: [================================65%                   ]Exporting 91712 events: [================================66%                   ]Exporting 91712 events: [=================================67%                  ]Exporting 91712 events: [=================================68%                  ]Exporting 91712 events: [==================================69%                 ]Exporting 91712 events: [==================================70%                 ]Exporting 91712 events: [===================================71%                ]Exporting 91712 events: [===================================72%                ]Exporting 91712 events: [====================================73%               ]Exporting 91712 events: [====================================74%               ]Exporting 91712 events: [=====================================75%              ]Exporting 91712 events: [======================================76%             ]Exporting 91712 events: [======================================77%             ]Exporting 91712 events: [=======================================78%            ]Exporting 91712 events: [=======================================79%            ]Exporting 91712 events: [========================================80%           ]Exporting 91712 events: [========================================81%           ]Exporting 91712 events: [=========================================82%          ]Exporting 91712 events: [=========================================83%          ]Exporting 91712 events: [==========================================84%         ]Exporting 91712 events: [==========================================85%         ]Exporting 91712 events: [===========================================86%        ]Exporting 91712 events: [===========================================87%        ]Exporting 91712 events: [============================================88%       ]Exporting 91712 events: [=============================================89%      ]Exporting 91712 events: [=============================================90%      ]Exporting 91712 events: [==============================================91%     ]Exporting 91712 events: [==============================================92%     ]Exporting 91712 events: [===============================================93%    ]Exporting 91712 events: [===============================================94%    ]Exporting 91712 events: [================================================95%   ]Exporting 91712 events: [================================================96%   ]Exporting 91712 events: [=================================================97%  ]Exporting 91712 events: [=================================================98%  ]Exporting 91712 events: [==================================================99% ]Exporting 91712 events: [==================================================100%]
-Processing [apps/dhvc/prof/dhvc_1e6_0.sqlite] with [/opt/nvidia/hpc-sdk/Linux_x86_64/23.7/profilers/Nsight_Systems/host-linux-x64/reports/cuda_gpu_kern_sum.py]... 
-
- ** CUDA GPU Kernel Summary (cuda_gpu_kern_sum):
-
-+----------+-----------------+-----------+--------------+--------------+------------+------------+-------------+------------------------------------------------------------------------------------------------------+
-| Time (%) | Total Time (ns) | Instances |   Avg (ns)   |   Med (ns)   |  Min (ns)  |  Max (ns)  | StdDev (ns) |                                                 Name                                                 |
-+----------+-----------------+-----------+--------------+--------------+------------+------------+-------------+------------------------------------------------------------------------------------------------------+
-|     27.4 |     137,532,282 |       160 |    859,576.8 |    905,578.5 |    582,503 |  1,440,529 |   262,413.4 | <unnamed>::tdma_cyclic_many_kernel(double *, double *, double *, double *, double *, int, int)       |
-|     13.7 |      68,823,903 |         2 | 34,411,951.5 | 34,411,951.5 | 34,328,462 | 34,495,441 |   118,072.0 | <unnamed>::k_diag_dhvc(const double *, const double *, const double *, const double *, const double… |
-|      8.7 |      43,436,350 |       180 |    241,313.1 |    217,794.5 |    204,419 |    368,261 |    42,567.4 | <unnamed>::k_mom_adi_var(mpmstd::Direction, mpmstd::Direction, double *, double *, double *, double… |
-|      7.7 |      38,586,652 |        60 |    643,110.9 |    568,631.0 |    541,510 |    931,914 |   148,475.9 | <unnamed>::k_mom_rhs_var(double *, const double *, const double *, const double *, const double *, … |
-|      6.9 |      34,504,145 |        60 |    575,069.1 |    530,486.0 |    458,694 |    935,723 |   141,966.5 | <unnamed>::k_build_adi_var(mpmstd::Direction, double *, double *, double *, double *, const double … |
-|      5.7 |      28,525,646 |       120 |    237,713.7 |    267,027.0 |    146,433 |    308,163 |    57,046.8 | <unnamed>::modified_thomas_kernel(double *, double *, double *, double *, double *, double *, doubl… |
-|      3.7 |      18,639,226 |     1,920 |      9,707.9 |      8,352.0 |      8,000 |     16,097 |     2,667.9 | void regular_fft<(unsigned int)192, EPT<(unsigned int)12, (unsigned int)16>, (unsigned int)16, (uns… |
-|      2.7 |      13,689,890 |        20 |    684,494.5 |    619,783.0 |    617,320 |    876,299 |   112,365.8 | <unnamed>::k_energy_residual_var(double *, const double *, const double *, const double *, const do… |
-|      2.6 |      13,106,039 |        20 |    655,302.0 |    605,415.0 |    602,118 |    853,866 |   100,432.0 | <unnamed>::k_block_dU_var(double *, const double *, const double *, const double *, const double *,… |
-|      2.6 |      13,004,374 |        20 |    650,218.7 |    610,791.0 |    605,959 |    811,305 |    81,290.0 | <unnamed>::k_dd_dV_var(double *, const double *, const double *, const double *, const double *, co… |
-|      2.5 |      12,568,592 |       180 |     69,825.5 |     49,120.0 |     46,560 |    169,762 |    33,758.8 | <unnamed>::k_m_scatter(mpmstd::Direction, double *, const double *, int, int, int, int, int, int)    |
-|      2.0 |       9,970,935 |        60 |    166,182.3 |    148,962.0 |    145,090 |    238,947 |    35,872.8 | <unnamed>::k_m_add_increment(double *, const double *, int, int, int, int, int)                      |
-|      1.8 |       9,217,610 |        20 |    460,880.5 |    428,197.0 |    423,972 |    594,439 |    67,378.7 | <unnamed>::k_block_dW_var(double *, const double *, const double *, const double *, const double *,… |
-|      1.7 |       8,367,904 |        20 |    418,395.2 |    393,572.5 |    389,445 |    522,022 |    51,093.5 | <unnamed>::k_dd_dW_var(double *, const double *, const double *, const double *, const double *, co… |
-|      1.6 |       8,162,696 |       120 |     68,022.5 |     79,632.5 |     37,825 |     90,114 |    19,518.4 | <unnamed>::update_solution_kernel(const double *, const double *, double *, const double *, int, in… |
-|      0.8 |       4,239,853 |        60 |     70,664.2 |     51,233.0 |     46,240 |    168,001 |    35,651.3 | <unnamed>::k_scatter_from_tdma(mpmstd::Direction, double *, const double *, int, int, int, int, int… |
-|      0.8 |       4,001,614 |        20 |    200,080.7 |    177,474.0 |    175,362 |    270,851 |    40,387.2 | <unnamed>::k_add_buoyancy(double *, const double *, const double *, const double *, int, int, int, … |
-|      0.8 |       3,783,563 |        20 |    189,178.2 |    178,098.5 |    176,547 |    235,074 |    23,317.8 | mpmstd::equation::pressure::<unnamed>::k_project_ob_pres(double *, double *, double *, const double… |
-|      0.7 |       3,751,595 |        20 |    187,579.8 |    175,362.0 |    174,178 |    234,306 |    23,607.1 | mpmstd::equation::<unnamed>::k_pred_pgrad(double *, double *, double *, const double *, const doubl… |
-|      0.7 |       3,501,863 |        20 |    175,093.2 |    153,218.0 |    151,330 |    243,203 |    39,106.4 | <unnamed>::k_add_increment(double *, const double *, int, int, int, int, int, bool)                  |
-|      0.7 |       3,402,824 |        20 |    170,141.2 |    153,522.0 |    149,314 |    240,418 |    35,140.4 | mpmstd::equation::pressure::<unnamed>::k_divergence_rhs_pres(const double *, const double *, const … |
-|      0.5 |       2,551,682 |        60 |     42,528.0 |     41,216.0 |     40,641 |     48,481 |     2,753.3 | <unnamed>::k_m_copy_field(double *, const double *, int)                                             |
-|      0.4 |       1,758,258 |        20 |     87,912.9 |     84,032.5 |     70,529 |    103,585 |     9,323.9 | mpmstd::driver::<unnamed>::k_cfl_reduce(const double *, const double *, const double *, const doubl… |
-|      0.3 |       1,683,410 |       260 |      6,474.7 |      5,568.0 |      5,088 |     10,496 |     1,848.6 | mpmstd::core::<unnamed>::k_fill_z_ghost(double *, int, int, int, int, int, double, int)              |
-|      0.3 |       1,508,527 |        20 |     75,426.4 |     65,025.0 |     64,225 |    115,553 |    20,442.9 | void regular_fft_c2r<(unsigned int)384, EPT<(unsigned int)4, (unsigned int)6>, (unsigned int)2, (un… |
-|      0.3 |       1,435,666 |        20 |     71,783.3 |     61,904.5 |     61,344 |    110,049 |    19,589.4 | void regular_fft_r2c<(unsigned int)384, EPT<(unsigned int)4, (unsigned int)6>, (unsigned int)2, (un… |
-|      0.3 |       1,416,943 |        20 |     70,847.2 |     63,728.5 |     63,169 |     99,393 |    14,526.3 | mpmstd::equation::pressure::<unnamed>::k_unpack_dp_C_to_P(const double *, double *, double, int, in… |
-|      0.3 |       1,324,173 |        20 |     66,208.7 |     65,472.0 |     64,864 |     69,729 |     1,670.3 | mpmstd::equation::<unnamed>::k_pacc_add(double *, const double *, long)                              |
-|      0.3 |       1,253,231 |        20 |     62,661.6 |     53,777.0 |     53,633 |     96,225 |    17,180.2 | <unnamed>::k_reduce_bulk_u(const double *, const double *, const double *, const double *, int, int… |
-|      0.2 |       1,235,608 |       260 |      4,752.3 |      4,512.0 |      2,688 |      7,840 |     1,168.2 | <unnamed>::k_y_periodic_wrap(double *, int, int, int)                                                |
-|      0.2 |       1,079,017 |       120 |      8,991.8 |      8,352.0 |      7,007 |     13,696 |     2,003.1 | <unnamed>::tdma_many_kernel(double *, double *, double *, double *, int, int)                        |
-|      0.2 |         818,506 |        20 |     40,925.3 |     40,288.5 |     39,521 |     44,320 |     1,553.3 | mpmstd::equation::pressure::<unnamed>::k_tdma_split_hat_Y(const double2 *, double *, double *, unsi… |
-|      0.2 |         762,312 |        20 |     38,115.6 |     37,056.5 |     36,865 |     42,336 |     2,076.4 | mpmstd::equation::pressure::<unnamed>::k_gpu_scale(double *, double, unsigned long)                  |
-|      0.2 |         758,699 |        20 |     37,935.0 |     37,377.0 |     37,025 |     40,672 |     1,261.4 | mpmstd::equation::pressure::<unnamed>::k_tdma_merge_hat_Y(const double *, const double *, double2 *… |
-|      0.1 |         732,200 |        20 |     36,610.0 |     32,960.5 |     32,256 |     52,001 |     7,776.0 | <unnamed>::k_shift_u(double *, int, int, int, int, double)                                           |
-|      0.1 |         639,144 |         2 |    319,572.0 |    319,572.0 |    319,076 |    320,068 |       701.4 | <unnamed>::k_accum_z_dhvc(const double *, const double *, const double *, double *, double *, doubl… |
-|      0.1 |         491,784 |        20 |     24,589.2 |     22,832.5 |     21,793 |     32,832 |     3,984.3 | mpmstd::equation::pressure::<unnamed>::k_pres_local_sum(const double *, double *, int)               |
-|      0.1 |         333,508 |        80 |      4,168.9 |      4,160.0 |      2,527 |      6,497 |     1,119.3 | <unnamed>::k_modify_tdma_row_gpu(double *, double *, double *, int, int, bool, bool, int, int)       |
-|      0.0 |         177,667 |         1 |    177,667.0 |    177,667.0 |    177,667 |    177,667 |         0.0 | <unnamed>::k_update_properties(double *, double *, double *, double *, double *, double *, const do… |
-|      0.0 |         177,379 |         2 |     88,689.5 |     88,689.5 |     88,610 |     88,769 |       112.4 | <unnamed>::k_global_dhvc(const double *, const double *, const double *, const double *, double *, … |
-|      0.0 |          92,738 |        20 |      4,636.9 |      3,968.0 |      3,904 |      7,328 |     1,357.7 | <unnamed>::k_zero_w_wall(double *, int, int, int, int, bool, bool)                                   |
-|      0.0 |          16,674 |         4 |      4,168.5 |      4,144.5 |      3,360 |      5,025 |       686.4 | <unnamed>::fill_kernel(double *, double, unsigned long)                                              |
-+----------+-----------------+-----------+--------------+--------------+------------+------------+-------------+------------------------------------------------------------------------------------------------------+
-
-
-############ CUDA API SUMMARY (launch / sync / memcpy overhead) ############
-
-NOTICE: Existing SQLite export found: apps/dhvc/prof/dhvc_1e6_0.sqlite
-        It is assumed file was previously exported from: apps/dhvc/prof/dhvc_1e6_0.nsys-rep
-        Consider using --force-export=true if needed.
-
-Processing [apps/dhvc/prof/dhvc_1e6_0.sqlite] with [/opt/nvidia/hpc-sdk/Linux_x86_64/23.7/profilers/Nsight_Systems/host-linux-x64/reports/cuda_api_sum.py]... 
-
- ** CUDA API Summary (cuda_api_sum):
-
-+----------+-----------------+-----------+--------------+--------------+------------+-------------+--------------+------------------------+
-| Time (%) | Total Time (ns) | Num Calls |   Avg (ns)   |   Med (ns)   |  Min (ns)  |  Max (ns)   | StdDev (ns)  |          Name          |
-+----------+-----------------+-----------+--------------+--------------+------------+-------------+--------------+------------------------+
-|     33.3 |     490,562,944 |     1,441 |    340,432.3 |     50,962.0 |      1,256 |  34,506,137 |  1,407,512.2 | cudaDeviceSynchronize  |
-|     17.6 |     259,528,578 |    12,740 |     20,371.2 |     21,251.0 |      3,374 |      79,595 |     15,038.6 | cuMemcpyAsync          |
-|     11.5 |     169,288,506 |        10 | 16,928,850.6 | 16,922,564.0 | 16,804,371 |  17,155,790 |     99,477.9 | cudaHostAlloc          |
-|     10.3 |     152,409,580 |        37 |  4,119,177.8 |    132,463.0 |     83,713 | 142,485,264 | 23,380,780.9 | cuMemHostRegister_v2   |
-|      8.5 |     125,242,084 |    12,480 |     10,035.4 |     11,979.0 |        711 |      29,755 |      6,888.7 | cuStreamSynchronize    |
-|      4.9 |      72,860,234 |        10 |  7,286,023.4 |  7,051,091.0 |  6,566,478 |   9,326,828 |    812,535.9 | cudaFreeHost           |
-|      4.1 |      61,140,021 |       780 |     78,384.6 |     72,082.5 |      7,247 |     230,576 |     61,310.7 | cudaMemcpy3D           |
-|      3.7 |      55,253,017 |       726 |     76,106.1 |      8,353.5 |      6,853 |   7,885,711 |    648,447.2 | cudaMemcpy             |
-|      1.3 |      19,003,075 |     2,191 |      8,673.2 |      6,774.0 |      5,147 |   1,399,057 |     30,664.0 | cudaLaunchKernel       |
-|      1.3 |      18,738,339 |         3 |  6,246,113.0 |  5,236,397.0 |  5,172,646 |   8,329,296 |  1,804,371.0 | cuModuleLoadData       |
-|      0.8 |      11,135,920 |     1,960 |      5,681.6 |      5,400.0 |      4,470 |      14,628 |        961.8 | cuLaunchKernel         |
-|      0.6 |       9,536,863 |    18,282 |        521.7 |        482.0 |        407 |       8,753 |        252.3 | cuEventQuery           |
-|      0.5 |       8,087,630 |       105 |     77,025.0 |     74,271.0 |      2,639 |     384,296 |     83,930.4 | cudaMalloc             |
-|      0.5 |       6,997,388 |        36 |    194,371.9 |    170,929.0 |     60,886 |     406,633 |     83,036.7 | cuMemHostUnregister    |
-|      0.3 |       4,247,911 |       103 |     41,241.9 |      6,039.0 |        515 |     238,067 |     55,736.0 | cudaFree               |
-|      0.2 |       3,123,590 |         1 |  3,123,590.0 |  3,123,590.0 |  3,123,590 |   3,123,590 |          0.0 | cuIpcCloseMemHandle    |
-|      0.1 |       1,513,156 |         4 |    378,289.0 |     51,448.5 |     25,306 |   1,384,953 |    671,559.0 | cuMemcpyHtoD_v2        |
-|      0.1 |         969,732 |     1,264 |        767.2 |        424.0 |        396 |     348,792 |      9,799.0 | cuEventCreate          |
-|      0.1 |         884,554 |         1 |    884,554.0 |    884,554.0 |    884,554 |     884,554 |          0.0 | cuIpcOpenMemHandle     |
-|      0.1 |         802,971 |        92 |      8,727.9 |      7,435.5 |      4,068 |      45,008 |      5,744.9 | cudaMemset             |
-|      0.0 |         731,247 |         4 |    182,811.8 |    192,898.5 |     22,335 |     323,115 |    134,062.3 | cuMemAlloc_v2          |
-|      0.0 |         507,224 |     1,920 |        264.2 |        229.0 |        211 |       8,010 |        274.3 | cuStreamIsCapturing    |
-|      0.0 |         450,573 |         4 |    112,643.3 |    108,738.5 |      7,421 |     225,675 |     89,471.2 | cuMemFree_v2           |
-|      0.0 |         413,606 |     1,264 |        327.2 |        267.0 |        245 |      13,609 |        404.0 | cuEventDestroy_v2      |
-|      0.0 |         352,346 |       260 |      1,355.2 |      1,099.5 |        712 |       4,531 |        652.9 | cuEventRecord          |
-|      0.0 |         169,389 |         3 |     56,463.0 |     44,692.0 |     32,007 |      92,690 |     32,008.2 | cuModuleUnload         |
-|      0.0 |         147,974 |       390 |        379.4 |        319.0 |        178 |       3,037 |        263.0 | cuGetProcAddress_v2    |
-|      0.0 |          57,443 |         3 |     19,147.7 |     17,618.0 |     16,340 |      23,485 |      3,810.2 | cuMemGetInfo_v2        |
-|      0.0 |          29,295 |         4 |      7,323.8 |      3,086.5 |      2,731 |      20,391 |      8,715.9 | cuStreamCreate         |
-|      0.0 |          21,348 |         4 |      5,337.0 |      3,786.0 |      3,364 |      10,412 |      3,401.1 | cuStreamDestroy_v2     |
-|      0.0 |           4,677 |         2 |      2,338.5 |      2,338.5 |        518 |       4,159 |      2,574.6 | cuModuleGetLoadingMode |
-|      0.0 |           2,291 |         1 |      2,291.0 |      2,291.0 |      2,291 |       2,291 |          0.0 | cuInit                 |
-+----------+-----------------+-----------+--------------+--------------+------------+-------------+--------------+------------------------+
-
-############ GPU MEMOPS ############
-
-NOTICE: Existing SQLite export found: apps/dhvc/prof/dhvc_1e6_0.sqlite
-        It is assumed file was previously exported from: apps/dhvc/prof/dhvc_1e6_0.nsys-rep
-        Consider using --force-export=true if needed.
-
-Processing [apps/dhvc/prof/dhvc_1e6_0.sqlite] with [/opt/nvidia/hpc-sdk/Linux_x86_64/23.7/profilers/Nsight_Systems/host-linux-x64/reports/cuda_gpu_mem_time_sum.py]... 
-
- ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
-
-+----------+-----------------+-------+----------+----------+----------+-----------+-------------+--------------------+
-| Time (%) | Total Time (ns) | Count | Avg (ns) | Med (ns) | Min (ns) | Max (ns)  | StdDev (ns) |     Operation      |
-+----------+-----------------+-------+----------+----------+----------+-----------+-------------+--------------------+
-|     46.8 |      94,757,034 | 6,024 | 15,729.9 |  6,721.0 |    1,952 | 7,669,018 |   216,553.6 | [CUDA memcpy HtoD] |
-|     28.8 |      58,236,427 | 1,420 | 41,011.6 | 57,856.0 |    2,016 |   109,346 |    34,678.2 | [CUDA memcpy DtoD] |
-|     16.9 |      34,230,850 | 6,546 |  5,229.3 |  4,256.0 |    1,504 |    13,185 |     2,208.0 | [CUDA memcpy DtoH] |
-|      7.2 |      14,618,634 |   260 | 56,225.5 | 56,001.0 |   51,649 |    57,985 |       585.2 | [CUDA memcpy PtoP] |
-|      0.3 |         537,734 |    92 |  5,844.9 |  1,056.0 |      991 |    28,064 |    10,030.9 | [CUDA memset]      |
-+----------+-----------------+-------+----------+----------+----------+-----------+-------------+--------------------+
-
-=== PROF DONE ===

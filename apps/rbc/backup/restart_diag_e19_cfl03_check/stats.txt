@@ -1,5 +1,0 @@
-step 2381000
-time 20175.52541071624
-tc_sum 0
-tc_n 0
-wt_sum 0
