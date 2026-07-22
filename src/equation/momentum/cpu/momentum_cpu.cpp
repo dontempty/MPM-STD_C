@@ -193,8 +193,8 @@ void solve_momentum_cpu(const core::Domain& domain, const core::BoundaryConditio
 // (the upper wall face sits in the ghost slot), so the z-sweep solves that row
 // like a regular interior row and leaves a spurious wall-face increment there.
 // The face is pinned (W=0), so its increment must be zero BEFORE dW is consumed
-// by couple_dd_dV_var / block_couple_dU_var; otherwise it leaks into dV/dU with
-// 1/dmx3 wall-shear amplification — the bottom-wall-only U spike (Report/27).
+// by block_couple_dV_var / block_couple_dU_var; otherwise it leaks into dV/dU
+// with 1/dmx3 wall-shear amplification — the bottom-wall-only U spike (Report/27).
 static void zero_dw_lower_wall_face(real_t* dW, const core::Domain& domain,
                                     const core::BoundaryCondition& bc) {
   if (bc.topology.is_periodic(Direction::Z)) return;
@@ -221,33 +221,35 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
 
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
 
-  // ── FORWARD substitution dU → dW → dV (ref solvedU→solvedV→solvedW order),
-  //    with the lower-triangular dd* coupling injected into each RHS BEFORE its
-  //    ADI solve using the freshly-solved preceding increments (Gauss-Seidel).
+  // ── FORWARD substitution dU → dV → dW (ref MPM-STD solvedU→solvedV→solvedW,
+  //    submodule.f90:202-227; Report/RBC), with the lower-triangular dd*
+  //    coupling injected into each RHS BEFORE its ADI solve using the freshly-
+  //    solved preceding increments (Gauss-Seidel). The wall-normal dW comes
+  //    LAST so every coupling into it passes through its implicit z-ADI.
   // 1) dU (own X) — no coupling.
   adi_component_var(mom, mom.rhs_u, Up, Up, Vp, Wp, mu, irho, Direction::X, false, bc.U, domain, bc, Cmu, dt, mom.dU.data());
   core::sync_field_cpu(mom.dU, bc.U, domain.sub);
 
-  // 2) dW (own Z, wall) — inject M21 (dU increment) into rhs_w, then solve.
-  mk::couple_dd_dW_var(mom.rhs_w.data(), mom.dU.data(), Wp, mu, irho,
-                       dx1, dmx1, dx3, dmx3, n1, n2, n3, Cmu, dt);
+  // 2) dV (own Y) — inject M21 (dU increment) into rhs_v, then solve.
+  mk::couple_dd_dV_var(mom.rhs_v.data(), mom.dU.data(), Vp, mu, irho,
+                       dx1, dmx1, dx2, dmx2, n1, n2, n3, Cmu, dt);
+  adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, Direction::Y, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
+  core::sync_field_cpu(mom.dV, bc.V, domain.sub);
+
+  // 3) dW (own Z, wall) — inject M31 (dU) + M32 (dV) into rhs_w, then solve.
+  mk::couple_dd_dW_var(mom.rhs_w.data(), mom.dU.data(), mom.dV.data(), Wp, mu, irho,
+                       dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
   adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, Direction::Z, true, bc.W, domain, bc, Cmu, dt, mom.dW.data());
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
   zero_dw_lower_wall_face(mom.dW.data(), domain, bc);
 
-  // 3) dV (own Y, span) — inject M31 (dU) + M32 (dW) into rhs_v, then solve.
-  mk::couple_dd_dV_var(mom.rhs_v.data(), mom.dU.data(), mom.dW.data(), Vp, mu, irho,
-                       dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
-  adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, Direction::Y, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
-  core::sync_field_cpu(mom.dV, bc.V, domain.sub);
-
   // ── BLOCK back-substitution (upper M23/M12/M13), ref blockLdV→blockLdU order:
-  // blockLdV corrects the WALL increment (my dW) using the span increment (my dV),
-  // THEN blockLdU corrects dU using the span (dV) + corrected wall (dW) increments.
-  mk::block_couple_dW_var(mom.dW.data(), mom.dV.data(), fields[core::Var::W].data(), mu, irho,
+  // blockLdV corrects the horizontal dV using the wall-normal increment dW,
+  // THEN blockLdU corrects dU using the corrected dV + dW increments. The
+  // wall-normal dW receives NO post-hoc correction (Report/RBC reignition fix).
+  mk::block_couple_dV_var(mom.dV.data(), mom.dW.data(), fields[core::Var::V].data(), mu, irho,
                           dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
-  core::sync_field_cpu(mom.dW, bc.W, domain.sub);
-  zero_dw_lower_wall_face(mom.dW.data(), domain, bc);   // block_dW rewrote k=h too
+  core::sync_field_cpu(mom.dV, bc.V, domain.sub);
   mk::block_couple_dU_var(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(), mu, irho,
                           dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
 }

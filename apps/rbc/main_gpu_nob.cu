@@ -29,8 +29,11 @@ __global__ void k_zero_w_wall_gpu(double* W, int n2t, int n3t, int h,
 // ghosts pinned the effective wall at the ghost CENTER (half a cell outside
 // the face) and halved the wall conductance every step — measured as the 2x
 // wall-gap flux kink in the mean T profile (Report/31).
+// clip_count: running counter of clipped cells (audit D3, Report/RBC — the
+// clip is not in the paper and acts as a non-conservative heat sink/source;
+// if it fires at statistical steady state it can bias theta_c, so count it).
 __global__ void k_clip_T_gpu(double* T, int n1i, int n2i, int n3i,
-                             int n2t, int n3t) {
+                             int n2t, int n3t, unsigned long long* clip_count) {
   const int ii = blockIdx.x * blockDim.x + threadIdx.x;
   const int jj = blockIdx.y * blockDim.y + threadIdx.y;
   const int kk = blockIdx.z * blockDim.z + threadIdx.z;
@@ -38,7 +41,10 @@ __global__ void k_clip_T_gpu(double* T, int n1i, int n2i, int n3i,
   const std::size_t c = (((std::size_t)(ii + kHaloWidth)) * n2t + (jj + kHaloWidth)) * n3t
                       + (kk + kHaloWidth);
   const double v = T[c];
-  T[c] = v < -0.5 ? -0.5 : (v > 0.5 ? 0.5 : v);
+  if (v < -0.5 || v > 0.5) {
+    T[c] = v < -0.5 ? -0.5 : 0.5;
+    atomicAdd(clip_count, 1ULL);
+  }
 }
 
 // ── GPU statistics kernels — eliminate per-step 64 MB D2H ────────────────────
@@ -174,31 +180,46 @@ struct GpuRbcAccum {
   }
 };
 
+// Raw per-step (unaccumulated) tc/wt reduction — shared by gpu_accumulate_rbc
+// (which folds this step's contribution into the long-time running sum) and
+// gpu_print_step_rbc (which now reports THIS step's instant value directly,
+// instead of the cumulative running mean, so transients are visible live
+// without having to back out local windows from the cumulative print by hand).
+inline void gpu_compute_instant_tc_wt(GpuRbcAccum& ga, const core::GpuFields& gf,
+    MPI_Comm comm, double& wt_instant, double& tc_instant)
+{
+  const double* T = gf[core::Var::T].data();
+  const double* W = gf[core::Var::W].data();
+  cudaMemset(ga.d_tmp2, 0, 2*sizeof(double));
+  const dim3 blk(8,8,4);
+  const dim3 grd((ga.nx+7)/8,(ga.ny+7)/8,(ga.nz+3)/4);
+  k_accum_tc_wt_rbc<<<grd,blk,2*256*sizeof(double)>>>(
+      T, W, ga.d_dx3, ga.d_tmp2,
+      ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h, ga.kc_local);
+  cudaDeviceSynchronize();
+  double local[2]; cudaMemcpy(local, ga.d_tmp2, 2*sizeof(double), cudaMemcpyDeviceToHost);
+  double global[2];
+  MPI_Allreduce(local, global, 2, MPI_DOUBLE, MPI_SUM, comm);
+  wt_instant = global[0];
+  tc_instant = global[1] / (double(ga.nxg)*ga.nyg);
+}
+
 // GPU accumulate: compute tc and wt on device, D2H 16 bytes, MPI_Allreduce → update stats.
 inline void gpu_accumulate_rbc(GpuRbcAccum& ga, rbc::RbcStats& s,
     const core::GpuFields& gf, MPI_Comm comm)
 {
   const double* T = gf[core::Var::T].data();
   const double* W = gf[core::Var::W].data();
-  cudaMemset(ga.d_tmp2, 0, 2*sizeof(double));
-  // k_accum_tc_wt: block (8,8,4)=256, grid covers (nx,ny,nz)
-  const dim3 blk(8,8,4);
-  const dim3 grd((ga.nx+7)/8,(ga.ny+7)/8,(ga.nz+3)/4);
-  k_accum_tc_wt_rbc<<<grd,blk,2*256*sizeof(double)>>>(
-      T, W, ga.d_dx3, ga.d_tmp2,
-      ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h, ga.kc_local);
+  double wt_instant, tc_instant;
+  gpu_compute_instant_tc_wt(ga, gf, comm, wt_instant, tc_instant);
   // k_accum_z_profile: 256 threads, grid (ceil(nx*ny/256), nz)
   const int flat_blocks = (ga.nx*ga.ny+255)/256;
   k_accum_z_profile_rbc<<<dim3(flat_blocks,ga.nz),256,2*256*sizeof(double)>>>(
       T, W, ga.d_t_sum_z, ga.d_w2_sum_z,
       ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h);
   cudaDeviceSynchronize();
-  // D2H: 16 bytes
-  double local[2]; cudaMemcpy(local, ga.d_tmp2, 2*sizeof(double), cudaMemcpyDeviceToHost);
-  double global[2];
-  MPI_Allreduce(local, global, 2, MPI_DOUBLE, MPI_SUM, comm);
-  s.wt_sum += global[0];
-  s.tc_sum += global[1] / (double(ga.nxg)*ga.nyg);
+  s.wt_sum += wt_instant;
+  s.tc_sum += tc_instant;
   ++s.tc_n;
 }
 
@@ -221,15 +242,20 @@ inline void gpu_print_step_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
   double local[6]; cudaMemcpy(local, ga.d_diag6, 6*sizeof(double), cudaMemcpyDeviceToHost);
   double global[6];
   MPI_Allreduce(local, global, 6, MPI_DOUBLE, MPI_MAX, comm);
+  // Instant (this-step-only) Theta_c/Nu — NOT the cumulative running mean —
+  // so transients/drift are visible live without hand-differencing the
+  // cumulative print across monitor intervals. Computed every monitor call
+  // regardless of nstat_start, so it's meaningful pre-stats-window too.
+  double wt_instant, tc_instant;
+  gpu_compute_instant_tc_wt(ga, gf, comm, wt_instant, tc_instant);
   if (!is_root) return;
   const double dv=global[5], umax=global[0], vmax=global[1], wmax=global[2];
   const double Tmax=global[3], Tmin=-global[4];
-  const double tc  = (s.tc_n>0) ? s.tc_sum/s.tc_n : 0.0;
-  const double nu_val = (s.tc_n>0) ? 1.0 + (s.wt_sum/(double(ga.nxg)*ga.nyg)/s.tc_n)/alpha_T : 0.0;
+  const double tc = tc_instant;
+  const double nu_val = 1.0 + (wt_instant/(double(ga.nxg)*ga.nyg))/alpha_T;
   std::printf("step=%d t=%.3g dt=%.3g div=%.2e Theta_c=%.4f | umax=%.3g vmax=%.3g wmax=%.3g T=[%.3f,%.3f]\n",
               step, time, double(dt), dv, tc, umax, vmax, wmax, Tmin, Tmax);
-  if (s.tc_n > 0)
-    std::printf("  [Nu] running: Nu=%.4f (tc_n=%ld)\n", nu_val, s.tc_n);
+  std::printf("  [Nu] instant: Nu=%.4f\n", nu_val);
   if (mon_fp) {
     std::fprintf(mon_fp, "%d,%.6g,%.6g,%.6e,%.6f,%.6f\n",
                  step, time, double(dt), dv, tc, nu_val);
@@ -279,6 +305,8 @@ inline void gpu_write_stats_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
 }
 } // anonymous namespace
 
+
+//----------------------------------------------- Main -----------------------------------------------
 int main(int argc, char** argv) {
   core::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
@@ -337,6 +365,14 @@ int main(int argc, char** argv) {
   const std::string dir_stats   = cfg.get_or<std::string>("output","dir_stats","apps/rbc/statistics/");
   const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in",  "");
   const std::string restart_out = cfg.get_or<std::string>("restart","dir_out", "");
+  
+  // Periodic checkpoint interval in steps (0 = off, final-only write as before).
+  // Checkpoints alternate between <dir_out>/ckpt_a and <dir_out>/ckpt_b so a job
+  // killed mid-write (timeout, node failure) never corrupts the only copy; to
+  // resume, point [restart] dir_in at the ckpt dir whose stats.txt has the
+  // larger step. Motivated by P5/job 30282: 48 h TimeLimit < 60 h cold run,
+  // restart was final-only → the whole equilibrated field would have been lost.
+  const int nrestart_write = cfg.get_or<int>("restart","nrestart_write", 0);
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
   MPI_Barrier(topo.cart_comm());
 
@@ -425,42 +461,64 @@ int main(int argc, char** argv) {
   double t_scalar=0, t_mom=0, t_zero_w=0, t_pressure=0, t_clip=0, t_diag=0, t_accum=0;
   const int n_time_steps = 10; // profile first N steps
 
+  unsigned long long* d_clip_count = nullptr;   // audit D3: clip activation counter
+
+  // ── 한 스텝의 흐름 ──────────────────────────────────────────────────────────
+  //  [1] CFL → dt   [2] 물성 갱신(Tⁿ)   [3] 에너지 방정식 → Tⁿ⁺¹
+  //  [4] 물성 재갱신(Tⁿ⁺¹)   [5] 운동량 예측자 → U*,V*,W*   [6] 벽면 W=0
+  //  [7] 압력 Poisson + 투영 → 발산 제거, Pⁿ⁺¹=Pⁿ+δp   [8] T 클리핑(NOB)
+  //  [9] 통계 누적 / 모니터 출력 / 주기적 체크포인트
   while (time < t_end && step < n_steps) {
     auto t00 = hrc::now();
 
+    // [1] 적응 시간간격: 현재 속도장의 CFL 조건으로 dt = min(MaxCFL/속도, dt_cap)
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
+    // [2] NOB 변물성 갱신: 현재 온도 Tⁿ으로 μ, 1/ρ, κ, 1/(ρcp) 등을 다항식(글리세롤 모델)으로 재계산
+    //     — 아래 에너지 방정식이 이 Tⁿ 물성을 사용
     physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
+    // [3] 에너지(온도) 방정식 — 대류 + 변수-κ 확산, 준음해 델타-폼:
+    //     solve 안에서 sweep마다 A 밴드와 RHS를 동시에 조립(k_build_A_rhs_nob, 융합 build_A_RHS;
+    //     stage-1이 명시 잔차 R을 인라인 계산) 후 3-sweep ADI(x,y,z 삼중대각 TDMA)로 δT를 풀어 T += δT
+    //     sync_field = MPI 할로 교환 + 경계조건 재적용 (Tⁿ⁺¹ 완성)
     cudaDeviceSynchronize();
     auto t_s0 = hrc::now();
-    equation::assemble_scalar_var_diff_gpu(domain, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
-                                           gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
-    equation::solve_scalar_var_gpu(domain, bc, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
-                                   gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
+    equation::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
+                                   gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
     cudaDeviceSynchronize();
     t_scalar += ms_since(t_s0);
 
+    // [4] 물성 재갱신 — 방금 푼 Tⁿ⁺¹로 μ, 1/ρ를 다시 계산해 운동량/부력이 Tⁿ⁺¹ 물성을 쓰게 함
     // Re-evaluate properties from the just-solved T^{n+1} so momentum viscosity/density
     // (mu, inv_rho) and the NOB buoyancy inv_rho use T^{n+1} — matches PaScaL_TCS
     // momentum_coeffi(T) called AFTER thermal_solver (MPM-STD staggered-time scheme).
     // Energy above already used the T^n properties from line 408.
     physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
+    // [5] 운동량 예측자(predictor) — 중간 속도 U*,V*,W* 계산:
+    //     assemble  : 대류 + 변수-μ 확산의 명시 RHS 조립
+    //     buoyancy  : 부력항 gz·(1/ρ̂)·T̂ 추가 (T는 W 위치로 면-보간; Report/34 수정)
+    //     pressure_gradient : 증분투영 예측자 항 −dt·(1/ρ̂)∇Pⁿ 추가 (누적압력 P_acc 사용)
+    //     solve     : 3-sweep ADI(TDMA) + 블록 하삼각 속도 커플링으로 증분 δU,δV,δW 계산
+    //     update    : U += δU 등으로 중간 속도 완성 (아직 발산 ≠ 0)
     auto t_m0 = hrc::now();
-    equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
-    physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
-    equation::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_P_acc, gpu_props.inv_rho, dt);
-    equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+    equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
+    equation::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_P_acc, gpu_props.invRho, dt);
+    equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     equation::update_velocity_gpu(gpu_fields, gpu_momentum);
-    core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
+    core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);   // 할로 교환 + BC 재적용 (U,V,W)
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
     cudaDeviceSynchronize();
     t_mom += ms_since(t_m0);
+    // 디버그: 운동량 직후 상단 슬랩 |U|,|W| 최대값 (환경변수 MPMSTD_MOMDBG≥1일 때만 출력, 평소 no-op)
     equation::debug_slabmax_gpu("U.postmom", gpu_fields[core::Var::U], domain, 'U');
     equation::debug_slabmax_gpu("W.postmom", gpu_fields[core::Var::W], domain, 'W');
 
+    // [6] 벽면 W=0 강제 — MAC 격자에서 z-벽의 W 면(내부 인덱스 k=h)은 TDMA에 안 접혀서
+    //     솔브 후 명시적으로 0으로 눌러줘야 함
     // zero_w_wall: GPU kernel — no D2H/H2D
     cudaDeviceSynchronize();
     auto t_zw0 = hrc::now();
@@ -477,18 +535,22 @@ int main(int argc, char** argv) {
     cudaDeviceSynchronize();
     t_zero_w += ms_since(t_zw0);
 
+    // [7] 압력 투영(incremental van Kan) — ∇·U*를 RHS로 Poisson을 풀어(δp)
+    //     펜슬 FFT(x,y) + 분산 TDMA(z), 속도를 발산-제로로 투영, P_acc += δp
     // G4: GPU pressure solve (NOB — no H↔D transfers for pressure)
     // Report/25: faithful NOB pressure restored. ExtraTerm (Poisson) and the
     // (invRhoc-1)*∇dPhat velocity term are a cancelling PAIR (div=0 exact), not
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
-    equation::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.inv_rho);
+    equation::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
     equation::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
     t_pressure += ms_since(t_p0);
     equation::debug_slabmax_gpu("U.postproj", gpu_fields[core::Var::U], domain);
     equation::debug_slabmax_gpu("W.postproj", gpu_fields[core::Var::W], domain);
 
+    // [8] 온도 클리핑(NOB 전용, DeltaT>0일 때만) — 물성 다항식의 유효 범위를 벗어나는
+    //     오버슛 T를 잘라냄; 몇 셀이 잘렸는지 d_clip_count에 기록해 모니터 때 보고
     // T clipping: GPU kernel — no D2H/H2D (interior only; ghosts hold the BC mirror)
     auto t_c0 = hrc::now();
     if (DeltaT > 0.0) {
@@ -496,31 +558,66 @@ int main(int argc, char** argv) {
       const auto ntc = sub.n_total();
       const dim3 blkc(8, 8, 8);
       const dim3 grdc((nic[0]+7)/8, (nic[1]+7)/8, (nic[2]+7)/8);
+      if (!d_clip_count) {
+        cudaMalloc(&d_clip_count, sizeof(unsigned long long));
+        cudaMemset(d_clip_count, 0, sizeof(unsigned long long));
+      }
       k_clip_T_gpu<<<grdc, blkc>>>(gpu_fields[core::Var::T].data(),
-                                   nic[0], nic[1], nic[2], ntc[1], ntc[2]);
+                                   nic[0], nic[1], nic[2], ntc[1], ntc[2],
+                                   d_clip_count);
     }
     cudaDeviceSynchronize();
     t_clip += ms_since(t_c0);
 
-    time += double(dt); ++step;
+    time += double(dt); ++step;   // 시간 전진 — 여기까지가 물리 스텝, 이후는 통계/출력
 
+    // [9a] 통계 누적 (nstat_start 스텝 이후) — θ_c, Nu, z-프로파일 등을 디바이스 리덕션으로
     // GPU statistics: device reductions only — no field D2H (≤48 bytes per step)
     auto t_d0 = hrc::now();
     if (step >= nstat_start)
       gpu_accumulate_rbc(gpu_accum, stats, gpu_fields, topo.cart_comm());
     t_diag += ms_since(t_d0);
 
+    // [9b] 모니터 출력 (nmonitor 스텝마다) — step/t/dt/div/θ_c/Nu 한 줄 + monitor.csv 기록
     auto t_a0 = hrc::now();
-    if (step % nmonitor == 0)
+    if (step % nmonitor == 0) {
       gpu_print_step_rbc(gpu_accum, stats, gpu_fields, step, time, dt, alpha_T, mpi.is_root(), topo.cart_comm(), mon_fp);
+      if (d_clip_count) {   // audit D3: report clip activations since last monitor
+        unsigned long long local_clips = 0, total_clips = 0;
+        cudaMemcpy(&local_clips, d_clip_count, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+        cudaMemset(d_clip_count, 0, sizeof(unsigned long long));
+        MPI_Reduce(&local_clips, &total_clips, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, topo.cart_comm());
+        if (mpi.is_root() && total_clips > 0)
+          std::printf("  [clip] %llu cells clipped in the last %d steps\n", total_clips, nmonitor);
+      }
+    }
     t_accum += ms_since(t_a0);
 
+    // [9c] 통계 파일 저장 (nstat_write 스텝마다) — stats_<step>.dat
     if (step >= nstat_start && nstat_write > 0 && step % nstat_write == 0) {
       const std::string sp = dir_stats + "stats_" + std::to_string(step) + ".dat";
       gpu_write_stats_rbc(gpu_accum, stats, sp, step, Ra, DeltaT,
                           mpi.is_root(), topo.cart_comm(), grid, sub);
     }
 
+    // [9d] 주기적 재시작 체크포인트 — 필드를 D2H 복사 후 ckpt_a/ckpt_b 교대로 기록
+    //      (중간에 잡이 죽어도 최소 한 벌은 온전; P는 누적압력 P_acc를 저장)
+    // Periodic restart checkpoint into alternating ckpt_a/ckpt_b (see the
+    // nrestart_write comment at config parse). Skips the final step — the
+    // end-of-run write below covers it in <dir_out> itself.
+    if (!restart_out.empty() && nrestart_write > 0
+        && step % nrestart_write == 0 && step < n_steps && time < t_end) {
+      gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
+      gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
+      gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
+      gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
+      gpu_P_acc.to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
+      const bool odd = ((step / nrestart_write) % 2) != 0;
+      const std::string ckpt = restart_out + (odd ? "/ckpt_b" : "/ckpt_a");
+      rbc::write_restart(fields, sub, stats, step, time, ckpt, topo.cart_comm());
+    }
+
+    // [10] 성능 프로파일 출력 — 첫 n_time_steps 스텝의 구간별(ms/step) 타이밍, 이후 정상상태 타이밍은 런 끝에
     if (step == n_time_steps && mpi.is_root()) {
       const double total = t_scalar+t_mom+t_zero_w+t_pressure+t_clip+t_diag+t_accum;
       std::printf("[TIMING] %d steps  total=%.1f ms/step\n", n_time_steps, total/n_time_steps);

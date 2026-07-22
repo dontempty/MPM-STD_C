@@ -123,36 +123,25 @@ void build_adi_bands(Direction      d,
 //  relaxes the Pr=2547 convective CFL.
 // -----------------------------------------------------------------------------
 
-// Build the full explicit residual R into rhs (overwrites; interior cells).
-// θ, U, V, W, κ̂, dκ̂, invρĈp, dinvρĈp halos must be filled before the call.
-void energy_residual_rhs_var(real_t*       rhs,
-                             const real_t* T,
-                             const real_t* U, const real_t* V, const real_t* W,
-                             const real_t* kappa, const real_t* dkappa,
-                             const real_t* inv_rhocp, const real_t* dinv_rhocp,
-                             const real_t* dx1, const real_t* dmx1,
-                             const real_t* dx2, const real_t* dmx2,
-                             const real_t* dx3, const real_t* dmx3,
-                             int n1_tot, int n2_tot, int n3_tot,
-                             real_t Ct);
-
-// Build ADI bands (A,B,C = I + dt·M_d) for sweep axis d AND pack the delta-form
-// RHS into D.  `src` = R on the first sweep (is_stage1=true → full M·θⁿ pack);
-// the transposed running increment δ on later sweeps (copied through).
-void build_energy_adi_bands_var(Direction      d,
-                                real_t*        A, real_t* B, real_t* C, real_t* D,
-                                const real_t*  src,
-                                const real_t*  T,
-                                const real_t*  U, const real_t* V, const real_t* W,
-                                const real_t*  kappa, const real_t* dkappa,
-                                const real_t*  inv_rhocp, const real_t* dinv_rhocp,
-                                const real_t*  dx1, const real_t* dmx1,
-                                const real_t*  dx2, const real_t* dmx2,
-                                const real_t*  dx3, const real_t* dmx3,
-                                int            n1_tot, int n2_tot, int n3_tot,
-                                int            n1_int, int n2_int, int n3_int,
-                                real_t         Ct, real_t dt,
-                                bool           is_stage1);
+// Fused build_A_RHS: build the ADI bands (A,B,C = I + dt·M_d) for sweep axis d
+// AND pack the delta-form RHS into D in one pass. Stage 1 (is_stage1=true)
+// computes the explicit residual R inline (full M·θⁿ pack; `src` unused);
+// stages 2/3 copy `src` (the transposed running increment δ) through.
+void build_A_rhs_nob(Direction      d,
+                     real_t*        A, real_t* B, real_t* C, real_t* D,
+                     const real_t*  src,
+                     const real_t*  T,
+                     const real_t*  U, const real_t* V, const real_t* W,
+                     const real_t*  KPP, const real_t* dKPP,
+                     const real_t*  invRhoCp, const real_t* dinvRhoCp,
+                     const real_t*  dx1, const real_t* dmx1,
+                     const real_t*  dx2, const real_t* dmx2,
+                     const real_t*  dx3, const real_t* dmx3,
+                     int            n1_tot, int n2_tot, int n3_tot,
+                     int            n1_int, int n2_int, int n3_int,
+                     real_t         Ct, real_t dt,
+                     bool           is_stage1,
+                     bool           z_owns_lower, bool z_owns_upper);
 
 
 // -----------------------------------------------------------------------------

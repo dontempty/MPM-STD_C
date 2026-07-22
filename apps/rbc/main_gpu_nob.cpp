@@ -119,15 +119,13 @@ int main(int argc, char** argv) {
 
     physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
-    equation::assemble_scalar_var_diff_gpu(domain, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
-                                           gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
-    equation::solve_scalar_var_gpu(domain, bc, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
-                                   gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
+    equation::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
+                                   gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
-    equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
-    physics::add_buoyancy_force_nob_gpu(gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
-    equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+    equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    physics::add_buoyancy_force_nob_gpu(gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
+    equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     equation::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
@@ -148,7 +146,7 @@ int main(int argc, char** argv) {
     // CPU properties needed for NOB pressure projection (invRhoc)
     physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.inv_rho.data());
+    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.invRho.data());
 
     if (DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();

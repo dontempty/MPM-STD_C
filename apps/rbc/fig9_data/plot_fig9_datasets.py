@@ -59,6 +59,7 @@ MINE_PREFIX = [
 MINE_POSTFIX = [
     (20.0, 0.0647, 'E18/E19 plateau'),
     (40.0, 0.1279, 'E22 settled, final'),
+    (60.0, 0.1601, 'E23, still rising'),
 ]
 mine_prefix_dt  = np.array([p[0] for p in MINE_PREFIX])
 mine_prefix_y   = np.array([p[0] * p[1] for p in MINE_PREFIX])

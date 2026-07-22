@@ -483,7 +483,6 @@ __global__ void k_mom_rhs_var(
 
         const double irc = mfce(dx1[im], invrho[c], dx1[i], invrho[cim], dmx1[i]);
         const double inh = kHalf*Cmu*irc;
-        const double muc = mu[c];
 
         const double vu1  = (mu[c]*dudx2 - mu[cim]*dudx1)/dmx1[i];
         const double vuZ  = (muz6*dudz6 - muz5*dudz5)/dx3[k];
@@ -492,10 +491,13 @@ __global__ void k_mom_rhs_var(
         const double vuYc = (muy4*dvdx4 - muy3*dvdx3)/dx2[j];
         R = inh*(kTwo*vu1 + vuZ + vuY + vuZc + vuYc);
 
-        const double mACI  =  inh/dmx1[i]*(muc/dx1[i] + muc/dx1[im])*kTwo
+        // Report/34-class fix: own-X band used mu[c] (cell) on BOTH faces
+        // (ported PaScaL bug, module_solve_momentum.f90:371,375 pre-fix) --
+        // matches own-Y/own-Z below, which already differ mu[c] vs neighbor.
+        const double mACI  =  inh/dmx1[i]*(mu[c]/dx1[i] + mu[cim]/dx1[im])*kTwo
                            + kQ*(kHalf*dudx2 + kHalf*dudx1 - u2/dx1[i] + u1/dx1[im]);
-        const double mAPI  = -inh/dmx1[i]*muc/dx1[i]*kTwo  + kQ*( u2/dx1[i]  + kHalf*dudx2);
-        const double mAMI  = -inh/dmx1[i]*muc/dx1[im]*kTwo + kQ*(-u1/dx1[im] + kHalf*dudx1);
+        const double mAPI  = -inh/dmx1[i]*mu[c]/dx1[i]*kTwo    + kQ*( u2/dx1[i]  + kHalf*dudx2);
+        const double mAMI  = -inh/dmx1[i]*mu[cim]/dx1[im]*kTwo + kQ*(-u1/dx1[im] + kHalf*dudx1);
         const double mACK  =  inh/dx3[k]*(muz6/dmx3[kp] + muz5/dmx3[k]) + kQ*(-w6/dmx3[kp] + w5/dmx3[k]);
         const double mAPK  = -inh/dx3[k]*muz6/dmx3[kp] + kQ*( w6/dmx3[kp]);
         const double mAMK  = -inh/dx3[k]*muz5/dmx3[k]  + kQ*(-w5/dmx3[k]);
@@ -688,8 +690,10 @@ __global__ void k_mom_adi_var(
     double ad, cd;
     if (own) {
         const double cmu = mu[gi];
-        const double mmu = (z_staggered || (own_dir == mpmstd::Direction::Y))
-                         ? mu[gi - ostride] : mu[gi];
+        // Report/34-class fix: own-X previously fell through to mu[gi] here
+        // too (ported PaScaL bug) -- own-minus face always uses the own-axis
+        // minus-neighbour's mu, for all three own directions (X/Y/Z-staggered).
+        const double mmu = mu[gi - ostride];
         ad = -inh * ir_raw / dmxa[a] * mmu / dxa[a-1] * 2.0;
         cd = -inh * ir_raw / dmxa[a] * cmu / dxa[a]   * 2.0;
     } else {
@@ -763,14 +767,21 @@ __global__ void k_mom_adi_var(
 
 // ===========================================================================
 //  KERNEL 8: NOB dd* coupling — couple_dd_dW_var
-//  rhs_w[c] -= dt * (kQ*(ddu2*dWdx2+ddu1*dWdx1) - inh/dx1*(mu2*ddudz2-mu1*ddudz1))
+//  rhs_w[c] -= dt*M31(dU) + dt*M32(dV)
+//  Both lower-triangular off-diagonals of the wall-normal equation enter the
+//  RHS BEFORE the dW ADI solve, so they pass through the implicit z-operator
+//  (ref MPM-STD solvedW 1524-1531 M31ddU + 1533-1540 M32ddV). The wall-normal
+//  increment must never receive an unfiltered explicit correction — that was
+//  the Report/30 reignition pump (Report/RBC arrangement analysis).
 // ===========================================================================
 __global__ void k_dd_dW_var(
         double* rhs_w,
         const double* dU,
+        const double* dV,
         const double* W,
         const double* mu, const double* invrho,
         const double* dx1, const double* dmx1,
+        const double* dx2, const double* dmx2,
         const double* dx3, const double* dmx3,
         int n1i, int n2i, int n3i,
         int n1t, int n2t, int n3t,
@@ -782,12 +793,19 @@ __global__ void k_dd_dW_var(
     if (ii >= n1i || jj >= n2i || kk >= n3i) return;
 
     const int i = ii + kH, j = jj + kH, k = kk + kH;
-    const int im=i-1, ip=i+1, km=k-1;
+    const int im=i-1, ip=i+1, jm=j-1, jp=j+1, km=k-1;
     const int c   = idx3m(i,  j, k,  n2t, n3t);
     const int cim = idx3m(im, j, k,  n2t, n3t);
     const int cip = idx3m(ip, j, k,  n2t, n3t);
+    const int cjm = idx3m(i,  jm, k, n2t, n3t);
+    const int cjp = idx3m(i,  jp, k, n2t, n3t);
     const int ckm = idx3m(i,  j, km, n2t, n3t);
 
+    const double irc = mfce(dx3[km], invrho[c], dx3[k], invrho[ckm], dmx3[k]);
+    const double inh = 0.5*Cmu*irc;
+    const double xc = mfce(dx3[km], mu[c],   dx3[k], mu[ckm],                     dmx3[k]);
+
+    // --- M31: dU increment (ref solvedW 1524-1531) ---
     const double ddu1 = mfce(dx3[km], dU[c],   dx3[k], dU[ckm],                     dmx3[k]);
     const double ddu2 = mfce(dx3[km], dU[cip], dx3[k], dU[idx3m(ip,j,km,n2t,n3t)], dmx3[k]);
     const double dWdx1 = (W[c]   - W[cim])/dmx1[i];
@@ -796,31 +814,43 @@ __global__ void k_dd_dW_var(
     const double ddudz2 = (dU[cip] - dU[idx3m(ip,j,km,n2t,n3t)])/dmx3[k];
 
     const double xa = mfce(dx3[km], mu[cim], dx3[k], mu[idx3m(im,j,km,n2t,n3t)], dmx3[k]);
-    const double xc = mfce(dx3[km], mu[c],   dx3[k], mu[ckm],                     dmx3[k]);
     const double xb = mfce(dx3[km], mu[cip], dx3[k], mu[idx3m(ip,j,km,n2t,n3t)], dmx3[k]);
     const double mu1 = 0.5*(dx1[im]*xc + dx1[i]*xa)/dmx1[i];
     const double mu2 = 0.5*(dx1[ip]*xc + dx1[i]*xb)/dmx1[ip];
 
-    const double irc = mfce(dx3[km], invrho[c], dx3[k], invrho[ckm], dmx3[k]);
-    const double inh = 0.5*Cmu*irc;
-
     rhs_w[c] -= dt * ( 0.25*(ddu2*dWdx2 + ddu1*dWdx1)
                      - inh/dx1[i]*(mu2*ddudz2 - mu1*ddudz1) );
+
+    // --- M32: dV increment (ref solvedW 1533-1540) ---
+    const double dvm5 = mfce(dx3[km], dV[c],   dx3[k], dV[ckm],                     dmx3[k]);
+    const double dvm6 = mfce(dx3[km], dV[cjp], dx3[k], dV[idx3m(i,jp,km,n2t,n3t)], dmx3[k]);
+    const double dWdy5 = (W[c]   - W[cjm])/dmx2[j];
+    const double dWdy6 = (W[cjp] - W[c]  )/dmx2[jp];
+    const double ddVz5 = (dV[c]   - dV[ckm])/dmx3[k];
+    const double ddVz6 = (dV[cjp] - dV[idx3m(i,jp,km,n2t,n3t)])/dmx3[k];
+
+    const double ya = mfce(dx3[km], mu[cjm], dx3[k], mu[idx3m(i,jm,km,n2t,n3t)], dmx3[k]);
+    const double yb = mfce(dx3[km], mu[cjp], dx3[k], mu[idx3m(i,jp,km,n2t,n3t)], dmx3[k]);
+    const double muy5 = 0.5*(dx2[jm]*xc + dx2[j]*ya)/dmx2[j];
+    const double muy6 = 0.5*(dx2[jp]*xc + dx2[j]*yb)/dmx2[jp];
+
+    rhs_w[c] -= dt * ( 0.25*(dvm5*dWdy5 + dvm6*dWdy6)
+                     - inh/dx2[j]*(muy6*ddVz6 - muy5*ddVz5) );
 }
 
 // ===========================================================================
 //  KERNEL 9: NOB dd* coupling — couple_dd_dV_var
-//  rhs_v[c] -= dt * M31(dU) + dt * M32(dW)
+//  rhs_v[c] -= dt*M21(dU)   (ref MPM-STD solvedV 1211-1218 M21ddU)
+//  The M23(dW) coupling is NOT here: dV is solved BEFORE dW in the reference
+//  arrangement; dW feeds dV afterwards via k_block_dV_var (Report/RBC).
 // ===========================================================================
 __global__ void k_dd_dV_var(
         double* rhs_v,
         const double* dU,
-        const double* dW,
         const double* V,
         const double* mu, const double* invrho,
         const double* dx1, const double* dmx1,
         const double* dx2, const double* dmx2,
-        const double* dx3, const double* dmx3,
         int n1i, int n2i, int n3i,
         int n1t, int n2t, int n3t,
         double Cmu, double dt)
@@ -831,13 +861,11 @@ __global__ void k_dd_dV_var(
     if (ii >= n1i || jj >= n2i || kk >= n3i) return;
 
     const int i = ii + kH, j = jj + kH, k = kk + kH;
-    const int im=i-1, ip=i+1, jm=j-1, km=k-1, kp=k+1;
+    const int im=i-1, ip=i+1, jm=j-1;
     const int c   = idx3m(i,  j,  k,  n2t, n3t);
     const int cim = idx3m(im, j,  k,  n2t, n3t);
     const int cip = idx3m(ip, j,  k,  n2t, n3t);
     const int cjm = idx3m(i,  jm, k,  n2t, n3t);
-    const int ckm = idx3m(i,  j,  km, n2t, n3t);
-    const int ckp = idx3m(i,  j,  kp, n2t, n3t);
 
     // --- μ-faces (identical to dV body, ref 1033-1046) ---
     const double xa = mfce(dx2[jm], mu[cim], dx2[j], mu[idx3m(im,jm,k,n2t,n3t)], dmx2[j]);
@@ -845,46 +873,35 @@ __global__ void k_dd_dV_var(
     const double xb = mfce(dx2[jm], mu[cip], dx2[j], mu[idx3m(ip,jm,k,n2t,n3t)], dmx2[j]);
     const double mu1 = 0.5*(dx1[im]*xc + dx1[i]*xa)/dmx1[i];
     const double mu2 = 0.5*(dx1[ip]*xc + dx1[i]*xb)/dmx1[ip];
-    const double za = mfce(dx2[jm], mu[ckm], dx2[j], mu[idx3m(i,jm,km,n2t,n3t)], dmx2[j]);
-    const double zb = mfce(dx2[jm], mu[ckp], dx2[j], mu[idx3m(i,jm,kp,n2t,n3t)], dmx2[j]);
-    const double muz3 = 0.5*(dx3[km]*xc + dx3[k]*za)/dmx3[k];
-    const double muz4 = 0.5*(dx3[kp]*xc + dx3[k]*zb)/dmx3[kp];
     const double irc = mfce(dx2[jm], invrho[c], dx2[j], invrho[cjm], dmx2[j]);
     const double inh = 0.5*Cmu*irc;
 
-    // V gradients that increments multiply
+    // V gradients that the increment multiplies
     const double dvdx1 = (V[c]   - V[cim])/dmx1[i];
     const double dvdx2 = (V[cip] - V[c]  )/dmx1[ip];
-    const double dvdz3 = (V[c]   - V[ckm])/dmx3[k];
-    const double dvdz4 = (V[ckp] - V[c]  )/dmx3[kp];
 
-    // M31: dU increment (ref 1114-1116)
+    // M21: dU increment (ref solvedV 1211-1218)
     const double ddu1   = mfce(dx2[jm], dU[c],   dx2[j], dU[cjm],                     dmx2[j]);
     const double ddu2   = mfce(dx2[jm], dU[cip], dx2[j], dU[idx3m(ip,jm,k,n2t,n3t)], dmx2[j]);
     const double ddudy1 = (dU[c]   - dU[cjm])/dmx2[j];
     const double ddudy2 = (dU[cip] - dU[idx3m(ip,jm,k,n2t,n3t)])/dmx2[j];
 
-    // M32: dW wall increment (ref 1118-1120); ref 'dV' = my dW
-    const double ddw3   = mfce(dx2[jm], dW[c],   dx2[j], dW[cjm],                     dmx2[j]);
-    const double ddw4   = mfce(dx2[jm], dW[ckp], dx2[j], dW[idx3m(i,jm,kp,n2t,n3t)], dmx2[j]);
-    const double ddwdy3 = (dW[c]   - dW[cjm])/dmx2[j];
-    const double ddwdy4 = (dW[ckp] - dW[idx3m(i,jm,kp,n2t,n3t)])/dmx2[j];
-
     rhs_v[c] -= dt * ( 0.25*(ddu2*dvdx2 + ddu1*dvdx1)
                      - inh/dx1[i]*(mu2*ddudy2 - mu1*ddudy1) );
-    rhs_v[c] -= dt * ( 0.25*(ddw3*dvdz3 + ddw4*dvdz4)
-                     - inh/dx3[k]*(muz4*ddwdy4 - muz3*ddwdy3) );
 }
 
 // ===========================================================================
-//  KERNEL 10: NOB block coupling — block_couple_dW_var
-//  dW[c] -= dt * ( 0.25*(dvm5*dWdy5+dvm6*dWdy6)
-//                - 0.5*Cmu*irc/dx2*(muy6*ddVz6-muy5*ddVz5) )
+//  KERNEL 10: NOB block coupling — block_couple_dV_var
+//  dV[c] -= dt*M23(dW)   (ref MPM-STD blockLdV 1612-1688, M23dWm at 1682)
+//  The upper-triangular explicit correction goes to the HORIZONTAL dV only.
+//  The wall-normal dW receives no post-hoc correction in the reference
+//  arrangement — that unfiltered path was the Report/30 reignition pump
+//  (Report/RBC wall-reignition analysis).
 // ===========================================================================
-__global__ void k_block_dW_var(
-        double* dW,
-        const double* dV,
-        const double* W,
+__global__ void k_block_dV_var(
+        double* dV,
+        const double* dW,
+        const double* V,
         const double* mu, const double* invrho,
         const double* dx2, const double* dmx2,
         const double* dx3, const double* dmx3,
@@ -898,28 +915,29 @@ __global__ void k_block_dW_var(
     if (ii >= n1i || jj >= n2i || kk >= n3i) return;
 
     const int i = ii + kH, j = jj + kH, k = kk + kH;
-    const int jm=j-1, jp=j+1, km=k-1;
+    const int jm=j-1, km=k-1, kp=k+1;
     const int c   = idx3m(i, j,  k,  n2t, n3t);
     const int cjm = idx3m(i, jm, k,  n2t, n3t);
-    const int cjp = idx3m(i, jp, k,  n2t, n3t);
     const int ckm = idx3m(i, j,  km, n2t, n3t);
+    const int ckp = idx3m(i, j,  kp, n2t, n3t);
 
-    const double dvm5 = mfce(dx3[km], dV[c],   dx3[k], dV[ckm],                     dmx3[k]);
-    const double dvm6 = mfce(dx3[km], dV[cjp], dx3[k], dV[idx3m(i,jp,km,n2t,n3t)], dmx3[k]);
-    const double dWdy5 = (W[c]   - W[cjm])/dmx2[j];
-    const double dWdy6 = (W[cjp] - W[c]  )/dmx2[jp];
-    const double ddVz5 = (dV[c]   - dV[ckm])/dmx3[k];
-    const double ddVz6 = (dV[cjp] - dV[idx3m(i,jp,km,n2t,n3t)])/dmx3[k];
-    const double irc = mfce(dx3[km], invrho[c], dx3[k], invrho[ckm], dmx3[k]);
+    // dW interp to the V node at z-faces k/kp (ref dwm5/dwm6 1658-1659)
+    const double ddw3   = mfce(dx2[jm], dW[c],   dx2[j], dW[cjm],                     dmx2[j]);
+    const double ddw4   = mfce(dx2[jm], dW[ckp], dx2[j], dW[idx3m(i,jm,kp,n2t,n3t)], dmx2[j]);
+    const double ddwdy3 = (dW[c]   - dW[cjm])/dmx2[j];
+    const double ddwdy4 = (dW[ckp] - dW[idx3m(i,jm,kp,n2t,n3t)])/dmx2[j];
+    const double dvdz3  = (V[c]   - V[ckm])/dmx3[k];
+    const double dvdz4  = (V[ckp] - V[c]  )/dmx3[kp];
 
-    const double ya = mfce(dx3[km], mu[cjm], dx3[k], mu[idx3m(i,jm,km,n2t,n3t)], dmx3[k]);
-    const double yc = mfce(dx3[km], mu[c],   dx3[k], mu[ckm],                     dmx3[k]);
-    const double yb = mfce(dx3[km], mu[cjp], dx3[k], mu[idx3m(i,jp,km,n2t,n3t)], dmx3[k]);
-    const double muy5 = 0.5*(dx2[jm]*yc + dx2[j]*ya)/dmx2[j];
-    const double muy6 = 0.5*(dx2[jp]*yc + dx2[j]*yb)/dmx2[jp];
+    const double xc = mfce(dx2[jm], mu[c],   dx2[j], mu[cjm],                     dmx2[j]);
+    const double za = mfce(dx2[jm], mu[ckm], dx2[j], mu[idx3m(i,jm,km,n2t,n3t)], dmx2[j]);
+    const double zb = mfce(dx2[jm], mu[ckp], dx2[j], mu[idx3m(i,jm,kp,n2t,n3t)], dmx2[j]);
+    const double muz3 = 0.5*(dx3[km]*xc + dx3[k]*za)/dmx3[k];
+    const double muz4 = 0.5*(dx3[kp]*xc + dx3[k]*zb)/dmx3[kp];
+    const double irc = mfce(dx2[jm], invrho[c], dx2[j], invrho[cjm], dmx2[j]);
 
-    dW[c] -= dt * ( 0.25*(dvm5*dWdy5 + dvm6*dWdy6)
-                  - 0.5*Cmu*irc/dx2[j]*(muy6*ddVz6 - muy5*ddVz5) );
+    dV[c] -= dt * ( 0.25*(ddw3*dvdz3 + ddw4*dvdz4)
+                  - 0.5*Cmu*irc/dx3[k]*(muz4*ddwdy4 - muz3*ddwdy3) );
 }
 
 // ===========================================================================
@@ -1669,18 +1687,21 @@ void solve_momentum_gpu(const core::Domain& domain, const core::BoundaryConditio
 // ---------------------------------------------------------------------------
 //  solve_momentum_var_gpu (NOB)
 //
-//  Sequence (mirrors solve_momentum_var_cpu):
+//  Sequence (mirrors solve_momentum_var_cpu; ref MPM-STD submodule.f90:202-227
+//  arrangement — wall-normal dW solved LAST, all its couplings pre-injected
+//  into the RHS so they pass the implicit z-ADI; explicit post-hoc corrections
+//  go to the horizontal dV/dU only. Report/RBC wall-reignition analysis):
 //    adi_component_var(rhs_u, own=X) → dU
 //    sync dU
-//    k_dd_dW_var(rhs_w ← dU, ...)
-//    adi_component_var(rhs_w, own=Z, z_stag=true) → dW
-//    sync dW
-//    k_dd_dV_var(rhs_v ← dU, dW, ...)
+//    k_dd_dV_var(rhs_v ← dU, ...)                 [M21]
 //    adi_component_var(rhs_v, own=Y) → dV
 //    sync dV
-//    k_block_dW_var(dW ← dV, ...)
-//    sync dW
-//    k_block_dU_var(dU ← dV, dW, ...)
+//    k_dd_dW_var(rhs_w ← dU, dV, ...)             [M31 + M32]
+//    adi_component_var(rhs_w, own=Z, z_stag=true) → dW
+//    sync dW, pin lower wall face
+//    k_block_dV_var(dV ← dW, ...)                 [M23, post-hoc]
+//    sync dV
+//    k_block_dU_var(dU ← dV, dW, ...)             [M12 + M13, post-hoc]
 // ---------------------------------------------------------------------------
 void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
                               core::GpuFields& fields,
@@ -1721,13 +1742,30 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
     core::sync_field_gpu(mom.dU, bc.U, domain.sub);
     mom_dbg_slabcorr("g.adiU", mom.dU.data(), d_U, domain, n1i, n2i, n3i, n2t, n3t);
 
-    // (2) dd* M21: rhs_w (in mom.dW) += coupling(dU); then ADI → dW
-    k_dd_dW_var<<<grd3, blk3>>>(
-            mom.dW.data(), mom.dU.data(), d_W, d_mu, d_irho,
-            dg->d_dx1(), dg->d_dmx1(), dg->d_dx3(), dg->d_dmx3(),
+    // (2) dd* M21: rhs_v (in mom.dV) += coupling(dU); then ADI → dV
+    k_dd_dV_var<<<grd3, blk3>>>(
+            mom.dV.data(), mom.dU.data(), d_V, d_mu, d_irho,
+            dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
-    mom_dbg_slabmax("rhsW+ddU", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabmax("rhsV+ddU", mom.dV.data(), domain, n1i, n2i, n3i, n2t, n3t);
+
+    adi_component_var(mom, mom.dV.data(), d_V, d_U, d_V, d_W, d_mu, d_irho,
+                      Direction::Y, false, bc.V, domain, bc,
+                      Cmu, static_cast<double>(dt),
+                      mom.dV.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiV");
+    core::sync_field_gpu(mom.dV, bc.V, domain.sub);
+    mom_dbg_slabcorr("g.adiV", mom.dV.data(), d_V, domain, n1i, n2i, n3i, n2t, n3t);
+
+    // (3) dd* M31+M32: rhs_w (in mom.dW) += coupling(dU,dV); then ADI → dW.
+    //     The wall-normal solve comes LAST so every coupling into it passes
+    //     through its implicit z-ADI (ref solvedW; Report/RBC).
+    k_dd_dW_var<<<grd3, blk3>>>(
+            mom.dW.data(), mom.dU.data(), mom.dV.data(), d_W, d_mu, d_irho,
+            dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
+            n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
+    CUDA_CHK(cudaDeviceSynchronize());
+    mom_dbg_slabmax("rhsW+dd", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
 
     adi_component_var(mom, mom.dW.data(), d_W, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::Z, true, bc.W, domain, bc,
@@ -1745,20 +1783,6 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
         CUDA_CHK(cudaDeviceSynchronize());
     }
 
-    // (3) dd* M31+M32: rhs_v (in mom.dV) += coupling(dU,dW); then ADI → dV
-    k_dd_dV_var<<<grd3, blk3>>>(
-            mom.dV.data(), mom.dU.data(), mom.dW.data(), d_V, d_mu, d_irho,
-            dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
-            n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
-    CUDA_CHK(cudaDeviceSynchronize());
-    mom_dbg_slabmax("rhsV+dd", mom.dV.data(), domain, n1i, n2i, n3i, n2t, n3t);
-
-    adi_component_var(mom, mom.dV.data(), d_V, d_U, d_V, d_W, d_mu, d_irho,
-                      Direction::Y, false, bc.V, domain, bc,
-                      Cmu, static_cast<double>(dt),
-                      mom.dV.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiV");
-    core::sync_field_gpu(mom.dV, bc.V, domain.sub);
-
     // E9b bisection (MPMSTD_BLKMASK_TOP=1): make the block-coupling stages a
     // no-op in the top-wall slab by restoring pre-stage planes afterwards.
     // d_m_stage_ is free here (adi_component_var is done with it).
@@ -1773,32 +1797,28 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
     const std::size_t nf_full = (std::size_t)n1t * n2t * n3t;
     const int grd1f = (int)((nf_full + 255) / 256);
 
-    // ---- (4) block_couple_dW_var (dW ← dV) --------------------------------
+    // ---- (4) block_couple_dV_var (dV ← dW) --------------------------------
     if (blk_copy) {
-        k_m_copy_field<<<grd1f, 256>>>(d_m_stage_, mom.dW.data(), (int)nf_full);
+        k_m_copy_field<<<grd1f, 256>>>(d_m_stage_, mom.dV.data(), (int)nf_full);
         CUDA_CHK(cudaDeviceSynchronize());
     }
-    k_block_dW_var<<<grd3, blk3>>>(
-            mom.dW.data(), mom.dV.data(), d_W, d_mu, d_irho,
+    k_block_dV_var<<<grd3, blk3>>>(
+            mom.dV.data(), mom.dW.data(), d_V, d_mu, d_irho,
             dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
-    core::sync_field_gpu(mom.dW, bc.W, domain.sub);
-    if (z_wall_lower) {   // block_dW rewrote the k=kH wall-face row too
-        k_zero_dw_wall_face<<<grdw, blkw>>>(mom.dW.data(), n1t, n2t, n3t);
-        CUDA_CHK(cudaDeviceSynchronize());
-    }
+    core::sync_field_gpu(mom.dV, bc.V, domain.sub);
     if (blk_theta < 1.0) {
-        k_dbg_blend_full<<<grd1f, 256>>>(mom.dW.data(), d_m_stage_, blk_theta, (int)nf_full);
+        k_dbg_blend_full<<<grd1f, 256>>>(mom.dV.data(), d_m_stage_, blk_theta, (int)nf_full);
         CUDA_CHK(cudaDeviceSynchronize());
     }
     if (blkmask_top) {
-        k_dbg_restore_top<<<grdr, blkr>>>(mom.dW.data(), d_m_stage_,
+        k_dbg_restore_top<<<grdr, blkr>>>(mom.dV.data(), d_m_stage_,
                                           n1t, n2t, n3t, k_slab0_top);
         CUDA_CHK(cudaDeviceSynchronize());
     }
-    mom_dbg_slabmax("dW.blk", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
-    mom_dbg_slabcorr("g.blkW", mom.dW.data(), d_W, domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabmax("dV.blk", mom.dV.data(), domain, n1i, n2i, n3i, n2t, n3t);
+    mom_dbg_slabcorr("g.blkV", mom.dV.data(), d_V, domain, n1i, n2i, n3i, n2t, n3t);
 
     // ---- (5) block_couple_dU_var (dU ← dV, dW) ----------------------------
     if (blk_copy) {

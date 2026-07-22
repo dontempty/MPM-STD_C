@@ -1,0 +1,34 @@
+{
+    "configurations": [
+        {
+            "name": "cuda",
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "/usr/lib/x86_64-linux-gnu/openmpi/include",
+                "/usr/local/cuda/include"
+            ],
+            "defines": [
+                "MPMSTD_BACKEND_CUDA",
+                "OMPI_SKIP_MPICXX"
+            ]
+        },
+        {
+            "name": "cpu",
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "/usr/lib/x86_64-linux-gnu/openmpi/include"
+            ],
+            "defines": [
+                "MPMSTD_BACKEND_CPU",
+                "OMPI_SKIP_MPICXX"
+            ]
+        }
+    ],
+    "version": 4
+}

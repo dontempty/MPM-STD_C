@@ -608,22 +608,19 @@ int main(int argc, char** argv) {
         if (do_timing) { cudaDeviceSynchronize(); ts_cfl += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (1) Scalar: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
-        equation::assemble_scalar_var_diff_gpu(domain, gpu_fields,
-            gpu_props.kappa, gpu_props.dkappa, gpu_props.inv_rhocp, gpu_props.dinv_rhocp,
-            gpu_scalar, dt);
-        equation::solve_scalar_var_gpu(domain, bc, gpu_fields,
-            gpu_props.kappa, gpu_props.dkappa, gpu_props.inv_rhocp, gpu_props.dinv_rhocp,
+        equation::solve_scalar_nob_gpu(domain, bc, gpu_fields,
+            gpu_props.KPP, gpu_props.dKPP, gpu_props.invRhoCp, gpu_props.dinvRhoCp,
             gpu_scalar, dt);
         core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
         if (do_timing) { cudaDeviceSynchronize(); ts_scalar += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (2) Momentum predictor + OB buoyancy  (NOB var path with unit props)
         equation::assemble_momentum_var_visc_gpu(domain, gpu_fields,
-            gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+            gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
         physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
         equation::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_P_acc, dt);  // incremental: −dt·∇Pⁿ
         equation::solve_momentum_var_gpu(domain, bc, gpu_fields,
-            gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+            gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
         equation::update_velocity_gpu(gpu_fields, gpu_momentum);
         if (do_timing) { cudaDeviceSynchronize(); ts_mom += ms_since(tPrev); tPrev = hrc::now(); }
 

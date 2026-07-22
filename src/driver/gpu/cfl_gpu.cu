@@ -6,6 +6,8 @@
 #include <mpi.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 
 // GPU CFL time-step computation.
 // Mirrors compute_cfl_dt_cpu: per-cell speed = |u|/dx + |v|/dy + |w|/dz,
@@ -66,6 +68,35 @@ __global__ void k_cfl_reduce(
   if (tid == 0) atomic_max_double(d_max, sdata[0]);
 }
 
+// MPMSTD_CFLDBG=1 diagnostic: given the already-known global max value, find
+// (any) one cell attaining it and record its indices — "first writer wins"
+// via atomicCAS on a found-flag, no ordering guarantee across ties but good
+// enough to answer "is host_max near a wall (small kk/large kk) or bulk".
+__global__ void k_cfl_find_argmax(
+    const real_t* __restrict__ u,
+    const real_t* __restrict__ v,
+    const real_t* __restrict__ w,
+    const double* __restrict__ dx1,
+    const double* __restrict__ dx2,
+    const double* __restrict__ dx3,
+    int n1, int n2, int n3,
+    int n1i, int n2i, int n3i, int h,
+    double maxval, int* d_found, int* d_idx3) {
+  const int ntot = n1i * n2i * n3i;
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < ntot; idx += gridDim.x * blockDim.x) {
+    const int ii = idx / (n2i * n3i);
+    const int jj = (idx / n3i) % n2i;
+    const int kk = idx % n3i;
+    const int p  = ((h + ii) * n2 + (h + jj)) * n3 + (h + kk);
+    const double c = fabs(double(u[p])) / dx1[h + ii]
+                   + fabs(double(v[p])) / dx2[h + jj]
+                   + fabs(double(w[p])) / dx3[h + kk];
+    if (c >= maxval * 0.999999 && atomicCAS(d_found, 0, 1) == 0) {
+      d_idx3[0] = ii; d_idx3[1] = jj; d_idx3[2] = kk;
+    }
+  }
+}
+
 // Lazy persistent device scalar (one per rank, allocated once on first call).
 double* d_cfl_out = nullptr;
 
@@ -100,6 +131,24 @@ real_t compute_cfl_dt_gpu(const core::Domain& domain, const core::GpuFields& fie
   cudaMemcpy(&host_max, d_cfl_out, sizeof(double), cudaMemcpyDeviceToHost);
   MPI_Allreduce(MPI_IN_PLACE, &host_max, 1, MPI_DOUBLE, MPI_MAX,
                 domain.sub.topology().cart_comm());
+
+  static const bool cfl_dbg = std::getenv("MPMSTD_CFLDBG") != nullptr;
+  if (cfl_dbg && host_max > 0.0) {
+    static int* d_found = nullptr;
+    static int* d_idx3 = nullptr;
+    if (!d_found) { cudaMalloc(&d_found, sizeof(int)); cudaMalloc(&d_idx3, 3*sizeof(int)); }
+    cudaMemset(d_found, 0, sizeof(int));
+    k_cfl_find_argmax<<<grid, block>>>(u, v, w, dx1, dx2, dx3, n1, n2, n3,
+                                        n1i, n2i, n3i, h, host_max, d_found, d_idx3);
+    cudaDeviceSynchronize();
+    int found = 0, idx3[3] = {-1,-1,-1};
+    cudaMemcpy(&found, d_found, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(idx3, d_idx3, 3*sizeof(int), cudaMemcpyDeviceToHost);
+    int rank; MPI_Comm_rank(domain.sub.topology().cart_comm(), &rank);
+    if (found)
+      std::fprintf(stderr, "[CFLDBG] rank=%d host_max=%.4f at local(i,j,k)=(%d,%d,%d) of (n1i,n2i,n3i)=(%d,%d,%d) [k near wall if k<<n3i or k>>n3i]\n",
+                   rank, host_max, idx3[0], idx3[1], idx3[2], n1i, n2i, n3i);
+  }
 
   const real_t dt_cfl = (host_max > 0.0) ? real_t(double(max_cfl) / host_max) : dt_cap;
   // CFL-limited, capped at dt_cap. Convection is explicit (OB) so dt MUST follow

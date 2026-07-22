@@ -103,7 +103,6 @@ void compute_mpmstd_rhs_var(real_t*       rhs,
 
           const real_t irc = mface(dx1[im], invrho[c], dx1[i], invrho[cim], dmx1[i]); // ref 331
           const real_t inh = kHalf*Cmu*irc;                                     // ref 332
-          const real_t muc = mu[c];
 
           // explicit viscous (ref 335-339; viscous_u1 denom is /dmx1(i))
           const real_t vu1  = (mu[c]*dudx2 - mu[cim]*dudx1)/dmx1[i];             // ref viscous_u1 335
@@ -114,10 +113,13 @@ void compute_mpmstd_rhs_var(real_t*       rhs,
           real_t R = inh*(kTwo*vu1 + vuZ + vuY + vuZc + vuYc);                   // ref 341
 
           // bands for −(M·Uⁿ)
-          const real_t mACI =  inh/dmx1[i]*(muc/dx1[i] + muc/dx1[im])*kTwo
+          // Report/34-class fix: own-X band used mu[c] (cell) on BOTH faces
+          // (ported PaScaL bug, module_solve_momentum.f90:371,375 pre-fix) --
+          // matches own-Y/own-Z below, which already differ mu[c] vs neighbor.
+          const real_t mACI =  inh/dmx1[i]*(mu[c]/dx1[i] + mu[cim]/dx1[im])*kTwo
                             + kQ*(kHalf*dudx2 + kHalf*dudx1 - u2/dx1[i] + u1/dx1[im]);   // ref 371
-          const real_t mAPI = -inh/dmx1[i]*muc/dx1[i]*kTwo  + kQ*( u2/dx1[i]  + kHalf*dudx2); // ref 373
-          const real_t mAMI = -inh/dmx1[i]*muc/dx1[im]*kTwo + kQ*(-u1/dx1[im] + kHalf*dudx1); // ref 375
+          const real_t mAPI = -inh/dmx1[i]*mu[c]/dx1[i]*kTwo    + kQ*( u2/dx1[i]  + kHalf*dudx2); // ref 373
+          const real_t mAMI = -inh/dmx1[i]*mu[cim]/dx1[im]*kTwo + kQ*(-u1/dx1[im] + kHalf*dudx1); // ref 375
           const real_t mACK =  inh/dx3[k]*(muz6/dmx3[kp] + muz5/dmx3[k]) + kQ*(-w6/dmx3[kp] + w5/dmx3[k]); // ref 379(wall)
           const real_t mAPK = -inh/dx3[k]*muz6/dmx3[kp] + kQ*( w6/dmx3[kp]);
           const real_t mAMK = -inh/dx3[k]*muz5/dmx3[k]  + kQ*(-w5/dmx3[k]);
@@ -325,8 +327,11 @@ void build_adi_bands_var(Direction d, Direction own_dir,
     real_t ad, cd;          // diffusion
     if (own) {
       const real_t cmu = mu[gi];                         // + side cell μ (always)
-      const real_t mmu = z_staggered || (own_dir == Direction::Y) ? mu[gm] : mu[gi];
-      // own-X uses Mu(i,j,k) both sides (ref quirk); own-Y/own-Z use two cells.
+      // Report/34-class fix: own-X previously fell through to mu[gi] here too
+      // (ported PaScaL bug, module_solve_momentum.f90:371,375 pre-fix) -- the
+      // own-minus face always uses the own-axis minus-neighbour's μ, matching
+      // own-Y/own-Z (and the RHS's vu1/mACI-equivalent, already fixed above).
+      const real_t mmu = mu[gm];
       ad = -inh*ir/dmxa[a]*mmu/dxa[a-1]*kTwo;
       cd = -inh*ir/dmxa[a]*cmu/dxa[a]  *kTwo;
     } else {
@@ -410,11 +415,13 @@ void build_adi_bands_var(Direction d, Direction own_dir,
 }
 
 // =============================================================================
-//  (3) FAITHFUL block coupling — blockLdV (→ my dW) and blockLdU (→ my dU)
+//  (3) FAITHFUL block coupling — blockLdV (→ my dV) and blockLdU (→ my dU)
+//  MPM-STD_main arrangement (Report/RBC): the explicit post-hoc corrections go
+//  to the HORIZONTAL increments only; the wall-normal dW receives none.
 // =============================================================================
 
-// ref blockLdV 1278-1356 : dV(wall=my dW) -= dt·M23·dW(span=my dV).
-void block_couple_dW_var(real_t* dW, const real_t* dV, const real_t* W,
+// ref MPM-STD blockLdV 1612-1688 (M23dWm at 1682): dV -= dt·M23·dW.
+void block_couple_dV_var(real_t* dV, const real_t* dW, const real_t* V,
                          const real_t* mu, const real_t* invrho,
                          const real_t* dx2, const real_t* dmx2,
                          const real_t* dx3, const real_t* dmx3,
@@ -423,31 +430,31 @@ void block_couple_dW_var(real_t* dW, const real_t* dV, const real_t* W,
   for (int i = h; i < n1 - h; ++i)
     for (int j = h; j < n2 - h; ++j)
       for (int k = h; k < n3 - h; ++k) {
-        const int jm=j-1, jp=j+1, km=k-1;
+        const int jm=j-1, km=k-1, kp=k+1;
         const int c   = ix(i, j, k, n2, n3);
-        const int cjm = ix(i, jm,k, n2, n3), cjp = ix(i, jp,k, n2, n3);
-        const int ckm = ix(i, j, km,n2, n3);
+        const int cjm = ix(i, jm,k, n2, n3);
+        const int ckm = ix(i, j, km,n2, n3), ckp = ix(i, j, kp,n2, n3);
 
-        // ref dW(span=my dV) interp to wall(Z)-face via dx3 (ref dwm5/6 1325-1326)
-        const real_t dvm5 = mface(dx3[km], dV[c],   dx3[k], dV[ckm],               dmx3[k]);
-        const real_t dvm6 = mface(dx3[km], dV[cjp], dx3[k], dV[ix(i,jp,km,n2,n3)], dmx3[k]);
-        // ref V(wall vel=my W) grad in span(Y) (ref dvdz5/6 1331-1332)
-        const real_t dWdy5 = (W[c]   - W[cjm])/dmx2[j];
-        const real_t dWdy6 = (W[cjp] - W[c]  )/dmx2[jp];
-        // ref dW(span=my dV) grad in wall(Z) (ref ddwdy5/6 1328-1329)
-        const real_t ddVz5 = (dV[c]   - dV[ckm])/dmx3[k];
-        const real_t ddVz6 = (dV[cjp] - dV[ix(i,jp,km,n2,n3)])/dmx3[k];
-        const real_t irc = mface(dx3[km], invrho[c], dx3[k], invrho[ckm], dmx3[k]); // ref 1334
+        // dW interp to the V node at z-faces k/kp (ref dwm5/dwm6 1658-1659)
+        const real_t ddw3   = mface(dx2[jm], dW[c],   dx2[j], dW[cjm],               dmx2[j]);
+        const real_t ddw4   = mface(dx2[jm], dW[ckp], dx2[j], dW[ix(i,jm,kp,n2,n3)], dmx2[j]);
+        // ∂y(dW) at z-faces k/kp (ref ddwdy5/6 1661-1662)
+        const real_t ddwdy3 = (dW[c]   - dW[cjm])/dmx2[j];
+        const real_t ddwdy4 = (dW[ckp] - dW[ix(i,jm,kp,n2,n3)])/dmx2[j];
+        // ∂z(V) at z-faces k/kp (ref dvdz5/6 1664-1665)
+        const real_t dvdz3  = (V[c]   - V[ckm])/dmx3[k];
+        const real_t dvdz4  = (V[ckp] - V[c]  )/dmx3[kp];
 
-        // ref mu5/mu6 1336-1341 (span faces interp through wall) == solvedV muy5/6
-        const real_t ya = mface(dx3[km], mu[cjm], dx3[k], mu[ix(i,jm,km,n2,n3)], dmx3[k]);
-        const real_t yc = mface(dx3[km], mu[c],   dx3[k], mu[ckm],               dmx3[k]);
-        const real_t yb = mface(dx3[km], mu[cjp], dx3[k], mu[ix(i,jp,km,n2,n3)], dmx3[k]);
-        const real_t muy5 = kHalf*(dx2[jm]*yc + dx2[j]*ya)/dmx2[j];
-        const real_t muy6 = kHalf*(dx2[jp]*yc + dx2[j]*yb)/dmx2[jp];
+        // ref mu5/mu6 1667-1671 (V-node μ interp through y, then z)
+        const real_t xc = mface(dx2[jm], mu[c],   dx2[j], mu[cjm],               dmx2[j]);
+        const real_t za = mface(dx2[jm], mu[ckm], dx2[j], mu[ix(i,jm,km,n2,n3)], dmx2[j]);
+        const real_t zb = mface(dx2[jm], mu[ckp], dx2[j], mu[ix(i,jm,kp,n2,n3)], dmx2[j]);
+        const real_t muz3 = kHalf*(dx3[km]*xc + dx3[k]*za)/dmx3[k];
+        const real_t muz4 = kHalf*(dx3[kp]*xc + dx3[k]*zb)/dmx3[kp];
+        const real_t irc = mface(dx2[jm], invrho[c], dx2[j], invrho[cjm], dmx2[j]); // ref 1673
 
-        dW[c] -= dt*( kQ*(dvm5*dWdy5 + dvm6*dWdy6)
-                    - kHalf*Cmu*irc/dx2[j]*(muy6*ddVz6 - muy5*ddVz5) );          // ref 1345-1347
+        dV[c] -= dt*( kQ*(ddw3*dvdz3 + ddw4*dvdz4)
+                    - kHalf*Cmu*irc/dx3[k]*(muz4*ddwdy4 - muz3*ddwdy3) );        // ref 1682-1683
       }
 }
 
@@ -502,58 +509,16 @@ void block_couple_dU_var(real_t* dU, const real_t* dV, const real_t* dW, const r
 //  (4) FAITHFUL dd* forward-substitution coupling (block LOWER-triangular)
 //      — the M21/M31/M32 off-diagonals, applied to the RHS using the already-
 //      solved preceding increments, BEFORE the component's own ADI solve.
-//      (M23/M12/M13 upper off-diagonals are block_couple_dW_var/dU_var above.)
+//      MPM-STD_main solve order dU→dV→dW (wall-normal LAST); the upper
+//      M23/M12/M13 off-diagonals are block_couple_dV_var/dU_var above.
 // =============================================================================
 
-// ref solvedV dd* 764-766 (M21): the dU increment feeds the WALL-normal (my Z,
-// dW) equation. own=Z(ref x2 wall). mu1/mu2/inh are reproduced IDENTICALLY to
-// the dW body (compute_mpmstd_rhs_var own=Z) — only dU replaces U/V. Call AFTER
-// dU is solved+synced and AFTER assemble built rhs_w, BEFORE the dW ADI solve.
-// Verified 3 ways (own derivation + 2 independent workflow agents, all agree).
-void couple_dd_dW_var(real_t* rhs_w, const real_t* dU, const real_t* W,
-                      const real_t* mu, const real_t* invrho,
-                      const real_t* dx1, const real_t* dmx1,
-                      const real_t* dx3, const real_t* dmx3,
-                      int n1, int n2, int n3, real_t Cmu, real_t dt) {
-  const int h = kHaloWidth;
-  for (int i = h; i < n1 - h; ++i)
-    for (int j = h; j < n2 - h; ++j)
-      for (int k = h; k < n3 - h; ++k) {
-        const int im=i-1, ip=i+1, km=k-1;
-        const int c   = ix(i, j, k, n2, n3);
-        const int cim = ix(im,j, k, n2, n3), cip = ix(ip,j, k, n2, n3);
-        const int ckm = ix(i, j, km,n2, n3);
-
-        // dU interp to wall(Z)-face via dx3/dmx3            (ref ddu1/ddu2 652-653)
-        const real_t ddu1 = mface(dx3[km], dU[c],   dx3[k], dU[ckm],               dmx3[k]);
-        const real_t ddu2 = mface(dx3[km], dU[cip], dx3[k], dU[ix(ip,j,km,n2,n3)], dmx3[k]);
-        // own-component (my W = ref x2 vel V) grad in x1     (ref dvdx1/dvdx2 656-657)
-        const real_t dWdx1 = (W[c]   - W[cim])/dmx1[i];
-        const real_t dWdx2 = (W[cip] - W[c]  )/dmx1[ip];
-        // d(dU)/d(wall=Z)                                    (ref ddudy1/ddudy2 672-673)
-        const real_t ddudz1 = (dU[c]   - dU[ckm])/dmx3[k];
-        const real_t ddudz2 = (dU[cip] - dU[ix(ip,j,km,n2,n3)])/dmx3[k];
-        // x1-faces of μ interp THROUGH wall(Z)               (ref mua/muc/mub/mu1/mu2 675-679)
-        const real_t xa = mface(dx3[km], mu[cim], dx3[k], mu[ix(im,j,km,n2,n3)], dmx3[k]);
-        const real_t xc = mface(dx3[km], mu[c],   dx3[k], mu[ckm],               dmx3[k]);
-        const real_t xb = mface(dx3[km], mu[cip], dx3[k], mu[ix(ip,j,km,n2,n3)], dmx3[k]);
-        const real_t mu1 = kHalf*(dx1[im]*xc + dx1[i]*xa)/dmx1[i];
-        const real_t mu2 = kHalf*(dx1[ip]*xc + dx1[i]*xb)/dmx1[ip];
-        const real_t irc = mface(dx3[km], invrho[c], dx3[k], invrho[ckm], dmx3[k]); // ref 687
-        const real_t inh = kHalf*Cmu*irc;                                          // ref 688
-
-        rhs_w[c] -= dt*( kQ*(ddu2*dWdx2 + ddu1*dWdx1)
-                       - inh/dx1[i]*(mu2*ddudz2 - mu1*ddudz1) );                    // ref 764-766
-      }
-}
-
-// ref solvedW dd* 1114-1120 (M31 + M32): the dU increment (1114-1116) AND the
-// ref-dV(=my dW) wall increment (1118-1120) feed the SPAN (my Y, dV) equation.
-// own=Y(ref x3 span). mu1/mu2/muz3/muz4/inh reproduced IDENTICALLY to the dV
-// body. jwm/jwp dropped (=1): wall via zero-ghost + modify_tdma_row. Call AFTER
-// dU and dW are solved+synced and rhs_v assembled, BEFORE the dV ADI solve.
-// Verified 3 ways. CRITICAL: ref 'dV' here is the WALL increment = my dW.
-void couple_dd_dV_var(real_t* rhs_v, const real_t* dU, const real_t* dW, const real_t* V,
+// ref MPM-STD solvedW 1524-1540 (M31ddU + M32ddV): the dU AND dV increments
+// feed the wall-normal (dW) equation RHS, so both pass through the implicit
+// z-ADI. mu/inh faces are reproduced IDENTICALLY to the dW body. Call AFTER
+// dU and dV are solved+synced and AFTER assemble built rhs_w, BEFORE the dW
+// ADI solve.
+void couple_dd_dW_var(real_t* rhs_w, const real_t* dU, const real_t* dV, const real_t* W,
                       const real_t* mu, const real_t* invrho,
                       const real_t* dx1, const real_t* dmx1,
                       const real_t* dx2, const real_t* dmx2,
@@ -561,49 +526,90 @@ void couple_dd_dV_var(real_t* rhs_v, const real_t* dU, const real_t* dW, const r
                       int n1, int n2, int n3, real_t Cmu, real_t dt) {
   const int h = kHaloWidth;
   for (int i = h; i < n1 - h; ++i)
-    for (int j = h; j < n2 - h; ++j)        // j = Y = span = OWN
-      for (int k = h; k < n3 - h; ++k) {    // k = Z = wall
-        const int im=i-1, ip=i+1, jm=j-1, km=k-1, kp=k+1;
+    for (int j = h; j < n2 - h; ++j)
+      for (int k = h; k < n3 - h; ++k) {
+        const int im=i-1, ip=i+1, jm=j-1, jp=j+1, km=k-1;
+        const int c   = ix(i, j, k, n2, n3);
+        const int cim = ix(im,j, k, n2, n3), cip = ix(ip,j, k, n2, n3);
+        const int cjm = ix(i, jm,k, n2, n3), cjp = ix(i, jp,k, n2, n3);
+        const int ckm = ix(i, j, km,n2, n3);
+
+        const real_t irc = mface(dx3[km], invrho[c], dx3[k], invrho[ckm], dmx3[k]);
+        const real_t inh = kHalf*Cmu*irc;
+        const real_t xc = mface(dx3[km], mu[c],   dx3[k], mu[ckm],               dmx3[k]);
+
+        // --- M31: dU increment (ref solvedW 1524-1531) ---
+        const real_t ddu1 = mface(dx3[km], dU[c],   dx3[k], dU[ckm],               dmx3[k]);
+        const real_t ddu2 = mface(dx3[km], dU[cip], dx3[k], dU[ix(ip,j,km,n2,n3)], dmx3[k]);
+        const real_t dWdx1 = (W[c]   - W[cim])/dmx1[i];
+        const real_t dWdx2 = (W[cip] - W[c]  )/dmx1[ip];
+        const real_t ddudz1 = (dU[c]   - dU[ckm])/dmx3[k];
+        const real_t ddudz2 = (dU[cip] - dU[ix(ip,j,km,n2,n3)])/dmx3[k];
+        const real_t xa = mface(dx3[km], mu[cim], dx3[k], mu[ix(im,j,km,n2,n3)], dmx3[k]);
+        const real_t xb = mface(dx3[km], mu[cip], dx3[k], mu[ix(ip,j,km,n2,n3)], dmx3[k]);
+        const real_t mu1 = kHalf*(dx1[im]*xc + dx1[i]*xa)/dmx1[i];
+        const real_t mu2 = kHalf*(dx1[ip]*xc + dx1[i]*xb)/dmx1[ip];
+
+        rhs_w[c] -= dt*( kQ*(ddu2*dWdx2 + ddu1*dWdx1)
+                       - inh/dx1[i]*(mu2*ddudz2 - mu1*ddudz1) );                    // ref 1524-1531
+
+        // --- M32: dV increment (ref solvedW 1533-1540) ---
+        const real_t dvm5 = mface(dx3[km], dV[c],   dx3[k], dV[ckm],               dmx3[k]);
+        const real_t dvm6 = mface(dx3[km], dV[cjp], dx3[k], dV[ix(i,jp,km,n2,n3)], dmx3[k]);
+        const real_t dWdy5 = (W[c]   - W[cjm])/dmx2[j];
+        const real_t dWdy6 = (W[cjp] - W[c]  )/dmx2[jp];
+        const real_t ddVz5 = (dV[c]   - dV[ckm])/dmx3[k];
+        const real_t ddVz6 = (dV[cjp] - dV[ix(i,jp,km,n2,n3)])/dmx3[k];
+        const real_t ya = mface(dx3[km], mu[cjm], dx3[k], mu[ix(i,jm,km,n2,n3)], dmx3[k]);
+        const real_t yb = mface(dx3[km], mu[cjp], dx3[k], mu[ix(i,jp,km,n2,n3)], dmx3[k]);
+        const real_t muy5 = kHalf*(dx2[jm]*xc + dx2[j]*ya)/dmx2[j];
+        const real_t muy6 = kHalf*(dx2[jp]*xc + dx2[j]*yb)/dmx2[jp];
+
+        rhs_w[c] -= dt*( kQ*(dvm5*dWdy5 + dvm6*dWdy6)
+                       - inh/dx2[j]*(muy6*ddVz6 - muy5*ddVz5) );                    // ref 1533-1540
+      }
+}
+
+// ref MPM-STD solvedV 1211-1218 (M21ddU): the dU increment feeds the dV
+// equation RHS. mu1/mu2/inh reproduced IDENTICALLY to the dV body. Call AFTER
+// dU is solved+synced and rhs_v assembled, BEFORE the dV ADI solve. The M23
+// (dW) coupling is NOT here — dV is solved BEFORE dW in the reference
+// arrangement; dW feeds dV afterwards via block_couple_dV_var (Report/RBC).
+void couple_dd_dV_var(real_t* rhs_v, const real_t* dU, const real_t* V,
+                      const real_t* mu, const real_t* invrho,
+                      const real_t* dx1, const real_t* dmx1,
+                      const real_t* dx2, const real_t* dmx2,
+                      int n1, int n2, int n3, real_t Cmu, real_t dt) {
+  const int h = kHaloWidth;
+  for (int i = h; i < n1 - h; ++i)
+    for (int j = h; j < n2 - h; ++j)        // j = Y = OWN
+      for (int k = h; k < n3 - h; ++k) {
+        const int im=i-1, ip=i+1, jm=j-1;
         const int c   = ix(i, j, k, n2, n3);
         const int cim = ix(im,j, k, n2, n3), cip = ix(ip,j, k, n2, n3);
         const int cjm = ix(i, jm,k, n2, n3);
-        const int ckm = ix(i, j, km,n2, n3), ckp = ix(i, j, kp,n2, n3);
 
-        // reused μ-faces + inh (identical to the dV body, ref 1033-1046)
+        // reused μ-faces + inh (identical to the dV body)
         const real_t xa = mface(dx2[jm], mu[cim], dx2[j], mu[ix(im,jm,k,n2,n3)], dmx2[j]);
         const real_t xc = mface(dx2[jm], mu[c],   dx2[j], mu[cjm],               dmx2[j]);
         const real_t xb = mface(dx2[jm], mu[cip], dx2[j], mu[ix(ip,jm,k,n2,n3)], dmx2[j]);
-        const real_t mu1 = kHalf*(dx1[im]*xc + dx1[i]*xa)/dmx1[i];              // ref mu1 1036 (x-lo)
-        const real_t mu2 = kHalf*(dx1[ip]*xc + dx1[i]*xb)/dmx1[ip];             // ref mu2 1037 (x-hi)
-        const real_t za = mface(dx2[jm], mu[ckm], dx2[j], mu[ix(i,jm,km,n2,n3)], dmx2[j]);
-        const real_t zb = mface(dx2[jm], mu[ckp], dx2[j], mu[ix(i,jm,kp,n2,n3)], dmx2[j]);
-        const real_t muz3 = kHalf*(dx3[km]*xc + dx3[k]*za)/dmx3[k];             // ref mu3 1042 (z-lo)
-        const real_t muz4 = kHalf*(dx3[kp]*xc + dx3[k]*zb)/dmx3[kp];            // ref mu4 1043 (z-hi)
-        const real_t irc = mface(dx2[jm], invrho[c], dx2[j], invrho[cjm], dmx2[j]); // ref 1045
-        const real_t inh = kHalf*Cmu*irc;                                      // ref 1046
+        const real_t mu1 = kHalf*(dx1[im]*xc + dx1[i]*xa)/dmx1[i];
+        const real_t mu2 = kHalf*(dx1[ip]*xc + dx1[i]*xb)/dmx1[ip];
+        const real_t irc = mface(dx2[jm], invrho[c], dx2[j], invrho[cjm], dmx2[j]);
+        const real_t inh = kHalf*Cmu*irc;
 
-        // solved-var (my V = ref x3 vel W) gradients the increments multiply
-        const real_t dvdx1 = (V[c]   - V[cim])/dmx1[i];                         // ref dwdx1 1010
-        const real_t dvdx2 = (V[cip] - V[c]  )/dmx1[ip];                        // ref dwdx2 1011
-        const real_t dvdz3 = (V[c]   - V[ckm])/dmx3[k];                         // ref dwdy3 1012 (wall→Z)
-        const real_t dvdz4 = (V[ckp] - V[c]  )/dmx3[kp];                        // ref dwdy4 1013 (wall→Z)
+        // V gradients the increment multiplies
+        const real_t dvdx1 = (V[c]   - V[cim])/dmx1[i];
+        const real_t dvdx2 = (V[cip] - V[c]  )/dmx1[ip];
 
-        // M31 : dU increment feeds the span eq               (ref ddu*/ddudz* 1023-1029)
-        const real_t ddu1   = mface(dx2[jm], dU[c],   dx2[j], dU[cjm],               dmx2[j]); // ref ddu1 1028
-        const real_t ddu2   = mface(dx2[jm], dU[cip], dx2[j], dU[ix(ip,jm,k,n2,n3)], dmx2[j]); // ref ddu2 1029
-        const real_t ddudy1 = (dU[c]   - dU[cjm])/dmx2[j];                                     // ref ddudz1 1023 (span)
-        const real_t ddudy2 = (dU[cip] - dU[ix(ip,jm,k,n2,n3)])/dmx2[j];                       // ref ddudz2 1024
-
-        // M32 : ref-dV(=my dW) wall increment feeds the span eq (ref ddv*/ddvdz* 1025-1031)
-        const real_t ddw3   = mface(dx2[jm], dW[c],   dx2[j], dW[cjm],               dmx2[j]); // ref ddv3 1030 (jwm=1)
-        const real_t ddw4   = mface(dx2[jm], dW[ckp], dx2[j], dW[ix(i,jm,kp,n2,n3)], dmx2[j]); // ref ddv4 1031 (jwp=1)
-        const real_t ddwdy3 = (dW[c]   - dW[cjm])/dmx2[j];                                     // ref ddvdz3 1025 (span)
-        const real_t ddwdy4 = (dW[ckp] - dW[ix(i,jm,kp,n2,n3)])/dmx2[j];                       // ref ddvdz4 1026
+        // M21 : dU increment (ref solvedV 1211-1218)
+        const real_t ddu1   = mface(dx2[jm], dU[c],   dx2[j], dU[cjm],               dmx2[j]);
+        const real_t ddu2   = mface(dx2[jm], dU[cip], dx2[j], dU[ix(ip,jm,k,n2,n3)], dmx2[j]);
+        const real_t ddudy1 = (dU[c]   - dU[cjm])/dmx2[j];
+        const real_t ddudy2 = (dU[cip] - dU[ix(ip,jm,k,n2,n3)])/dmx2[j];
 
         rhs_v[c] -= dt*( kQ*(ddu2*dvdx2 + ddu1*dvdx1)
-                       - inh/dx1[i]*(mu2*ddudy2 - mu1*ddudy1) );                                // ref 1114-1116
-        rhs_v[c] -= dt*( kQ*(ddw3*dvdz3 + ddw4*dvdz4)
-                       - inh/dx3[k]*(muz4*ddwdy4 - muz3*ddwdy3) );                              // ref 1118-1120
+                       - inh/dx1[i]*(mu2*ddudy2 - mu1*ddudy1) );                    // ref 1211-1218
       }
 }
 

@@ -1,0 +1,55 @@
+[domain]
+Lx = 6.0
+Ly = 6.0
+Lz = 1.0
+[mesh]
+n1m = 128
+n2m = 128
+n3m = 256
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 2
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e6
+Pr = 2547.0
+nob = 1
+DeltaT = 40.0
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[bc.z.plus]
+T = -0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[time]
+t_start  = 0.0
+t_end    = 25000.0
+dt_start = 0.05
+MaxCFL   = 0.3
+n_steps  = 4500000
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/rbc/p7b_deltat40_z256_resume/"
+nmonitor    = 100
+nstat_start = 650000
+nstat_write = 100000
+[restart]
+dir_in  = "apps/rbc/restart_p7_deltat40_z256_cold_cfl03/ckpt_b/"
+stats_reset = 1
+dir_out = "apps/rbc/restart_p7b_deltat40_z256_resume/"
+nrestart_write = 500000

@@ -15,7 +15,7 @@ namespace mpmstd::equation {
 namespace sk = scalar::kernels;
 
 // ---- assemble: explicit CN RHS (Laplacian + convection) ---------------------
-void assemble_scalar_const_diff_cpu(const core::Domain& domain, core::CpuFields& fields,
+void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
                                     core::CpuScalarSystem& scalar_system, real_t dt) {
   const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const real_t* T     = fields[core::Var::T].data();
@@ -36,7 +36,7 @@ void assemble_scalar_const_diff_cpu(const core::Domain& domain, core::CpuFields&
 }
 
 // ---- solve: 3-sweep ADI (sweep order from BC) + T += increment --------------
-void solve_scalar_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_scalar_ob_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
                       core::CpuFields& fields, core::CpuScalarSystem& sys, real_t dt) {
   const auto nt = sys.n_total; const auto ni = sys.n_interior;
   const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -73,38 +73,19 @@ void solve_scalar_cpu(const core::Domain& domain, const core::BoundaryCondition&
 
 // =============================================================================
 //  Variable-κ̂ (NOB) ENERGY — FAITHFUL port of PaScaL_TCS module_solve_thermal
-//  (delta-form 3-factor ADI). The assemble builds the explicit residual R (now
-//  INCLUDING convection, 0.5-skew advective); the solve builds the bands per
-//  sweep (stage-1 packs M·θⁿ + dt-scales D; later stages copy D through) with
-//  the semi-implicit conservative-face convection inside each band. dt is
-//  applied inside the band pack (ref line 358), so assemble does NOT scale by dt.
+//  (delta-form 3-factor ADI). Fused build_A_RHS: each sweep builds the bands
+//  AND packs the RHS in one pass (build_A_rhs_nob); stage 1 computes the
+//  explicit residual R (0.5-skew advective convection + variable-κ̂ diffusion)
+//  inline and packs M·θⁿ + dt-scales D; later stages copy D through. The
+//  semi-implicit conservative-face convection sits inside each band.
 //  Wall: ghost + modify_tdma_row_cpu fold (validated mpmstd wiring), δθ_wall=0.
 //  With κ̂≡1, dκ̂≡0, invρĈp≡1, dinvρĈp≡0 the diffusion reduces to the const
 //  Laplacian; the semi-implicit convection is the faithful upgrade.
 // =============================================================================
-void assemble_scalar_var_diff_cpu(const core::Domain& domain, core::CpuFields& fields,
-                                  const core::CpuField& kappa, const core::CpuField& dkappa,
-                                  const core::CpuField& inv_rhocp, const core::CpuField& dinv_rhocp,
-                                  core::CpuScalarSystem& scalar_system, real_t dt) {
-  (void)dt;   // dt is applied inside the stage-1 band pack (ref 358), not here
-  const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-  const real_t  Ct = fields.constant(core::Const::alpha_T);   // = 1/√(Ra·Pr)
-
-  // Full explicit residual R = −0.5·u·∇θ + 0.5·Ct·invρĈp·∇·(κ̂∇θ)|dκ̂-lin
-  //                            − 0.5·Ct·dinvρĈp·θ·∇·(κ̂∇θ)
-  sk::energy_residual_rhs_var(scalar_system.rhs.data(), fields[core::Var::T].data(),
-      fields[core::Var::U].data(), fields[core::Var::V].data(), fields[core::Var::W].data(),
-      kappa.data(), dkappa.data(), inv_rhocp.data(), dinv_rhocp.data(),
-      domain.grid.dx_ptr(Direction::X), domain.grid.dmx_ptr(Direction::X),
-      domain.grid.dx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Y),
-      domain.grid.dx_ptr(Direction::Z), domain.grid.dmx_ptr(Direction::Z),
-      n1, n2, n3, Ct);
-}
-
-void solve_scalar_var_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_scalar_nob_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
                           core::CpuFields& fields,
-                          const core::CpuField& kappa, const core::CpuField& dkappa,
-                          const core::CpuField& inv_rhocp, const core::CpuField& dinv_rhocp,
+                          const core::CpuField& KPP, const core::CpuField& dKPP,
+                          const core::CpuField& invRhoCp, const core::CpuField& dinvRhoCp,
                           core::CpuScalarSystem& sys, real_t dt) {
   const auto nt = sys.n_total; const auto ni = sys.n_interior;
   const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -116,21 +97,27 @@ void solve_scalar_var_cpu(const core::Domain& domain, const core::BoundaryCondit
   const real_t* U  = fields[core::Var::U].data();
   const real_t* V  = fields[core::Var::V].data();
   const real_t* W  = fields[core::Var::W].data();
-  const real_t* kp = kappa.data();    const real_t* dkp = dkappa.data();
-  const real_t* ir = inv_rhocp.data(); const real_t* dir = dinv_rhocp.data();
   const real_t* dx1=domain.grid.dx_ptr(Direction::X), *dmx1=domain.grid.dmx_ptr(Direction::X);
   const real_t* dx2=domain.grid.dx_ptr(Direction::Y), *dmx2=domain.grid.dmx_ptr(Direction::Y);
   const real_t* dx3=domain.grid.dx_ptr(Direction::Z), *dmx3=domain.grid.dmx_ptr(Direction::Z);
 
-  real_t* in   = sys.rhs.data();      // holds R on entry; then the running increment
+  real_t* in   = sys.rhs.data();      // ping-pong scratch (stage 1 ignores it — R computed inline)
   real_t* outb = sys.stage.data();
+  // Z physical-wall ownership for the jem/jep dkPP masks (audit D5): the mask
+  // must never fire at interior np3 rank seams.
+  const auto& z_axis_own = domain.sub.topology().axis(Direction::Z);
+  const bool z_owns_lower = !bc.topology.is_periodic(Direction::Z)
+      && (z_axis_own.west_rank == MPI_PROC_NULL);
+  const bool z_owns_upper = !bc.topology.is_periodic(Direction::Z)
+      && (z_axis_own.east_rank == MPI_PROC_NULL);
   bool first = true;
   for (Direction d : bc.topology.sweep_order()) {
-    sk::build_energy_adi_bands_var(
+    sk::build_A_rhs_nob(
         d, sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
-        in, T, U, V, W, kp, dkp, ir, dir,
+        in, T, U, V, W, KPP.data(), dKPP.data(), invRhoCp.data(), dinvRhoCp.data(),
         dx1, dmx1, dx2, dmx2, dx3, dmx3,
-        n1, n2, n3, i1, i2, i3, Ct, dt, /*is_stage1=*/first);
+        n1, n2, n3, i1, i2, i3, Ct, dt, /*is_stage1=*/first,
+        z_owns_lower, z_owns_upper);
 
     int n_row = 0, n_sys = 0;
     switch (d) {

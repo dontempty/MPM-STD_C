@@ -108,23 +108,21 @@ int main(int argc, char** argv) {
 
     physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    equation::assemble_scalar_var_diff_cpu(domain, fields, props.kappa, props.dkappa,
-                                           props.inv_rhocp, props.dinv_rhocp, scalar_system, dt);
-    equation::solve_scalar_var_cpu(domain, bc, fields, props.kappa, props.dkappa,
-                                   props.inv_rhocp, props.dinv_rhocp, scalar_system, dt);
+    equation::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
+                                   props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
-    physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.inv_rho, buoy, dt);
-    equation::add_pressure_gradient_nob_cpu(domain, momentum, P_acc, props.inv_rho, dt);
-    equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
+    equation::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
+    equation::add_pressure_gradient_nob_cpu(domain, momentum, P_acc, props.invRho, dt);
+    equation::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     rbc::zero_w_wall(fields[core::Var::W], sub);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.inv_rho.data());
+    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.invRho.data());
     equation::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     if (DeltaT > 0.0) {

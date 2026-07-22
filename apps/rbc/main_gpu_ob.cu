@@ -112,8 +112,7 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
 
-    equation::assemble_scalar_const_diff_gpu(domain, gpu_fields, gpu_scalar, dt);
-    equation::solve_scalar_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
+    equation::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
     equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);

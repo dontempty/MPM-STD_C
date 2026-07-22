@@ -160,30 +160,35 @@ void block_couple_dU(real_t*       dU,
                      int n1_tot, int n2_tot, int n3_tot,
                      real_t dt);
 
-// ── FAITHFUL variable-μ block coupling (ref blockLdV 1278, blockLdU 1362) ─────
-// AXIS-SWAPPED full-viscous transcription. The reference applies all six off-
-// diagonal velocity couplings: three LOWER (M21/M31/M32) via the dd* terms inside
-// the component solves (couple_*_into_rhs below), three UPPER (M23/M12/M13) here.
+// ── FAITHFUL variable-μ block coupling — MPM-STD_main arrangement ─────────────
+// (ref MPM-STD core_momentum.f90, driver submodule.f90:202-227; Report/RBC
+// wall-reignition analysis.) The reference applies all six off-diagonal velocity
+// couplings with the solve order U → V → W (wall-normal LAST): three LOWER
+// (M21/M31/M32) via the dd* terms injected into the next component's RHS before
+// its implicit ADI solve, three UPPER (M23/M12/M13) as explicit post-hoc
+// corrections to the HORIZONTAL increments dV/dU only. The wall-normal dW never
+// receives an unfiltered explicit correction — the previous PaScaL-transposed
+// arrangement did exactly that (block dW ← dV) and it was the measured cold-wall
+// reignition pump (Report/30 E9, Report/36).
 //
-// block_couple_dW_var ≡ ref blockLdV: corrects the WALL-normal increment (my dW =
-//   ref dV) using the span increment (my dV = ref dW) + wall velocity (my W).
-//     dW -= dt·( 0.25·(dvm5·∂W/∂y_lo + dvm6·∂W/∂y_hi)
-//              − 0.5·Cmu·invρ̂/dx2·(μy_hi·∂z(dV)_hi − μy_lo·∂z(dV)_lo) )
-//   (dvm = dV interp to wall(Z)-face via dx3; μy = span-face μ, ref solvedV mu5/6.)
-// NOTE: replaces the const block_couple_dV, which was a naïve (un-swapped) literal
-//   transcription that corrected the SPAN increment — physically the wrong axis.
-void block_couple_dW_var(real_t*       dW,
-                         const real_t* dV,
-                         const real_t* W,
+// block_couple_dV_var ≡ ref blockLdV 1612-1688 (M23dWm at 1682): corrects the
+//   horizontal dV using the solved wall-normal increment dW.
+//     dV -= dt·( 0.25·(ddw3·∂V/∂z_lo + ddw4·∂V/∂z_hi)
+//              − 0.5·Cmu·invρ̂/dx3·(μz_hi·∂y(dW)_hi − μz_lo·∂y(dW)_lo) )
+//   (ddw = dW interp to the V node via dx2; μz = z-face μ, ref mu5/mu6.)
+void block_couple_dV_var(real_t*       dV,
+                         const real_t* dW,
+                         const real_t* V,
                          const real_t* mu, const real_t* invrho,
                          const real_t* dx2, const real_t* dmx2,
                          const real_t* dx3, const real_t* dmx3,
                          int n1_tot, int n2_tot, int n3_tot,
                          real_t Cmu, real_t dt);
 
-// block_couple_dU_var ≡ ref blockLdU: corrects dU using the wall increment (my dW,
-//   M12 via ∂U/∂z) and the span increment (my dV, M13 via ∂U/∂y), full viscous
-//   cross-stress of the increments. Run AFTER block_couple_dW_var + dW halo.
+// block_couple_dU_var ≡ ref blockLdU 1690-1785: corrects dU using the corrected
+//   span increment (dV, M12 via ∂U/∂y) and the wall-normal increment (dW, M13
+//   via ∂U/∂z), full viscous cross-stress of the increments. Run AFTER
+//   block_couple_dV_var + dV halo (the reference uses the corrected dv).
 void block_couple_dU_var(real_t*       dU,
                          const real_t* dV,
                          const real_t* dW,
@@ -198,31 +203,30 @@ void block_couple_dU_var(real_t*       dU,
 // ── FAITHFUL dd* forward-substitution coupling (block LOWER-triangular) ───────
 // The three M21/M31/M32 off-diagonals applied to the RHS using the already-
 // solved preceding increments, BEFORE the component's own ADI solve. Reference
-// solve order solvedU→solvedV→solvedW maps to my dU→dW→dV; the forward sub is:
-//   dW (ref solvedV, M21): rhs_w -= dt·(...dU...)            (couple_dd_dW_var)
-//   dV (ref solvedW, M31+M32): rhs_v -= dt·(...dU...) -= dt·(...dW...)  (couple_dd_dV_var)
-// These do NOT vanish at μ≡1 (increment×velocity-gradient convection); they were
-// deferred because they are sub-floor at OB. Required for full NOB faithfulness
-// and they make the cross-stress semi-implicit (Gauss-Seidel) — the stabiliser
-// for strong viscosity contrast (glycerol). dU/dW must be synced before the call.
+// solve order solvedU→solvedV→solvedW = my dU→dV→dW; the forward sub is:
+//   dV (ref solvedV, M21):     rhs_v -= dt·(...dU...)                (couple_dd_dV_var)
+//   dW (ref solvedW, M31+M32): rhs_w -= dt·(...dU...) -= dt·(...dV...) (couple_dd_dW_var)
+// These do NOT vanish at μ≡1 (increment×velocity-gradient convection). Every
+// coupling into the stiff wall-normal dW passes through its implicit z-ADI —
+// the stabiliser for strong viscosity contrast (glycerol). The preceding
+// increments must be synced before each call.
 
-// couple_dd_dW_var ≡ ref solvedV 764-766: dU increment → WALL-normal (dW) RHS.
-void couple_dd_dW_var(real_t*       rhs_w,
+// couple_dd_dV_var ≡ ref solvedV 1211-1218 (M21ddU): dU increment → dV RHS.
+void couple_dd_dV_var(real_t*       rhs_v,
                       const real_t* dU,
-                      const real_t* W,
+                      const real_t* V,
                       const real_t* mu, const real_t* invrho,
                       const real_t* dx1, const real_t* dmx1,
-                      const real_t* dx3, const real_t* dmx3,
+                      const real_t* dx2, const real_t* dmx2,
                       int n1_tot, int n2_tot, int n3_tot,
                       real_t Cmu, real_t dt);
 
-// couple_dd_dV_var ≡ ref solvedW 1114-1120: dU (M31) + dW (M32) increments →
-// SPAN (dV) RHS. ref 'dV' = my dW (wall increment). Run AFTER couple_dd_dW_var
-// + the dW solve (forward substitution needs the updated dW).
-void couple_dd_dV_var(real_t*       rhs_v,
+// couple_dd_dW_var ≡ ref solvedW 1524-1540 (M31ddU + M32ddV): dU and dV
+// increments → wall-normal (dW) RHS. Run AFTER the dV solve + sync.
+void couple_dd_dW_var(real_t*       rhs_w,
                       const real_t* dU,
-                      const real_t* dW,
-                      const real_t* V,
+                      const real_t* dV,
+                      const real_t* W,
                       const real_t* mu, const real_t* invrho,
                       const real_t* dx1, const real_t* dmx1,
                       const real_t* dx2, const real_t* dmx2,

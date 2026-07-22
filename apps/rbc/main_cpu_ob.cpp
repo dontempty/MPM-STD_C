@@ -93,8 +93,8 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
-    equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
+    equation::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
+    equation::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);

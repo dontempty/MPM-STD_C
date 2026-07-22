@@ -270,21 +270,18 @@ int main(int argc, char** argv) {
     if (nob) physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
     if (nob) {
-      equation::assemble_scalar_var_diff_gpu(domain, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
-                                             gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
-      equation::solve_scalar_var_gpu(domain, bc, gpu_fields, gpu_props.kappa, gpu_props.dkappa,
-                                     gpu_props.inv_rhocp, gpu_props.dinv_rhocp, gpu_scalar, dt);
+      equation::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
+                                     gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
     } else {
-      equation::assemble_scalar_const_diff_gpu(domain, gpu_fields, gpu_scalar, dt);
-      equation::solve_scalar_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
+      equation::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
     }
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
-    if (nob) equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+    if (nob) equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     else     equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
-    if (nob) physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.inv_rho, buoy, dt);
+    if (nob) physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
     else     physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-    if (nob) equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.mu, gpu_props.inv_rho, gpu_momentum, dt);
+    if (nob) equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     else     equation::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
     equation::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
@@ -307,7 +304,7 @@ int main(int argc, char** argv) {
     if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
     equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
-                                 nob ? props.inv_rho.data() : nullptr);
+                                 nob ? props.invRho.data() : nullptr);
 
     if (nob && DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();
@@ -329,19 +326,18 @@ int main(int argc, char** argv) {
     if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
     if (nob) {
-      equation::assemble_scalar_var_diff_cpu(domain, fields, props.kappa, props.dkappa, props.inv_rhocp, props.dinv_rhocp, scalar_system, dt);
-      equation::solve_scalar_var_cpu(domain, bc, fields, props.kappa, props.dkappa, props.inv_rhocp, props.dinv_rhocp, scalar_system, dt);
+      equation::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP, props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     } else {
-      equation::assemble_scalar_const_diff_cpu(domain, fields, scalar_system, dt);
-      equation::solve_scalar_cpu(domain, bc, fields, scalar_system, dt);
+      equation::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
+      equation::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
     }
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.mu, props.inv_rho, momentum, dt);
+    if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
     else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    if (nob) physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.inv_rho, buoy, dt);
+    if (nob) physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
     else     physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.mu, props.inv_rho, momentum, dt);
+    if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
     else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
     equation::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
@@ -350,7 +346,7 @@ int main(int argc, char** argv) {
     zero_w_wall(fields[core::Var::W], sub);
 
     equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
-                                 nob ? props.inv_rho.data() : nullptr);
+                                 nob ? props.invRho.data() : nullptr);
 
     if (nob && DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();
