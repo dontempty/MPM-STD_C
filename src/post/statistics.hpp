@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/domain.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 
 #include <string>
 #include <vector>

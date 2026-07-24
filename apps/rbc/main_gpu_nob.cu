@@ -411,32 +411,32 @@ int main(int argc, char** argv) {
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   core::Domain domain{grid, topo, sub, *tdma_owner};
 
-  core::CpuFields fields;
-  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
-  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
-  fields.add(core::Var::T, sub);
+  core::CpuFields cpu_fields;
+  cpu_fields.add(core::Var::U, sub); cpu_fields.add(core::Var::V, sub);
+  cpu_fields.add(core::Var::W, sub); cpu_fields.add(core::Var::P, sub);
+  cpu_fields.add(core::Var::T, sub);
 
-  fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
-  fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
+  cpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
+  cpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  physics::properties::CpuPropertyFields props(sub);   // CPU copy for pressure step
-  const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
-  physics::buoyancy::BuoyancyParams buoy;
-  buoy.gravity_axis = gravity_axis; buoy.coeff = 1; buoy.T_ref = 0;
-  buoy.a12pera11 = (std::fabs(pmodel.a[2]) < real_t{1e-14}) ? real_t{0} : pmodel.a[2] / pmodel.a[1];
-  buoy.delta_T   = static_cast<real_t>(DeltaT);
+  physics::properties::CpuPropertyFields cpu_properties(sub);   // CPU copy for pressure step
+  const physics::properties::PropertyModel property_model = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  physics::buoyancy::BuoyancyParams buoyancy_params;
+  buoyancy_params.gravity_axis = gravity_axis; buoyancy_params.coeff = 1; buoyancy_params.T_ref = 0;
+  buoyancy_params.a12pera11 = (std::fabs(property_model.a[2]) < real_t{1e-14}) ? real_t{0} : property_model.a[2] / property_model.a[1];
+  buoyancy_params.delta_T   = static_cast<real_t>(DeltaT);
 
   double t_next_out = t_stat_start;   // 다음 통계 파일을 기록할 물리시간 (아래 루프에서 갱신)
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
   MPI_Barrier(topo.cart_comm());
 
   // IC: linear T(z) + multi-mode W perturbation, or restart from file
-  rbc::RestartMeta rmeta;
+  rbc::RestartMeta restart_state;
   if (restart_in.empty()) {
     const double T_lo=bc.T.face(Direction::Z,Side::Minus).value, T_hi=bc.T.face(Direction::Z,Side::Plus).value;
     const auto& xc=grid.xc(Direction::X); const auto& yc=grid.xc(Direction::Y); const auto& zc=grid.xc(Direction::Z);
     const auto nt=sub.n_total(); const int n1=nt[0], n2=nt[1], n3=nt[2];
-    real_t* W=fields[core::Var::W].data(); real_t* T=fields[core::Var::T].data();
+    real_t* W=cpu_fields[core::Var::W].data(); real_t* T=cpu_fields[core::Var::T].data();
     for (int i=0;i<n1;++i) for (int j=0;j<n2;++j) for (int k=0;k<n3;++k) {
       const int c=(i*n2+j)*n3+k;
       const double z=zc[k], x=xc[i], y=yc[j];
@@ -446,16 +446,16 @@ int main(int argc, char** argv) {
                                         +std::cos(2*M_PI*x/Lx)*std::sin(2*M_PI*y/Ly)
                                         +std::sin(4*M_PI*x/Lx)*std::sin(4*M_PI*y/Ly)));
     }
-    rbc::zero_w_wall(fields[core::Var::W], sub);
-    core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
-    core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
-    core::sync_field_cpu(fields, core::Var::T, bc, sub);
+    rbc::zero_w_wall(cpu_fields[core::Var::W], sub);
+    core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
   } else {
-    rmeta = rbc::read_restart(fields, bc, sub, restart_in, topo.cart_comm());
-    core::sync_field_cpu(fields, core::Var::P, bc, sub);
+    restart_state = rbc::read_restart(cpu_fields, bc, sub, restart_in, topo.cart_comm());
+    core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
   }
 
-  // GPU setup: bind device, upload grid metrics, allocate GPU fields
+  // GPU setup: bind device, upload grid metrics, allocate GPU cpu_fields
   core::bind_gpu_to_local_rank_gpu(mpi);
   core::GpuGridArrays gpu_grid_arrays(grid);
   domain.gpu_grid = &gpu_grid_arrays;
@@ -470,13 +470,13 @@ int main(int argc, char** argv) {
   equation::scalar::GpuLinearSystem    gpu_scalar(sub);
   equation::momentum::GpuLinearSystem  gpu_momentum(sub);
   equation::pressure::LinearSystem pressure;
-  physics::properties::GpuPropertyFields gpu_props(sub);
+  physics::properties::GpuPropertyFields gpu_properties(sub);
 
-  gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
-  gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());
-  gpu_fields[core::Var::W].to_device(fields[core::Var::W].data());
-  gpu_fields[core::Var::P].to_device(fields[core::Var::P].data());
-  gpu_fields[core::Var::T].to_device(fields[core::Var::T].data());
+  gpu_fields[core::Var::U].to_device(cpu_fields[core::Var::U].data());
+  gpu_fields[core::Var::V].to_device(cpu_fields[core::Var::V].data());
+  gpu_fields[core::Var::W].to_device(cpu_fields[core::Var::W].data());
+  gpu_fields[core::Var::P].to_device(cpu_fields[core::Var::P].data());
+  gpu_fields[core::Var::T].to_device(cpu_fields[core::Var::T].data());
 
   // Incremental (van Kan) projection: persistent accumulated pressure Pⁿ.
   // Predictor subtracts dt·(1/ρ̂)∇Pⁿ; the Poisson then solves the increment δp
@@ -488,9 +488,9 @@ int main(int argc, char** argv) {
                 Ra, Pr, DeltaT, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
   // ── time loop ─────────────────────────────────────────────────────────────
-  double time = rmeta.time; int step = rmeta.step;
+  double time = restart_state.time; int step = restart_state.step;
   rbc::RbcStats stats(sub.n_global()[2]);
-  if (!stats_reset) rbc::apply_stats_from_restart(stats, rmeta);
+  if (!stats_reset) rbc::apply_stats_from_restart(stats, restart_state);
   else if (mpi.is_root())
     std::printf("[restart] stats_reset=1 — starting Theta_c/Nu accumulation fresh from step=%d\n", step);
   const real_t* dx3_z = grid.dx_ptr(Direction::Z);
@@ -521,7 +521,7 @@ int main(int argc, char** argv) {
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
     // [2] NOB 변물성 갱신: 현재 온도 Tⁿ으로 μ, 1/ρ, κ, 1/(ρcp) 등을 다항식(글리세롤 모델)으로 재계산
     //     — 아래 에너지 방정식이 이 Tⁿ 물성을 사용
-    physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+    physics::properties::update_properties_gpu(gpu_properties, gpu_fields[core::Var::T], property_model);
 
     // [3] 에너지(온도) 방정식 — 대류 + 변수-κ 확산, 준음해 델타-폼:
     //     solve 안에서 sweep마다 A 밴드와 RHS를 동시에 조립(k_build_A_rhs_nob, 융합 build_A_RHS;
@@ -529,8 +529,8 @@ int main(int argc, char** argv) {
     //     sync_field = MPI 할로 교환 + 경계조건 재적용 (Tⁿ⁺¹ 완성)
     cudaDeviceSynchronize();
     auto t_s0 = hrc::now();
-    equation::scalar::solve_scalar_variable_property_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
-                                   gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
+    equation::scalar::solve_scalar_variable_property_gpu(domain, bc, gpu_fields, gpu_properties.KPP, gpu_properties.dKPP,
+                                   gpu_properties.invRhoCp, gpu_properties.dinvRhoCp, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
     cudaDeviceSynchronize();
     t_scalar += ms_since(t_s0);
@@ -540,7 +540,7 @@ int main(int argc, char** argv) {
     // (mu, inv_rho) and the NOB buoyancy inv_rho use T^{n+1} — matches PaScaL_TCS
     // momentum_coeffi(T) called AFTER thermal_solver (MPM-STD staggered-time scheme).
     // Energy above already used the T^n properties from line 408.
-    physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+    physics::properties::update_properties_gpu(gpu_properties, gpu_fields[core::Var::T], property_model);
 
     // [5] 운동량 예측자(predictor) — 중간 속도 U*,V*,W* 계산:
     //     assemble  : 대류 + 변수-μ 확산의 명시 RHS 조립
@@ -549,10 +549,10 @@ int main(int argc, char** argv) {
     //     solve     : 3-sweep ADI(TDMA) + 블록 하삼각 속도 커플링으로 증분 δU,δV,δW 계산
     //     update    : U += δU 등으로 중간 속도 완성 (아직 발산 ≠ 0)
     auto t_m0 = hrc::now();
-    equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-    physics::buoyancy::add_buoyancy_force_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
-    equation::pressure::add_pressure_gradient_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], gpu_props.invRho, dt);
-    equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields, gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt);
+    physics::buoyancy::add_buoyancy_force_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_properties.invRho, buoyancy_params, dt);
+    equation::pressure::add_pressure_gradient_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], gpu_properties.invRho, dt);
+    equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields, gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt);
     equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);   // 할로 교환 + BC 재적용 (U,V,W)
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
@@ -588,7 +588,7 @@ int main(int argc, char** argv) {
     // (invRhoc-1)*∇dPhat velocity term are a cancelling PAIR (div=0 exact), not
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
-    equation::pressure::solve_pressure_variable_property_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
+    equation::pressure::solve_pressure_variable_property_gpu(domain, bc, gpu_fields, pressure, dt, gpu_properties.invRho);
     equation::pressure::accumulate_pressure_gpu(gpu_fields, pressure);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
     t_pressure += ms_since(t_p0);
@@ -656,14 +656,14 @@ int main(int argc, char** argv) {
     // end-of-run write below covers it in <dir_out> itself.
     if (!restart_out.empty() && nrestart_write > 0
         && step % nrestart_write == 0 && step < n_steps && time < t_end) {
-      gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
-      gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
-      gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
-      gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
-      gpu_fields[core::Var::P].to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
+      gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
+      gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
+      gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
+      gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
+      gpu_fields[core::Var::P].to_host(cpu_fields[core::Var::P].data());   // accumulated pressure Pⁿ
       const bool odd = ((step / nrestart_write) % 2) != 0;
       const std::string ckpt = restart_out + (odd ? "/ckpt_b" : "/ckpt_a");
-      rbc::write_restart(fields, sub, stats, step, time, ckpt, topo.cart_comm());
+      rbc::write_restart(cpu_fields, sub, stats, step, time, ckpt, topo.cart_comm());
     }
 
     // [10] 성능 프로파일 출력 — 첫 n_time_steps 스텝의 구간별(ms/step) 타이밍, 이후 정상상태 타이밍은 런 끝에
@@ -708,12 +708,12 @@ int main(int argc, char** argv) {
 
   // Write restart files (U/V/W/T/P + stats.txt) for continuation runs
   if (!restart_out.empty()) {
-    gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
-    gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
-    gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
-    gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
-    gpu_fields[core::Var::P].to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
-    rbc::write_restart(fields, sub, stats, step, time, restart_out, topo.cart_comm());
+    gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
+    gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
+    gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
+    gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
+    gpu_fields[core::Var::P].to_host(cpu_fields[core::Var::P].data());   // accumulated pressure Pⁿ
+    rbc::write_restart(cpu_fields, sub, stats, step, time, restart_out, topo.cart_comm());
   }
   return 0;
 }

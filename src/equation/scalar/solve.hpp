@@ -2,7 +2,7 @@
 
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 #include "equation/scalar/linear_system.hpp"
 
 namespace mpmstd::equation::scalar {

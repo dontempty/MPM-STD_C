@@ -4,7 +4,7 @@
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 
 #include "core/config.hpp"
 #include "config/logger.hpp"

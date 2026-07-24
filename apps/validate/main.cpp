@@ -3,7 +3,7 @@
 // Reproduces the reference ground-truth case (tests/regression/ground_truth/
 // CASE_SPEC.md): DHVC geometry with gravity along the STREAM axis (my X),
 // walls on Z (Dirichlet T ±0.5), span Y; deterministic IC; FIXED dt; 200 steps;
-// OB (props≡1). Dumps U,V,W,T at the final step in the reference layout
+// OB (cpu_properties≡1). Dumps U,V,W,T at the final step in the reference layout
 // (i=X outer, j=Z middle, k=Y inner) for compare_pascal_tcs.py.
 //
 //   physics.faithful = 1 → faithful variable-μ momentum (the new port).
@@ -14,7 +14,7 @@
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 #include "equation/momentum/linear_system.hpp"
 #include "equation/scalar/linear_system.hpp"
 #include "equation/pressure/linear_system.hpp"
@@ -144,17 +144,17 @@ int main(int argc, char** argv) {
   auto& tdma       = *tdma_owner;
   core::Domain domain{grid, topo, sub, tdma};
 
-  core::CpuFields fields;
-  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
-  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
-  fields.add(core::Var::T, sub);
+  core::CpuFields cpu_fields;
+  cpu_fields.add(core::Var::U, sub); cpu_fields.add(core::Var::V, sub);
+  cpu_fields.add(core::Var::W, sub); cpu_fields.add(core::Var::P, sub);
+  cpu_fields.add(core::Var::T, sub);
 
   const double Ra      = cfg.get<double>("physics", "Ra");
   const double Pr      = cfg.get<double>("physics", "Pr");
   const double nu      = std::sqrt(Pr / Ra);
   const double alpha_T = 1.0 / std::sqrt(Ra * Pr);
-  fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
-  fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
+  cpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
+  cpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   equation::momentum::CpuLinearSystem momentum(sub);
   equation::scalar::CpuLinearSystem   scalar_system(sub);
@@ -162,9 +162,9 @@ int main(int argc, char** argv) {
 
   const bool   faithful = cfg.get_or<int>("physics", "faithful", 1) != 0;
   const double DeltaT   = cfg.get_or<double>("physics", "DeltaT", 0.0);
-  physics::properties::CpuPropertyFields   props(sub);
-  const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
-  const real_t a12pera11 = (std::fabs(pmodel.a[2]) < static_cast<real_t>(1e-14)) ? 0 : pmodel.a[2] / pmodel.a[1];
+  physics::properties::CpuPropertyFields   cpu_properties(sub);
+  const physics::properties::PropertyModel property_model = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  const real_t a12pera11 = (std::fabs(property_model.a[2]) < static_cast<real_t>(1e-14)) ? 0 : property_model.a[2] / property_model.a[1];
 
   const real_t dt_fixed = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.004));
   const real_t max_cfl  = static_cast<real_t>(cfg.get_or<double>("time", "MaxCFL", 1e8));
@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
     const double amp  = cfg.get_or<double>("init", "perturb", 0.05);
     const auto& xc = grid.xc(Direction::X); const auto& yc = grid.xc(Direction::Y); const auto& zc = grid.xc(Direction::Z);
     const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-    real_t* T = fields[core::Var::T].data();
+    real_t* T = cpu_fields[core::Var::T].data();
     for (int i = 0; i < n1; ++i)
       for (int j = 0; j < n2; ++j)
         for (int k = 0; k < n3; ++k) {
@@ -193,9 +193,9 @@ int main(int argc, char** argv) {
                  + amp * std::sin(2.0 * M_PI * x / Lx) * std::sin(M_PI * z / Lz) * std::cos(2.0 * M_PI * y / Ly));
         }
   }
-  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
-  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
-  core::sync_field_cpu(fields, core::Var::T, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
 
   if (mpi.is_root())
     std::printf("[validate] %s momentum  Ra=%.1f Pr=%.3g  nu=%.6f  n=%dx%dx%d  dt=%.4f x%d steps\n",
@@ -205,42 +205,42 @@ int main(int argc, char** argv) {
   // ── time loop (CASE_SPEC order: energy → momentum(+buoyancy U) → project) ────
   double time = 0.0; int step = 0;
   while (step < n_steps) {
-    const real_t dt = std::min(dt_fixed, driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_fixed));
+    const real_t dt = std::min(dt_fixed, driver::compute_cfl_dt_cpu(domain, cpu_fields, max_cfl, dt_fixed));
 
-    physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);   // props≡1 at ΔT=0
+    physics::properties::update_properties_cpu(cpu_properties, cpu_fields[core::Var::T], property_model);   // cpu_properties≡1 at ΔT=0
 
     // energy: always the faithful var path (committed) so only momentum varies.
-    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, fields, props.KPP, props.dKPP,
-                                   props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
-    core::sync_field_cpu(fields, core::Var::T, bc, sub);
+    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, cpu_fields, cpu_properties.KPP, cpu_properties.dKPP,
+                                   cpu_properties.invRhoCp, cpu_properties.dinvRhoCp, scalar_system, dt);
+    core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
 
-    if (faithful) equation::momentum::assemble_momentum_variable_property_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    else          equation::momentum::assemble_momentum_constant_property_cpu(domain, fields, momentum, dt);
-    add_buoyancy_face_u(momentum, fields[core::Var::T], props.invRho, domain, a12pera11, static_cast<real_t>(DeltaT), dt);
-    if (faithful) equation::momentum::solve_momentum_variable_property_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    else          equation::momentum::solve_momentum_constant_property_cpu(domain, bc, fields, momentum, dt);
-    equation::momentum::update_velocity_cpu(fields, momentum);
-    core::sync_field_cpu(fields, core::Var::U, bc, sub);
-    core::sync_field_cpu(fields, core::Var::V, bc, sub);
-    core::sync_field_cpu(fields, core::Var::W, bc, sub);
-    zero_w_wall(fields[core::Var::W], sub);
+    if (faithful) equation::momentum::assemble_momentum_variable_property_cpu(domain, cpu_fields, cpu_properties.Mu, cpu_properties.invRho, momentum, dt);
+    else          equation::momentum::assemble_momentum_constant_property_cpu(domain, cpu_fields, momentum, dt);
+    add_buoyancy_face_u(momentum, cpu_fields[core::Var::T], cpu_properties.invRho, domain, a12pera11, static_cast<real_t>(DeltaT), dt);
+    if (faithful) equation::momentum::solve_momentum_variable_property_cpu(domain, bc, cpu_fields, cpu_properties.Mu, cpu_properties.invRho, momentum, dt);
+    else          equation::momentum::solve_momentum_constant_property_cpu(domain, bc, cpu_fields, momentum, dt);
+    equation::momentum::update_velocity_cpu(cpu_fields, momentum);
+    core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub);
+    zero_w_wall(cpu_fields[core::Var::W], sub);
 
-    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    equation::pressure::solve_pressure_cpu(domain, bc, cpu_fields, pressure, dt);
 
     time += static_cast<double>(dt);
     ++step;
     if (step % nmonitor == 0 && mpi.is_root())
-      std::printf("step=%d t=%.4f dt=%.4f div=%.2e\n", step, time, double(dt), div_max(domain, fields));
+      std::printf("step=%d t=%.4f dt=%.4f div=%.2e\n", step, time, double(dt), div_max(domain, cpu_fields));
   }
 
   // ── dump in reference layout, named by the REFERENCE field they match (so the
   //    comparison is 1:1 by name): my U→_U, my W→_V(wall), my V→_W(span), my T→_T.
-  dump_field(fields[core::Var::U], sub, out_prefix + "_U.bin");   // ref U  (x1 stream) ↔ my X
-  dump_field(fields[core::Var::W], sub, out_prefix + "_V.bin");   // ref V  (x2 wall)   ↔ my Z
-  dump_field(fields[core::Var::V], sub, out_prefix + "_W.bin");   // ref W  (x3 span)   ↔ my Y
-  dump_field(fields[core::Var::T], sub, out_prefix + "_T.bin");
+  dump_field(cpu_fields[core::Var::U], sub, out_prefix + "_U.bin");   // ref U  (x1 stream) ↔ my X
+  dump_field(cpu_fields[core::Var::W], sub, out_prefix + "_V.bin");   // ref V  (x2 wall)   ↔ my Z
+  dump_field(cpu_fields[core::Var::V], sub, out_prefix + "_W.bin");   // ref W  (x3 span)   ↔ my Y
+  dump_field(cpu_fields[core::Var::T], sub, out_prefix + "_T.bin");
   if (mpi.is_root())
     std::printf("[validate] done t=%.4f  dumped %s_{U,V,W,T}.bin  (div=%.2e)\n",
-                time, out_prefix.c_str(), div_max(domain, fields));
+                time, out_prefix.c_str(), div_max(domain, cpu_fields));
   return 0;
 }

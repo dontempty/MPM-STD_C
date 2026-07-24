@@ -34,18 +34,18 @@ int main(int argc, char** argv) {
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   core::Domain domain{grid, topo, sub, *tdma_owner};
 
-  core::CpuFields fields;
-  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
-  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
-  fields.add(core::Var::T, sub);
+  core::CpuFields cpu_fields;
+  cpu_fields.add(core::Var::U, sub); cpu_fields.add(core::Var::V, sub);
+  cpu_fields.add(core::Var::W, sub); cpu_fields.add(core::Var::P, sub);
+  cpu_fields.add(core::Var::T, sub);
 
   const double Ra = cfg.get<double>("physics","Ra"), Pr = cfg.get<double>("physics","Pr");
   const double nu = std::sqrt(Pr/Ra), alpha_T = 1.0/std::sqrt(Ra*Pr);
-  fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
-  fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
+  cpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
+  cpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   equation::pressure::LinearSystem pressure;
-  physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
+  physics::buoyancy::BuoyancyParams buoyancy_params; buoyancy_params.gravity_axis=2; buoyancy_params.coeff=1; buoyancy_params.T_ref=0; buoyancy_params.a12pera11=0; buoyancy_params.delta_T=0;
 
   const double t_end    = cfg.get_or<double>("time","t_end",   400.0);
   const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time","dt_start",  0.02));
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     const double amp=cfg.get_or<double>("init","perturb",0.02);
     const auto& xc=grid.xc(Direction::X); const auto& yc=grid.xc(Direction::Y); const auto& zc=grid.xc(Direction::Z);
     const auto nt=sub.n_total(); const int n1=nt[0], n2=nt[1], n3=nt[2];
-    real_t* W=fields[core::Var::W].data(); real_t* T=fields[core::Var::T].data();
+    real_t* W=cpu_fields[core::Var::W].data(); real_t* T=cpu_fields[core::Var::T].data();
     for (int i=0;i<n1;++i) for (int j=0;j<n2;++j) for (int k=0;k<n3;++k) {
       const int c=(i*n2+j)*n3+k;
       const double z=zc[k], x=xc[i], y=yc[j];
@@ -75,12 +75,12 @@ int main(int argc, char** argv) {
                                         +std::sin(4*M_PI*x/Lx)*std::sin(4*M_PI*y/Ly)));
     }
   }
-  rbc::zero_w_wall(fields[core::Var::W], sub);
-  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
-  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
-  core::sync_field_cpu(fields, core::Var::T, bc, sub);
+  rbc::zero_w_wall(cpu_fields[core::Var::W], sub);
+  core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
 
-  // GPU setup: bind device, upload grid metrics, allocate GPU fields
+  // GPU setup: bind device, upload grid metrics, allocate GPU cpu_fields
   core::bind_gpu_to_local_rank_gpu(mpi);
   core::GpuGridArrays gpu_grid_arrays(grid);
   domain.gpu_grid = &gpu_grid_arrays;
@@ -95,11 +95,11 @@ int main(int argc, char** argv) {
   equation::momentum::GpuLinearSystem gpu_momentum(sub);
   equation::scalar::GpuLinearSystem   gpu_scalar(sub);
 
-  gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
-  gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());
-  gpu_fields[core::Var::W].to_device(fields[core::Var::W].data());
-  gpu_fields[core::Var::P].to_device(fields[core::Var::P].data());
-  gpu_fields[core::Var::T].to_device(fields[core::Var::T].data());
+  gpu_fields[core::Var::U].to_device(cpu_fields[core::Var::U].data());
+  gpu_fields[core::Var::V].to_device(cpu_fields[core::Var::V].data());
+  gpu_fields[core::Var::W].to_device(cpu_fields[core::Var::W].data());
+  gpu_fields[core::Var::P].to_device(cpu_fields[core::Var::P].data());
+  gpu_fields[core::Var::T].to_device(cpu_fields[core::Var::T].data());
 
   if (mpi.is_root())
     std::printf("[rbc_gpu_ob] Ra=%.2e Pr=%.4g nu=%.4e alpha=%.4e  n=%dx%dx%d  (GPU hybrid)\n",
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
     equation::momentum::assemble_momentum_constant_property_gpu(domain, gpu_fields, gpu_momentum, dt);
-    physics::buoyancy::add_buoyancy_force_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    physics::buoyancy::add_buoyancy_force_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoyancy_params, dt);
     equation::momentum::solve_momentum_constant_property_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
     equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
@@ -125,23 +125,23 @@ int main(int argc, char** argv) {
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
 
     // zero_w_wall: MAC face not handled on GPU yet; apply on host then push back
-    gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
-    rbc::zero_w_wall(fields[core::Var::W], sub);
-    gpu_fields[core::Var::W].to_device(fields[core::Var::W].data());
+    gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
+    rbc::zero_w_wall(cpu_fields[core::Var::W], sub);
+    gpu_fields[core::Var::W].to_device(cpu_fields[core::Var::W].data());
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
 
     // G4: GPU pressure solve (OB — no H↔D transfers for pressure)
     equation::pressure::solve_pressure_constant_property_gpu(domain, bc, gpu_fields, pressure, dt);
 
-    // Download U, V, W, T for diagnostics (rbc::accumulate + print_step use CPU fields)
-    gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());
-    gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
-    gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
-    gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
+    // Download U, V, W, T for diagnostics (rbc::accumulate + print_step use CPU cpu_fields)
+    gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
+    gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
+    gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
+    gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
 
     time += double(dt); ++step;
-    rbc::accumulate(stats, domain, sub, fields, dx3_z, nstat_start, step);
-    if (step % nmonitor == 0) rbc::print_step(stats, domain, fields, step, time, dt, alpha_T, mpi.is_root());
+    rbc::accumulate(stats, domain, sub, cpu_fields, dx3_z, nstat_start, step);
+    if (step % nmonitor == 0) rbc::print_step(stats, domain, cpu_fields, step, time, dt, alpha_T, mpi.is_root());
   }
 
   rbc::print_final(stats, sub, Ra, Pr, alpha_T, mpi.is_root(), "rbc_gpu_ob");

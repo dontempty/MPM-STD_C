@@ -2,7 +2,7 @@
 
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 #include "equation/momentum/linear_system.hpp"
 #include "equation/pressure/linear_system.hpp"
 

@@ -7,7 +7,7 @@
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"    // sync_field_cpu
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 #include "equation/momentum/linear_system.hpp"
 #include "equation/pressure/linear_system.hpp"
 #include "core/config.hpp"
@@ -48,10 +48,10 @@ void zero_w_wall(core::CpuField& W, const parallel::mpi::Subdomain& sub) {
 }
 
 // Global max |div(U*)| (solver-health monitor).
-double div_max(const core::Domain& d, const core::CpuFields& fields) {
+double div_max(const core::Domain& d, const core::CpuFields& cpu_fields) {
   const auto nt = d.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
-  const real_t* u = fields[core::Var::U].data(); const real_t* v = fields[core::Var::V].data(); const real_t* w = fields[core::Var::W].data();
+  const real_t* u = cpu_fields[core::Var::U].data(); const real_t* v = cpu_fields[core::Var::V].data(); const real_t* w = cpu_fields[core::Var::W].data();
   const real_t* dx1 = d.grid.dx_ptr(Direction::X), *dx2 = d.grid.dx_ptr(Direction::Y), *dx3 = d.grid.dx_ptr(Direction::Z);
   double local = 0.0;
   for (int i = h; i < n1 - h; ++i)
@@ -101,14 +101,14 @@ int main(int argc, char** argv) {
   core::Domain domain{grid, topo, sub, tdma};                 // the "where/how" context
 
   // ── variables: register what this (isothermal) case uses, before the loop ─
-  core::CpuFields fields;
-  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
-  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
+  core::CpuFields cpu_fields;
+  cpu_fields.add(core::Var::U, sub); cpu_fields.add(core::Var::V, sub);
+  cpu_fields.add(core::Var::W, sub); cpu_fields.add(core::Var::P, sub);
 
   // ── physics params + forcing ──────────────────────────────────────────────
   const double nu = cfg.has("physics", "nu") ? cfg.get<double>("physics", "nu")
                     : std::sqrt(cfg.get<double>("physics", "Pr") / cfg.get<double>("physics", "Ra"));
-  fields.add_constant(core::Const::nu, static_cast<real_t>(nu));
+  cpu_fields.add_constant(core::Const::nu, static_cast<real_t>(nu));
   const std::string fmode = cfg.get_or<std::string>("channel_forcing", "mode", "pressure_gradient");
   const bool   mass_flow  = (fmode == "mass_flow");
   const double target_Ub  = cfg.get_or<double>("channel_forcing", "target_bulk_velocity", 1.0);
@@ -144,10 +144,10 @@ int main(int argc, char** argv) {
   int    step = 0;
   if (continue_in) {
     if (mpi.is_root()) std::printf("[channel] restart from '%s'\n", dir_restart.c_str());
-    post::read_restart_cpu(fields[core::Var::U], sub, dir_restart + "U.bin");
-    post::read_restart_cpu(fields[core::Var::V], sub, dir_restart + "V.bin");
-    post::read_restart_cpu(fields[core::Var::W], sub, dir_restart + "W.bin");
-    post::read_restart_cpu(fields[core::Var::P], sub, dir_restart + "P.bin");
+    post::read_restart_cpu(cpu_fields[core::Var::U], sub, dir_restart + "U.bin");
+    post::read_restart_cpu(cpu_fields[core::Var::V], sub, dir_restart + "V.bin");
+    post::read_restart_cpu(cpu_fields[core::Var::W], sub, dir_restart + "W.bin");
+    post::read_restart_cpu(cpu_fields[core::Var::P], sub, dir_restart + "P.bin");
     if (mpi.is_root()) {
       FILE* mf = std::fopen((dir_restart + "meta.txt").c_str(), "r");
       if (mf) { double dtd, dpd; int st;
@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
     const double Ub = target_Ub, h = 0.5 * Lz, Ucl = 1.5 * Ub, A = ic_perturb;
     const auto& xc = grid.xc(Direction::X); const auto& yc = grid.xc(Direction::Y); const auto& zc = grid.xc(Direction::Z);
     const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-    real_t* U = fields[core::Var::U].data(); real_t* V = fields[core::Var::V].data(); real_t* W = fields[core::Var::W].data();
+    real_t* U = cpu_fields[core::Var::U].data(); real_t* V = cpu_fields[core::Var::V].data(); real_t* W = cpu_fields[core::Var::W].data();
     const double pi = M_PI;
     for (int i = 0; i < n1; ++i)
       for (int j = 0; j < n2; ++j)
@@ -195,9 +195,9 @@ int main(int argc, char** argv) {
     if (mpi.is_root()) std::printf("[channel] COLD START: Poiseuille + structured perturbation A=%.3f\n", A);
   }
 
-  zero_w_wall(fields[core::Var::W], sub);
-  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
-  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
+  zero_w_wall(cpu_fields[core::Var::W], sub);
+  core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
 
   if (mpi.is_root())
     std::printf("[channel] start step=%d time=%.4g  nu=%.4e  mode=%s  np=%dx%dx%d  n=%dx%dx%d\n",
@@ -206,33 +206,33 @@ int main(int argc, char** argv) {
   // ── time loop (rev.2 §7 recipe) ────────────────────────────────────────────
   const int step0 = step;
   while (time < t_end && (step - step0) < n_steps) {
-    const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
+    const real_t dt = driver::compute_cfl_dt_cpu(domain, cpu_fields, max_cfl, dt_cap);
 
     // (2) momentum: RHS → 3-sweep ADI + block coupling → U += dU
-    equation::momentum::assemble_momentum_constant_property_cpu(domain, fields, momentum, dt);
-    equation::momentum::solve_momentum_constant_property_cpu(domain, bc, fields, momentum, dt);
-    equation::momentum::update_velocity_cpu(fields, momentum);
-    core::sync_field_cpu(fields, core::Var::V, bc, sub);
-    core::sync_field_cpu(fields, core::Var::W, bc, sub);
+    equation::momentum::assemble_momentum_constant_property_cpu(domain, cpu_fields, momentum, dt);
+    equation::momentum::solve_momentum_constant_property_cpu(domain, bc, cpu_fields, momentum, dt);
+    equation::momentum::update_velocity_cpu(cpu_fields, momentum);
+    core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub);
 
     // (3) channel forcing: mean dP/dx + (mass-flow) bulk correction
-    physics::forcing::apply_body_force_cpu(fields, static_cast<real_t>(dpdx), dt);
-    if (mass_flow) physics::forcing::apply_mass_flow_correction_cpu(domain, fields, target_Ub, dt, total_vol, dpdx);
-    core::sync_field_cpu(fields, core::Var::U, bc, sub);
-    zero_w_wall(fields[core::Var::W], sub);
+    physics::forcing::apply_body_force_cpu(cpu_fields, static_cast<real_t>(dpdx), dt);
+    if (mass_flow) physics::forcing::apply_mass_flow_correction_cpu(domain, cpu_fields, target_Ub, dt, total_vol, dpdx);
+    core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub);
+    zero_w_wall(cpu_fields[core::Var::W], sub);
 
     // (4) pressure: div → Poisson → project U,V,W (P updated)
-    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    equation::pressure::solve_pressure_cpu(domain, bc, cpu_fields, pressure, dt);
 
     time += static_cast<double>(dt);
     ++step;
 
     // (5) post: statistics + monitor
     if (out_stats && (step - step0) >= nstat_start && ((step - step0) % nstat_int == 0))
-      post::accumulate_statistics_cpu(stats, domain, fields);
+      post::accumulate_statistics_cpu(stats, domain, cpu_fields);
     if (step % nmonitor == 0) {
-      const double dv = div_max(domain, fields);
-      const double ub = physics::forcing::channel_bulk_velocity_cpu(domain, fields, total_vol);
+      const double dv = div_max(domain, cpu_fields);
+      const double ub = physics::forcing::channel_bulk_velocity_cpu(domain, cpu_fields, total_vol);
       if (mpi.is_root())
         std::printf("step=%d time=%.4g dt=%.3g div=%.3e Ub=%.4f dPdx=%.4e\n", step, time, double(dt), dv, ub, dpdx);
     }

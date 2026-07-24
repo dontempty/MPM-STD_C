@@ -13,7 +13,7 @@
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 #include "equation/momentum/linear_system.hpp"
 #include "equation/scalar/linear_system.hpp"
 #include "equation/pressure/linear_system.hpp"
@@ -31,7 +31,7 @@
 #include "equation/pressure/solve.hpp"
 #include "physics/buoyancy/buoyancy.hpp"
 #include "physics/forcing/forcing.hpp"   // channel_total_volume_cpu, apply_mass_flow_correction_cpu (zero-net-flux)
-#include "physics/properties/properties.hpp"  // CpuPropertyFields for NOB var path with unit props
+#include "physics/properties/properties.hpp"  // CpuPropertyFields for NOB var path with unit cpu_properties
 #include "driver/cfl.hpp"
 #include "post/statistics.hpp"
 
@@ -108,17 +108,17 @@ int main(int argc, char** argv) {
   core::Domain domain{grid, topo, sub, tdma};
 
   // ── variables: U,V,W,P + T (OB scalar) + constants nu, alpha ──────────────
-  core::CpuFields fields;
-  fields.add(core::Var::U, sub); fields.add(core::Var::V, sub);
-  fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
-  fields.add(core::Var::T, sub);
+  core::CpuFields cpu_fields;
+  cpu_fields.add(core::Var::U, sub); cpu_fields.add(core::Var::V, sub);
+  cpu_fields.add(core::Var::W, sub); cpu_fields.add(core::Var::P, sub);
+  cpu_fields.add(core::Var::T, sub);
 
   const double Ra      = cfg.get<double>("physics", "Ra");
   const double Pr      = cfg.get<double>("physics", "Pr");
   const double nu      = std::sqrt(Pr / Ra);
   const double alpha_T = 1.0 / std::sqrt(Ra * Pr);
-  fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
-  fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
+  cpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
+  cpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   // ── solver state ──────────────────────────────────────────────────────────
   equation::momentum::CpuLinearSystem momentum(sub);
@@ -127,26 +127,26 @@ int main(int argc, char** argv) {
 
   // Accumulated pressure Pⁿ for the incremental (van Kan) projection (zero-init).
 
-  // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
+  // OB unit property cpu_fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
   // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With constant properties the var
   // kernels reduce to the correct PaScaL_TCS scheme with semi-implicit
   // convection and −M·q^n residual correction, fixing the OB dt collapse.
-  physics::properties::CpuPropertyFields props(sub);
+  physics::properties::CpuPropertyFields cpu_properties(sub);
   {
     const auto nt = sub.n_total();
     const std::size_t n = (std::size_t)nt[0] * nt[1] * nt[2];
-    std::fill(props.Mu.data(),        props.Mu.data()        + n, real_t{1});
-    std::fill(props.invRho.data(),   props.invRho.data()   + n, real_t{1});
-    std::fill(props.KPP.data(),     props.KPP.data()     + n, real_t{1});
-    std::fill(props.invRhoCp.data(), props.invRhoCp.data() + n, real_t{1});
-    std::fill(props.dKPP.data(),    props.dKPP.data()    + n, real_t{0});
-    std::fill(props.dinvRhoCp.data(),props.dinvRhoCp.data()+ n, real_t{0});
+    std::fill(cpu_properties.Mu.data(),        cpu_properties.Mu.data()        + n, real_t{1});
+    std::fill(cpu_properties.invRho.data(),   cpu_properties.invRho.data()   + n, real_t{1});
+    std::fill(cpu_properties.KPP.data(),     cpu_properties.KPP.data()     + n, real_t{1});
+    std::fill(cpu_properties.invRhoCp.data(), cpu_properties.invRhoCp.data() + n, real_t{1});
+    std::fill(cpu_properties.dKPP.data(),    cpu_properties.dKPP.data()    + n, real_t{0});
+    std::fill(cpu_properties.dinvRhoCp.data(),cpu_properties.dinvRhoCp.data()+ n, real_t{0});
   }
   post::Stats             stats;
   post::init_statistics_cpu(stats, domain);
 
   // OB Boussinesq: gravity along x (streamwise), F = θ, coeff = 1.
-  physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis = 0; buoy.coeff = 1; buoy.T_ref = 0;
+  physics::buoyancy::BuoyancyParams buoyancy_params; buoyancy_params.gravity_axis = 0; buoyancy_params.coeff = 1; buoyancy_params.T_ref = 0;
 
   // ── time / IO ──────────────────────────────────────────────────────────────
   const double t_end    = cfg.get_or<double>("time", "t_end", 400.0);
@@ -172,8 +172,8 @@ int main(int argc, char** argv) {
     const auto& xc = grid.xc(Direction::X); const auto& yc = grid.xc(Direction::Y); const auto& zc = grid.xc(Direction::Z);
     const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
     const auto off = sub.global_offset();
-    real_t* U = fields[core::Var::U].data(); real_t* V = fields[core::Var::V].data();
-    real_t* W = fields[core::Var::W].data(); real_t* T = fields[core::Var::T].data();
+    real_t* U = cpu_fields[core::Var::U].data(); real_t* V = cpu_fields[core::Var::V].data();
+    real_t* W = cpu_fields[core::Var::W].data(); real_t* T = cpu_fields[core::Var::T].data();
     for (int i = 0; i < n1; ++i)
       for (int j = 0; j < n2; ++j)
         for (int k = 0; k < n3; ++k) {
@@ -191,10 +191,10 @@ int main(int argc, char** argv) {
           (void)off;
         }
   }
-  zero_w_wall(fields[core::Var::W], sub);
-  core::sync_field_cpu(fields, core::Var::U, bc, sub); core::sync_field_cpu(fields, core::Var::V, bc, sub);
-  core::sync_field_cpu(fields, core::Var::W, bc, sub); core::sync_field_cpu(fields, core::Var::P, bc, sub);
-  core::sync_field_cpu(fields, core::Var::T, bc, sub);
+  zero_w_wall(cpu_fields[core::Var::W], sub);
+  core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
+  core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
 
   if (mpi.is_root())
     std::printf("[dhvc] Ra=%.2e Pr=%.3g  nu=%.4e alpha=%.4e  n=%dx%dx%d (x stream, y span, z wall)\n",
@@ -209,41 +209,41 @@ int main(int argc, char** argv) {
   // ── time loop ──────────────────────────────────────────────────────────────
   double time = 0.0; int step = 0;
   while (time < t_end && step < n_steps) {
-    const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
+    const real_t dt = driver::compute_cfl_dt_cpu(domain, cpu_fields, max_cfl, dt_cap);
 
-    // (1) energy: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
-    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, fields,
-        props.KPP, props.dKPP, props.invRhoCp, props.dinvRhoCp,
+    // (1) energy: T^n → T^{n+1}  (NOB var path with unit cpu_properties = PaScaL_TCS scheme)
+    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, cpu_fields,
+        cpu_properties.KPP, cpu_properties.dKPP, cpu_properties.invRhoCp, cpu_properties.dinvRhoCp,
         scalar_system, dt);
-    core::sync_field_cpu(fields, core::Var::T, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
 
-    // (2) momentum predictor + OB buoyancy (NOB var path with unit props)
-    equation::momentum::assemble_momentum_variable_property_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    physics::buoyancy::add_buoyancy_force_constant_property_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    equation::pressure::add_pressure_gradient_constant_property_cpu(domain, momentum, fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
-    equation::momentum::solve_momentum_variable_property_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    equation::momentum::update_velocity_cpu(fields, momentum);
+    // (2) momentum predictor + OB buoyancy (NOB var path with unit cpu_properties)
+    equation::momentum::assemble_momentum_variable_property_cpu(domain, cpu_fields, cpu_properties.Mu, cpu_properties.invRho, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_constant_property_cpu(domain, momentum, cpu_fields[core::Var::T], buoyancy_params, dt);
+    equation::pressure::add_pressure_gradient_constant_property_cpu(domain, momentum, cpu_fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
+    equation::momentum::solve_momentum_variable_property_cpu(domain, bc, cpu_fields, cpu_properties.Mu, cpu_properties.invRho, momentum, dt);
+    equation::momentum::update_velocity_cpu(cpu_fields, momentum);
     // zero net streamwise flux (closed DHVC): subtract the bulk U the net
     // buoyancy would drive in the periodic streamwise direction.
     double net_dpdx = 0.0;
-    physics::forcing::apply_mass_flow_correction_cpu(domain, fields, 0.0, dt, total_vol, net_dpdx);
-    core::sync_field_cpu(fields, core::Var::U, bc, sub);
-    core::sync_field_cpu(fields, core::Var::V, bc, sub);
-    core::sync_field_cpu(fields, core::Var::W, bc, sub);
-    zero_w_wall(fields[core::Var::W], sub);
+    physics::forcing::apply_mass_flow_correction_cpu(domain, cpu_fields, 0.0, dt, total_vol, net_dpdx);
+    core::sync_field_cpu(cpu_fields, core::Var::U, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::V, bc, sub);
+    core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub);
+    zero_w_wall(cpu_fields[core::Var::W], sub);
 
     // (3) pressure: div → Poisson → project
-    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
-    equation::pressure::accumulate_pressure_cpu(fields, pressure);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::solve_pressure_cpu(domain, bc, cpu_fields, pressure, dt);
+    equation::pressure::accumulate_pressure_cpu(cpu_fields, pressure);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     time += static_cast<double>(dt);
     ++step;
 
     // (4) statistics (after transient) + monitor
     if (step >= nstat_start && (step % nstat_int == 0))
-      post::accumulate_statistics_cpu(stats, domain, fields);
+      post::accumulate_statistics_cpu(stats, domain, cpu_fields);
     if (step % nmonitor == 0) {
-      const double dv  = div_max(domain, fields);
+      const double dv  = div_max(domain, cpu_fields);
       const double red = post::compute_re_delta_star_cpu(stats, nu, domain);
       if (mpi.is_root())
         std::printf("step=%d t=%.3g dt=%.3g div=%.2e Re_dstar=%.3f (target~%.3f)\n",

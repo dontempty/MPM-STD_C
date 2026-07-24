@@ -12,7 +12,7 @@
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
-#include "core/variables.hpp"
+#include "core/fields.hpp"
 #include "equation/momentum/linear_system.hpp"
 #include "equation/scalar/linear_system.hpp"
 #include "equation/pressure/linear_system.hpp"
@@ -400,7 +400,7 @@ int main(int argc, char** argv) {
     if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
     MPI_Barrier(topo.cart_comm());
 
-    // CPU fields: used only for IC setup + stats D2H populate
+    // CPU cpu_fields: used only for IC setup + stats D2H populate
     core::CpuFields cpu_fields;
     cpu_fields.add(core::Var::U, sub); cpu_fields.add(core::Var::V, sub);
     cpu_fields.add(core::Var::W, sub); cpu_fields.add(core::Var::P, sub);
@@ -537,13 +537,13 @@ int main(int argc, char** argv) {
     // gpu_fields[Var::P] upload above (0 on cold start, interpolated P on warm-
     // start). The per-step increment δp is owned by the pressure LinearSystem.
 
-    // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
+    // OB unit property cpu_fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
     // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With DeltaT=0 the default
     // PropertyModel evaluates to unit constants on every cell → the var kernels
     // reduce to the correct PaScaL_TCS OB scheme with semi-implicit convection
     // and −M·q^n residual correction, fixing the dt collapse at Ra=1e7.
-    physics::properties::GpuPropertyFields gpu_props(sub);
-    physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T],
+    physics::properties::GpuPropertyFields gpu_properties(sub);
+    physics::properties::update_properties_gpu(gpu_properties, gpu_fields[core::Var::T],
                                    physics::properties::PropertyModel{});
 
     // Warm start: the interpolated velocity is not discretely divergence-free →
@@ -568,9 +568,9 @@ int main(int argc, char** argv) {
         if (mon_fp) std::fprintf(mon_fp, "step,t,dt,div,Re_dstar,Re_inst,KE,Nu,theta_rms\n");
     }
 
-    physics::buoyancy::BuoyancyParams buoy;
-    buoy.gravity_axis = 0; buoy.coeff=1.0; buoy.T_ref=0.0;
-    buoy.a12pera11=0.0; buoy.delta_T=0.0;
+    physics::buoyancy::BuoyancyParams buoyancy_params;
+    buoyancy_params.gravity_axis = 0; buoyancy_params.coeff=1.0; buoyancy_params.T_ref=0.0;
+    buoyancy_params.a12pera11=0.0; buoyancy_params.delta_T=0.0;
 
     const double total_vol = physics::forcing::channel_total_volume_cpu(domain);
     const auto& ztopo = sub.topology().axis(Direction::Z);
@@ -605,20 +605,20 @@ int main(int argc, char** argv) {
         const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
         if (do_timing) { cudaDeviceSynchronize(); ts_cfl += ms_since(tPrev); tPrev = hrc::now(); }
 
-        // (1) Scalar: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
+        // (1) Scalar: T^n → T^{n+1}  (NOB var path with unit cpu_properties = PaScaL_TCS scheme)
         equation::scalar::solve_scalar_variable_property_gpu(domain, bc, gpu_fields,
-            gpu_props.KPP, gpu_props.dKPP, gpu_props.invRhoCp, gpu_props.dinvRhoCp,
+            gpu_properties.KPP, gpu_properties.dKPP, gpu_properties.invRhoCp, gpu_properties.dinvRhoCp,
             gpu_scalar, dt);
         core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
         if (do_timing) { cudaDeviceSynchronize(); ts_scalar += ms_since(tPrev); tPrev = hrc::now(); }
 
-        // (2) Momentum predictor + OB buoyancy  (NOB var path with unit props)
+        // (2) Momentum predictor + OB buoyancy  (NOB var path with unit cpu_properties)
         equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields,
-            gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-        physics::buoyancy::add_buoyancy_force_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+            gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt);
+        physics::buoyancy::add_buoyancy_force_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoyancy_params, dt);
         equation::pressure::add_pressure_gradient_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
         equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields,
-            gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+            gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt);
         equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
         if (do_timing) { cudaDeviceSynchronize(); ts_mom += ms_since(tPrev); tPrev = hrc::now(); }
 

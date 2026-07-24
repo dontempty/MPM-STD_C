@@ -2,7 +2,7 @@
 
 #include "core/field_cpu.hpp"
 #include "core/gpu_binding.hpp"        // Subdomain, CartComm1D (via parallel::mpi)
-#include "core/variables.hpp"           // Var, CpuFields
+#include "core/fields.hpp"           // Var, CpuFields
 #include "core/boundary.hpp"            // BoundaryCondition (= boundary::BoundaryCondition)
 #include "common/direction.hpp"
 #include "boundary/field_boundary.hpp"  // FieldBoundary, FaceBc, BcKind, GhostPolicy (host-single)
