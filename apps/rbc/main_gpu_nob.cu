@@ -529,7 +529,7 @@ int main(int argc, char** argv) {
     //     sync_field = MPI 할로 교환 + 경계조건 재적용 (Tⁿ⁺¹ 완성)
     cudaDeviceSynchronize();
     auto t_s0 = hrc::now();
-    equation::scalar::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
+    equation::scalar::solve_scalar_variable_property_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
                                    gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
     cudaDeviceSynchronize();
@@ -549,10 +549,10 @@ int main(int argc, char** argv) {
     //     solve     : 3-sweep ADI(TDMA) + 블록 하삼각 속도 커플링으로 증분 δU,δV,δW 계산
     //     update    : U += δU 등으로 중간 속도 완성 (아직 발산 ≠ 0)
     auto t_m0 = hrc::now();
-    equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-    physics::buoyancy::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
-    equation::pressure::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], gpu_props.invRho, dt);
-    equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    physics::buoyancy::add_buoyancy_force_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
+    equation::pressure::add_pressure_gradient_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], gpu_props.invRho, dt);
+    equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);   // 할로 교환 + BC 재적용 (U,V,W)
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
@@ -588,7 +588,7 @@ int main(int argc, char** argv) {
     // (invRhoc-1)*∇dPhat velocity term are a cancelling PAIR (div=0 exact), not
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
-    equation::pressure::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
+    equation::pressure::solve_pressure_variable_property_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
     equation::pressure::accumulate_pressure_gpu(gpu_fields, pressure);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
     t_pressure += ms_since(t_p0);

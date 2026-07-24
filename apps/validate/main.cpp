@@ -210,15 +210,15 @@ int main(int argc, char** argv) {
     physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);   // props≡1 at ΔT=0
 
     // energy: always the faithful var path (committed) so only momentum varies.
-    equation::scalar::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
+    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, fields, props.KPP, props.dKPP,
                                    props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    if (faithful) equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    else          equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    if (faithful) equation::momentum::assemble_momentum_variable_property_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    else          equation::momentum::assemble_momentum_constant_property_cpu(domain, fields, momentum, dt);
     add_buoyancy_face_u(momentum, fields[core::Var::T], props.invRho, domain, a12pera11, static_cast<real_t>(DeltaT), dt);
-    if (faithful) equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    else          equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    if (faithful) equation::momentum::solve_momentum_variable_property_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    else          equation::momentum::solve_momentum_constant_property_cpu(domain, bc, fields, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);

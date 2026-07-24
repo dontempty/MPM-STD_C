@@ -10,7 +10,7 @@
 
 namespace mpmstd::physics::buoyancy {
 
-void add_buoyancy_force_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
+void add_buoyancy_force_constant_property_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
                             const core::CpuField& T, const BuoyancyParams& p, real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
@@ -38,9 +38,9 @@ void add_buoyancy_force_cpu(const core::Domain& domain, equation::momentum::CpuL
 // NOB buoyancy: F = invRhoc·(Tc + a12pera11·Tc²·DeltaT) on the gravity-axis
 // component, with both T and invRho interpolated onto that component's
 // staggered face (PaScaL_TCS mom.f90:711/731, module_solve_momentum solvedV) —
-// same face-interpolation as add_buoyancy_force_cpu above, extended to invRho.
-// With invRho≡1, a12pera11=0 it reduces to add_buoyancy_force_cpu(coeff=1,T_ref=0).
-void add_buoyancy_force_nob_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
+// same face-interpolation as add_buoyancy_force_constant_property_cpu above, extended to invRho.
+// With invRho≡1, a12pera11=0 it reduces to add_buoyancy_force_constant_property_cpu(coeff=1,T_ref=0).
+void add_buoyancy_force_variable_property_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
                                 const core::CpuField& T, const core::CpuField& inv_rho,
                                 const BuoyancyParams& p, real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];

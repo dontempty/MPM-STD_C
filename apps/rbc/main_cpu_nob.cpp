@@ -108,14 +108,14 @@ int main(int argc, char** argv) {
 
     physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    equation::scalar::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
+    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, fields, props.KPP, props.dKPP,
                                    props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    physics::buoyancy::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
-    equation::pressure::add_pressure_gradient_nob_cpu(domain, momentum, fields[core::Var::P], props.invRho, dt);
-    equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    equation::momentum::assemble_momentum_variable_property_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_variable_property_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
+    equation::pressure::add_pressure_gradient_variable_property_cpu(domain, momentum, fields[core::Var::P], props.invRho, dt);
+    equation::momentum::solve_momentum_variable_property_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);

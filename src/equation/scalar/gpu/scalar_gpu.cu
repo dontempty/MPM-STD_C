@@ -263,14 +263,14 @@ namespace mpmstd::equation::scalar {
 
 // ###########################################################################
 // ## OB CONSTANT-DIFFUSIVITY SCALAR — DEAD FOR DHVC                        ##
-// ## solve_scalar_ob_gpu = the nob kernels driven with unit properties     ##
-// ## (κ≡1, dκ≡0). DHVC (dhvc_gpu) routes through solve_scalar_nob_gpu     ##
+// ## solve_scalar_constant_property_gpu = the nob kernels driven with unit properties     ##
+// ## (κ≡1, dκ≡0). DHVC (dhvc_gpu) routes through solve_scalar_variable_property_gpu     ##
 // ## with κ≡1, dκ≡0 (the NOB-faithful 0.5-skew semi-implicit + −M·Tⁿ      ##
 // ## residual scheme). This OB wrapper is LIVE ONLY for the rbc_gpu_ob    ##
 // ## binary. DO NOT call from DHVC.                                       ##
 // ###########################################################################
 // 선언부: equation/scalar/solve.hpp
-void solve_scalar_ob_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_scalar_constant_property_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                        core::GpuFields& fields, equation::scalar::GpuLinearSystem& sys, real_t dt) {
 #ifdef MPMSTD_BACKEND_CUDA
   const auto nt = domain.sub.n_total();
@@ -363,7 +363,7 @@ void solve_scalar_ob_gpu(const core::Domain& domain, const boundary::BoundaryCon
 //   invRhoCp/dinvRhoCp (1/(ρ̂Ĉp), 도함수) — TCS invRhoCp/dinvRhoCp
 //   sys : CPU 경로용 밴드 저장소 — GPU 경로는 디바이스 캐시(d_A_ 등)를 쓰므로 미사용
 // 선언부: equation/scalar/solve.hpp
-void solve_scalar_nob_gpu(
+void solve_scalar_variable_property_gpu(
     const core::Domain& domain, const boundary::BoundaryCondition& bc,
     core::GpuFields& fields,
     const core::GpuField& KPP,   const core::GpuField& dKPP,

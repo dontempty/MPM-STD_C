@@ -14,7 +14,7 @@ namespace mpmstd::equation::scalar {
 
 
 // ---- assemble: explicit CN RHS (Laplacian + convection) ---------------------
-void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
+void coef_scalar_constant_property_cpu(const core::Domain& domain, core::CpuFields& fields,
                                     equation::scalar::CpuLinearSystem& scalar_system, real_t dt) {
   const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const real_t* T     = fields[core::Var::T].data();
@@ -35,7 +35,7 @@ void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
 }
 
 // ---- solve: 3-sweep ADI (sweep order from BC) + T += increment --------------
-void solve_scalar_ob_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_scalar_constant_property_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                       core::CpuFields& fields, equation::scalar::CpuLinearSystem& sys, real_t dt) {
   const auto nt = sys.n_total; const auto ni = sys.n_interior;
   const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -81,7 +81,7 @@ void solve_scalar_ob_cpu(const core::Domain& domain, const boundary::BoundaryCon
 //  With κ̂≡1, dκ̂≡0, invρĈp≡1, dinvρĈp≡0 the diffusion reduces to the const
 //  Laplacian; the semi-implicit convection is the faithful upgrade.
 // =============================================================================
-void solve_scalar_nob_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_scalar_variable_property_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                           core::CpuFields& fields,
                           const core::CpuField& KPP, const core::CpuField& dKPP,
                           const core::CpuField& invRhoCp, const core::CpuField& dinvRhoCp,

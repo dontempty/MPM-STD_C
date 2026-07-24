@@ -68,7 +68,7 @@ __global__ void k_pacc_add(double* Pacc, const double* dP, long n) {
 
 } // anonymous namespace
 
-void add_pressure_gradient_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
+void add_pressure_gradient_constant_property_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
                                const core::GpuField& P_acc, real_t dt) {
   const auto ni = domain.sub.n_interior();
   const auto nt = domain.sub.n_total();
@@ -82,7 +82,7 @@ void add_pressure_gradient_gpu(const core::Domain& domain, equation::momentum::G
       static_cast<double>(dt));
 }
 
-void add_pressure_gradient_nob_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
+void add_pressure_gradient_variable_property_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
                                    const core::GpuField& P_acc, const core::GpuField& inv_rho,
                                    real_t dt) {
   const auto ni = domain.sub.n_interior();
@@ -123,7 +123,7 @@ static core::GpuField& ensure_dP_gpu(equation::pressure::LinearSystem& poi,
 
 // ── OB GPU pressure solve ─────────────────────────────────────────────────────
 
-void solve_pressure_gpu(const core::Domain&             domain,
+void solve_pressure_constant_property_gpu(const core::Domain&             domain,
                         const boundary::BoundaryCondition&  bc,
                         core::GpuFields&                gpu_fields,
                         equation::pressure::LinearSystem&           poi,
@@ -142,7 +142,7 @@ void solve_pressure_gpu(const core::Domain&             domain,
 
 // ── NOB GPU pressure solve ────────────────────────────────────────────────────
 
-void solve_pressure_nob_gpu(const core::Domain&             domain,
+void solve_pressure_variable_property_gpu(const core::Domain&             domain,
                              const boundary::BoundaryCondition&  bc,
                              core::GpuFields&                gpu_fields,
                              equation::pressure::LinearSystem&           poi,

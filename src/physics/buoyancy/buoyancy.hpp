@@ -22,14 +22,14 @@ struct BuoyancyParams {
 
 // OB Boussinesq: F = coeff·(Tc − T_ref) on the gravity-axis component, where Tc
 // is T interpolated onto that component's staggered face (PaScaL_TCS f90:348).
-void add_buoyancy_force_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom, const core::CpuField& T, const BuoyancyParams& p, real_t dt);
-void add_buoyancy_force_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom, const core::GpuField& T, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_constant_property_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom, const core::CpuField& T, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_constant_property_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom, const core::GpuField& T, const BuoyancyParams& p, real_t dt);
 
 // NOB (variable density): F = invRhoc·(Tc + a12pera11·Tc²·DeltaT), with Tc and
 // invRhoc both face-interpolated onto the gravity-axis component (like the OB
 // function above). With invRho≡1, a12pera11=0 this reduces to the OB form
 // with coeff=1, T_ref=0.
-void add_buoyancy_force_nob_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom, const core::CpuField& T, const core::CpuField& inv_rho, const BuoyancyParams& p, real_t dt);
-void add_buoyancy_force_nob_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom, const core::GpuField& T, const core::GpuField& inv_rho, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_variable_property_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom, const core::CpuField& T, const core::CpuField& inv_rho, const BuoyancyParams& p, real_t dt);
+void add_buoyancy_force_variable_property_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom, const core::GpuField& T, const core::GpuField& inv_rho, const BuoyancyParams& p, real_t dt);
 
 } // namespace mpmstd::physics::buoyancy

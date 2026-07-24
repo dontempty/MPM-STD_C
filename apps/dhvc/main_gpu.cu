@@ -550,7 +550,7 @@ int main(int argc, char** argv) {
     // one pressure projection cleans it before time marching (methodology step 4).
     if (!restart_in.empty()) {
         const real_t dt0 = static_cast<real_t>(cfg.get_or<double>("time","dt_start",0.001));
-        equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt0);
+        equation::pressure::solve_pressure_constant_property_gpu(domain, bc, gpu_fields, pressure, dt0);
         if (mpi.is_root())
             std::printf("[warm-start] projected interpolated field divergence-free (dt0=%.2e)\n", dt0);
     }
@@ -606,18 +606,18 @@ int main(int argc, char** argv) {
         if (do_timing) { cudaDeviceSynchronize(); ts_cfl += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (1) Scalar: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
-        equation::scalar::solve_scalar_nob_gpu(domain, bc, gpu_fields,
+        equation::scalar::solve_scalar_variable_property_gpu(domain, bc, gpu_fields,
             gpu_props.KPP, gpu_props.dKPP, gpu_props.invRhoCp, gpu_props.dinvRhoCp,
             gpu_scalar, dt);
         core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
         if (do_timing) { cudaDeviceSynchronize(); ts_scalar += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (2) Momentum predictor + OB buoyancy  (NOB var path with unit props)
-        equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields,
+        equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields,
             gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-        physics::buoyancy::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-        equation::pressure::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
-        equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields,
+        physics::buoyancy::add_buoyancy_force_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+        equation::pressure::add_pressure_gradient_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
+        equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields,
             gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
         equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
         if (do_timing) { cudaDeviceSynchronize(); ts_mom += ms_since(tPrev); tPrev = hrc::now(); }
@@ -642,7 +642,7 @@ int main(int argc, char** argv) {
         if (do_timing) { cudaDeviceSynchronize(); ts_sync += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (5) Pressure
-        equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
+        equation::pressure::solve_pressure_constant_property_gpu(domain, bc, gpu_fields, pressure, dt);
         equation::pressure::accumulate_pressure_gpu(gpu_fields, pressure);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
         if (do_timing) { cudaDeviceSynchronize(); ts_pres += ms_since(tPrev); }
 

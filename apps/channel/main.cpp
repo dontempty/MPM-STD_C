@@ -209,8 +209,8 @@ int main(int argc, char** argv) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
     // (2) momentum: RHS → 3-sweep ADI + block coupling → U += dU
-    equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::momentum::assemble_momentum_constant_property_cpu(domain, fields, momentum, dt);
+    equation::momentum::solve_momentum_constant_property_cpu(domain, bc, fields, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);

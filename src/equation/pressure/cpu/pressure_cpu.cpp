@@ -11,7 +11,7 @@
 
 namespace mpmstd::equation::pressure {
 
-void add_pressure_gradient_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
+void add_pressure_gradient_constant_property_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
                                const core::CpuField& P_acc, real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
@@ -37,7 +37,7 @@ void add_pressure_gradient_cpu(const core::Domain& domain, equation::momentum::C
 // PaScaL_TCS mom.f90:331/343 — invRhoc is the dx-weighted face mean of invRho:
 //   invRhoc = 0.5·(dx(im)·invRho(i) + dx(i)·invRho(im))/dmx(i)
 // Mirrors the GPU kernel k_pred_pgrad_var (pressure_gpu.cu) — see Report/32.
-void add_pressure_gradient_nob_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
+void add_pressure_gradient_variable_property_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
                                    const core::CpuField& P_acc, const core::CpuField& inv_rho,
                                    real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];

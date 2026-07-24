@@ -94,13 +94,13 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    equation::scalar::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
-    equation::scalar::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
+    equation::scalar::coef_scalar_constant_property_cpu(domain, fields, scalar_system, dt);
+    equation::scalar::solve_scalar_constant_property_cpu(domain, bc, fields, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    physics::buoyancy::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::momentum::assemble_momentum_constant_property_cpu(domain, fields, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_constant_property_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
+    equation::momentum::solve_momentum_constant_property_cpu(domain, bc, fields, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);

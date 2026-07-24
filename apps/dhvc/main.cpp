@@ -212,16 +212,16 @@ int main(int argc, char** argv) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
     // (1) energy: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
-    equation::scalar::solve_scalar_nob_cpu(domain, bc, fields,
+    equation::scalar::solve_scalar_variable_property_cpu(domain, bc, fields,
         props.KPP, props.dKPP, props.invRhoCp, props.dinvRhoCp,
         scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
     // (2) momentum predictor + OB buoyancy (NOB var path with unit props)
-    equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    physics::buoyancy::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    equation::pressure::add_pressure_gradient_cpu(domain, momentum, fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
-    equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    equation::momentum::assemble_momentum_variable_property_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_constant_property_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
+    equation::pressure::add_pressure_gradient_constant_property_cpu(domain, momentum, fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
+    equation::momentum::solve_momentum_variable_property_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     // zero net streamwise flux (closed DHVC): subtract the bulk U the net
     // buoyancy would drive in the periodic streamwise direction.

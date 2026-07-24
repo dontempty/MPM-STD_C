@@ -5,8 +5,8 @@
 //  Pattern follows scalar_gpu.cu exactly: static device buffers, ensure_bufs(),
 //  per-direction ADI loop, host round-trip for non-periodic BC modification.
 //
-//  OB  (const-visc):  assemble_momentum_const_visc_gpu + solve_momentum_gpu
-//  NOB (var-visc):    assemble_momentum_var_visc_gpu   + solve_momentum_var_gpu
+//  OB  (const-visc):  assemble_momentum_constant_property_gpu + solve_momentum_constant_property_gpu
+//  NOB (var-visc):    assemble_momentum_variable_property_gpu   + solve_momentum_variable_property_gpu
 //  Both: update_velocity_gpu
 // =============================================================================
 
@@ -125,7 +125,7 @@ void ensure_ob_property_bufs_mom(std::size_t nf, double nu)
 // ###########################################################################
 // ## OB CONSTANT-PROPERTY MOMENTUM KERNELS — DEAD FOR DHVC                  ##
 // ## k_mom_rhs_ob / k_mom_adi_ob / k_block_couple_d{U,V}_ob and their       ##
-// ## wrappers (assemble_momentum_const_visc_gpu, solve_momentum_gpu) use    ##
+// ## wrappers (assemble_momentum_constant_property_gpu, solve_momentum_constant_property_gpu) use    ##
 // ## the divergent OB scheme: conservative-flux explicit convection         ##
 // ## (conv_factor=1), pure Laplacian (no own×2 / no transposed cross-       ##
 // ## stress), and NO −M·qⁿ delta-form residual — the root of the Report 18  ##
@@ -190,7 +190,7 @@ __global__ void k_mom_rhs_ob(
                         + (fy_p - fy_m) / dx2[j]
                         + (fz_p - fz_m) / dx3[k];
 
-    // conv_factor = 1.0 (as called from assemble_momentum_const_visc_cpu with conv=1)
+    // conv_factor = 1.0 (as called from assemble_momentum_constant_property_cpu with conv=1)
     rhs[c] = nu * dt * (Lx + Ly + Lz) - 1.0 * dt * div_uq;
 }
 
@@ -1511,13 +1511,13 @@ static void adi_component_var(
 namespace mpmstd::equation::momentum {
 
 // ---------------------------------------------------------------------------
-//  assemble_momentum_const_visc_gpu  — OB const-property wrapper.
+//  assemble_momentum_constant_property_gpu  — OB const-property wrapper.
 //  *** DEAD FOR DHVC *** (see the OB-kernels banner above). LIVE ONLY for the
-//  rbc_gpu_ob binary. DHVC uses assemble_momentum_var_visc_gpu instead.
+//  rbc_gpu_ob binary. DHVC uses assemble_momentum_variable_property_gpu instead.
 //  Fills mom.dU/dV/dW with the OB explicit BW-ADI RHS.
 //  Buoyancy is added to mom.dW between assemble and solve.
 // ---------------------------------------------------------------------------
-void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuFields& fields,
+void assemble_momentum_constant_property_gpu(const core::Domain& domain, core::GpuFields& fields,
                                        equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
@@ -1539,7 +1539,7 @@ void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuField
     const dim3 blk(8, 8, 8);
     const dim3 grd((n1i+7)/8, (n2i+7)/8, (n3i+7)/8);
 
-    // rhs staged directly in mom.dU/dV/dW so add_buoyancy_force_gpu sees them
+    // rhs staged directly in mom.dU/dV/dW so add_buoyancy_force_constant_property_gpu sees them
     k_mom_rhs_ob<<<grd, blk>>>(
             mom.dU.data(), d_U, d_U, d_V, d_W,
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
@@ -1559,9 +1559,9 @@ void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuField
 }
 
 // ---------------------------------------------------------------------------
-//  assemble_momentum_var_visc_gpu (NOB)
+//  assemble_momentum_variable_property_gpu (NOB)
 // ---------------------------------------------------------------------------
-void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields& fields,
+void assemble_momentum_variable_property_gpu(const core::Domain& domain, core::GpuFields& fields,
                                      const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
                                      equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
@@ -1611,9 +1611,9 @@ void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields&
 }
 
 // ---------------------------------------------------------------------------
-//  solve_momentum_gpu (OB)
+//  solve_momentum_constant_property_gpu (OB)
 //
-//  Sequence (mirrors solve_momentum_cpu):
+//  Sequence (mirrors solve_momentum_constant_property_cpu):
 //    adi_component(rhs_u, own=X, z_stag=false) → dU
 //    adi_component(rhs_v, own=Y, z_stag=false) → dV
 //    adi_component(rhs_w, own=Z, z_stag=true)  → dW
@@ -1622,7 +1622,7 @@ void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields&
 //    sync dV (bc.V)
 //    block_couple_dU(dU ← dV, dW, U, ...)
 // ---------------------------------------------------------------------------
-void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_momentum_constant_property_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                          core::GpuFields& fields, equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
@@ -1685,9 +1685,9 @@ void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCond
 }
 
 // ---------------------------------------------------------------------------
-//  solve_momentum_var_gpu (NOB)
+//  solve_momentum_variable_property_gpu (NOB)
 //
-//  Sequence (mirrors solve_momentum_var_cpu; ref MPM-STD submodule.f90:202-227
+//  Sequence (mirrors solve_momentum_variable_property_cpu; ref MPM-STD submodule.f90:202-227
 //  arrangement — wall-normal dW solved LAST, all its couplings pre-injected
 //  into the RHS so they pass the implicit z-ADI; explicit post-hoc corrections
 //  go to the horizontal dV/dU only. Report/RBC wall-reignition analysis):
@@ -1703,7 +1703,7 @@ void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCond
 //    sync dV
 //    k_block_dU_var(dU ← dV, dW, ...)             [M12 + M13, post-hoc]
 // ---------------------------------------------------------------------------
-void solve_momentum_var_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_momentum_variable_property_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                               core::GpuFields& fields,
                               const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
                               equation::momentum::GpuLinearSystem& mom, real_t dt)

@@ -113,12 +113,12 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
 
-    equation::scalar::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
+    equation::scalar::solve_scalar_constant_property_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
-    equation::momentum::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
-    physics::buoyancy::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-    equation::momentum::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
+    equation::momentum::assemble_momentum_constant_property_gpu(domain, gpu_fields, gpu_momentum, dt);
+    physics::buoyancy::add_buoyancy_force_constant_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    equation::momentum::solve_momentum_constant_property_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
     equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
 
     // G4: GPU pressure solve (OB — no H↔D transfers for pressure)
-    equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
+    equation::pressure::solve_pressure_constant_property_gpu(domain, bc, gpu_fields, pressure, dt);
 
     // Download U, V, W, T for diagnostics (rbc::accumulate + print_step use CPU fields)
     gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());

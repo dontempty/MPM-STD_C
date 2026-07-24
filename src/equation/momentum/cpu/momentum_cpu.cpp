@@ -15,7 +15,7 @@ namespace mpmstd::equation::momentum {
 
 
 // ---- assemble: explicit BW-ADI RHS per component (T-independent) ------------
-void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
+void assemble_momentum_constant_property_cpu(const core::Domain& domain, core::CpuFields& fields,
                                       equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const real_t* up = fields[core::Var::U].data();
@@ -39,7 +39,7 @@ void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuField
 // mu/inv_rho are the property fields (physics/properties). With μ≡1, invρ≡1 it
 // reduces to the const-visc RHS. (Cross-stress terms are a follow-up; they vanish
 // for constant μ.)  Cmu = √(Pr/Ra) = the same nu constant.
-void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
+void assemble_momentum_variable_property_cpu(const core::Domain& domain, core::CpuFields& fields,
                                     const core::CpuField& mu_field, const core::CpuField& inv_rho_field,
                                     equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -162,7 +162,7 @@ void adi_component_var(equation::momentum::CpuLinearSystem& mom, std::vector<rea
 } // anonymous namespace
 
 // ---- solve: 3-sweep ADI per component + block coupling (M2) -----------------
-void solve_momentum_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_momentum_constant_property_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                         core::CpuFields& fields, equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const real_t  nu = fields.constant(core::Const::nu);
   const real_t* Up = fields[core::Var::U].data();
@@ -205,7 +205,7 @@ static void zero_dw_lower_wall_face(real_t* dW, const core::Domain& domain,
       dW[(i * n2 + j) * n3 + h] = real_t{0};
 }
 
-void solve_momentum_var_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
+void solve_momentum_variable_property_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                             core::CpuFields& fields, const core::CpuField& mu_field,
                             const core::CpuField& inv_rho_field,
                             equation::momentum::CpuLinearSystem& mom, real_t dt) {
