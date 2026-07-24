@@ -37,6 +37,7 @@
 #include "physics/properties/properties.hpp"
 #include "post/statistics.hpp"
 #include "post/statistics_dhvc.hpp"
+#include "post/dhvc_restart.hpp"
 #include "post/io.hpp"            // write_restart_cpu (checkpoint)
 
 #include <cuda_runtime.h>
@@ -118,6 +119,7 @@ int main(int argc, char** argv) {
     const std::string dir_stats = cfg.get_or<std::string>("output","dir_stats","apps/dhvc/statistics/");
     const std::string restart_out = cfg.get_or<std::string>("restart","dir_out","");  // checkpoint at run end
     const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in","");   // warm-start source (any mesh)
+    post::DhvcRestart restart(restart_in, restart_out);
     if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
     MPI_Barrier(topo.cart_comm());
 
@@ -152,70 +154,18 @@ int main(int argc, char** argv) {
             W[c]+=static_cast<real_t>(0.5*amp*env*std::sin(2.0*M_PI*x/Lx));
         }
     } else {
-        // WARM START — read the source restart (any mesh) + interpolate (staggered,
-        // trilinear, x/y periodic, z clamp) onto this run's grid. U,V,W,T,P(=P_acc).
-        const double Lx=cfg.get<double>("domain","Lx"), Ly=cfg.get<double>("domain","Ly"), Lz=cfg.get<double>("domain","Lz");
-        const double gz=cfg.get_or<double>("mesh_stretch","gamma3",0.0);
-        int sdim[3]={0,0,0};
-        if (mpi.is_root()) {
-            std::ifstream mf(restart_in + "/meta.txt"); std::string k; double v;
-            while (mf>>k>>v) { if(k=="n1m")sdim[0]=(int)v; else if(k=="n2m")sdim[1]=(int)v; else if(k=="n3m")sdim[2]=(int)v; }
-        }
-        MPI_Bcast(sdim,3,MPI_INT,0,topo.cart_comm());
-        if (sdim[0]<=0||sdim[1]<=0||sdim[2]<=0) throw std::runtime_error("warm start: bad/missing meta.txt dims in " + restart_in);
-        post::SrcMesh sm = post::make_src_mesh(sdim[0],sdim[1],sdim[2], Lx,Ly,Lz, gz);
-        std::vector<real_t> buf;
-        const core::Var vars[5]={core::Var::U,core::Var::V,core::Var::W,core::Var::T,core::Var::P};
-        const char*     names[5]={"U","V","W","T","P"};
-        const int       stag[5] ={0,1,2,-1,-1};   // U:x-face V:y-face W:z-face T,P:center
-
-        // I/O path: "slab" (Tier 1, default) reads only this rank's source z-slab via
-        // collective MPI-IO (per-rank memory ~ full_field/N_z, no Bcast); "replicate"
-        // (legacy) reads the whole field on every rank + Bcast. Both feed the IDENTICAL
-        // trilinear interpolation — only the source z indexing differs.
-        const std::string ws_io = cfg.get_or<std::string>("restart","warmstart_io","slab");
-        const bool use_slab = (ws_io != "replicate");
-        int kz0 = 0, slab_n3 = -1;
-        if (use_slab) {
-            // This rank's target z-extent (interior faces bound every staggered node).
-            const int n3t = static_cast<int>(sub.n_total()[2]), h = kHaloWidth;
-            const auto& tzf = grid.xf(Direction::Z);
-            const double z_min = static_cast<double>(tzf[h]);
-            const double z_max = static_cast<double>(tzf[n3t - h]);
-            post::compute_src_z_box(sm, z_min, z_max, /*margin=*/2, kz0, slab_n3);
-        }
-        for (int q=0;q<5;++q) {
-            const std::string fpath = restart_in + "/" + std::string(names[q]) + ".bin";
-            if (use_slab) post::read_source_slab(buf, sdim[0],sdim[1],sdim[2], kz0, slab_n3, fpath, topo.cart_comm());
-            else          post::read_global_field(buf, sdim[0],sdim[1],sdim[2], fpath, topo.cart_comm());
-            post::interp_global_to_field(cpu_fields[vars[q]], grid, buf, sm, stag[q], kz0, slab_n3);
-        }
-        if (mpi.is_root())
-            std::printf("[warm-start] interpolated %dx%dx%d -> %dx%dx%d from %s (io=%s)\n",
-                        sdim[0],sdim[1],sdim[2], n_global[0],n_global[1],n_global[2],
-                        restart_in.c_str(), use_slab ? "slab" : "replicate");
-
-        // dry-run: dump per-var interior checksums (for slab-vs-replicate A/B), then exit.
-        if (cfg.get_or<int>("restart","warmstart_dryrun",0)) {
-            const auto nt=sub.n_total(); const int n1=nt[0],n2=nt[1],n3=nt[2],h=kHaloWidth;
-            if (mpi.is_root()) std::printf("[warm-start dryrun] var: sum  sumsq  min  max  (global interior, io=%s)\n", use_slab?"slab":"replicate");
-            for (int q=0;q<5;++q) {
-                const real_t* d = cpu_fields[vars[q]].data();
-                double s=0, s2=0, mn=1e300, mx=-1e300;
-                for (int i=h;i<n1-h;++i) for (int j=h;j<n2-h;++j) for (int k=h;k<n3-h;++k) {
-                    const double v=(double)d[((std::size_t)i*n2+j)*n3+k];
-                    s+=v; s2+=v*v; mn=std::min(mn,v); mx=std::max(mx,v);
-                }
-                double gs,gs2,gmn,gmx;
-                MPI_Reduce(&s,&gs,1,MPI_DOUBLE,MPI_SUM,0,topo.cart_comm());
-                MPI_Reduce(&s2,&gs2,1,MPI_DOUBLE,MPI_SUM,0,topo.cart_comm());
-                MPI_Reduce(&mn,&gmn,1,MPI_DOUBLE,MPI_MIN,0,topo.cart_comm());
-                MPI_Reduce(&mx,&gmx,1,MPI_DOUBLE,MPI_MAX,0,topo.cart_comm());
-                if (mpi.is_root()) std::printf("[warm-start dryrun] %s: %.15e %.15e %.15e %.15e\n", names[q],gs,gs2,gmn,gmx);
-            }
-            MPI_Barrier(topo.cart_comm());
-            return 0;   // RAII (topo, then mpi=MpiContext) frees comm + MPI_Finalize on return
-        }
+        // WARM START — cross-mesh interpolating read (post::DhvcRestart). Returns
+        // true when a dry-run checksum dump was requested → exit after it.
+        post::DhvcWarmStartConfig ws;
+        ws.Lx     = cfg.get<double>("domain","Lx");
+        ws.Ly     = cfg.get<double>("domain","Ly");
+        ws.Lz     = cfg.get<double>("domain","Lz");
+        ws.gamma3 = cfg.get_or<double>("mesh_stretch","gamma3", 0.0);
+        ws.io     = cfg.get_or<std::string>("restart","warmstart_io","slab");
+        ws.dryrun = cfg.get_or<int>("restart","warmstart_dryrun", 0) != 0;
+        ws.target_dims = n_global;
+        if (restart.load_warmstart(cpu_fields, grid, sub, ws, topo.cart_comm()))
+            return 0;   // dry-run: RAII (topo, then mpi) frees comm + MPI_Finalize on return
     }
     {
         const auto nt=sub.n_total(); const int n1=nt[0], n2=nt[1], n3=nt[2], h=kHaloWidth;
@@ -417,22 +367,7 @@ int main(int argc, char** argv) {
     // continuation + the (future) cross-mesh interpolation warm-start.
     if (!restart_out.empty()) {
         core::copy_all_to_host(gpu_fields, cpu_fields);   // U/V/W/T/P device→host (P.bin = accumulated pressure)
-        std::error_code ec; std::filesystem::create_directories(restart_out, ec);
-        MPI_Barrier(topo.cart_comm());
-        post::write_restart_gathered_cpu(cpu_fields[core::Var::U], sub, restart_out + "/U.bin");
-        post::write_restart_gathered_cpu(cpu_fields[core::Var::V], sub, restart_out + "/V.bin");
-        post::write_restart_gathered_cpu(cpu_fields[core::Var::W], sub, restart_out + "/W.bin");
-        post::write_restart_gathered_cpu(cpu_fields[core::Var::T], sub, restart_out + "/T.bin");
-        post::write_restart_gathered_cpu(cpu_fields[core::Var::P], sub, restart_out + "/P.bin");
-        if (mpi.is_root()) {
-            std::ofstream mf(restart_out + "/meta.txt");
-            mf << std::setprecision(17)
-               << "step " << step << "\n" << "time " << time << "\n"
-               << "n1m " << n_global[0] << "\n" << "n2m " << n_global[1] << "\n"
-               << "n3m " << n_global[2] << "\n" << "Ra " << Ra << "\n";
-            std::printf("[restart] wrote %s  (step=%d t=%.4f; U/V/W/T/P + meta)\n",
-                        restart_out.c_str(), step, time);
-        }
+        restart.save(cpu_fields, sub, step, time, n_global, Ra, topo.cart_comm());
     }
 
     const double re_dstar = statistics.final_re_delta_star();
