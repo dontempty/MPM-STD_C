@@ -36,6 +36,11 @@ struct PropertyModel {
   }
 };
 
+// Convenience factory so a case writes `physics::properties::glycerol(DeltaT)`
+// instead of the doubly-qualified PropertyModel::glycerol. Add other fluids
+// (water, ...) the same way — a free function per model, no new abstraction.
+inline PropertyModel glycerol(real_t DeltaT) { return PropertyModel::glycerol(DeltaT); }
+
 // Effective-coefficient fields produced from T (all cell-centered, full array
 // incl. halo). Consumed by the variable-μ momentum, variable-κ energy, and NOB
 // buoyancy. Templated on field type for Cpu/Gpu symmetry.

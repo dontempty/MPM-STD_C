@@ -4,6 +4,9 @@
 #include "core/field_cpu.hpp"
 #include "core/field_gpu.hpp"
 #include "core/domain.hpp"   // Domain (grid metrics for face-interpolated buoyancy T)
+#include "physics/properties/properties.hpp"   // PropertyModel (from_property_model factory)
+
+#include <cmath>   // std::fabs
 
 namespace mpmstd::physics::buoyancy {
 
@@ -18,6 +21,22 @@ struct BuoyancyParams {
   // a12pera11 = a12/a11 of the density polynomial; 0 ⇒ OB (then F = invRho·θ).
   real_t a12pera11    = 0;
   real_t delta_T      = 0;
+
+  // NOB-only factory: derive the density-nonlinearity params from a property
+  // model — a12pera11 = a[2]/a[1] (with the a[1]≈0 guard), delta_T = model.DeltaT,
+  // coeff=1, T_ref=0. OB cases (channel/DHVC) set `coeff` per-case by hand and
+  // do not use this. Body moved verbatim from the RBC mains.
+  static BuoyancyParams from_property_model(const properties::PropertyModel& model,
+                                            int gravity_axis) {
+    BuoyancyParams p;
+    p.gravity_axis = gravity_axis;
+    p.coeff        = 1;
+    p.T_ref        = 0;
+    p.a12pera11    = (std::fabs(model.a[2]) < real_t{1e-14}) ? real_t{0}
+                                                            : model.a[2] / model.a[1];
+    p.delta_T      = model.DeltaT;
+    return p;
+  }
 };
 
 // OB Boussinesq: F = coeff·(Tc − T_ref) on the gravity-axis component, where Tc

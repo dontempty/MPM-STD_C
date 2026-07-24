@@ -420,11 +420,8 @@ int main(int argc, char** argv) {
   cpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   physics::properties::CpuPropertyFields cpu_properties(sub);   // CPU copy for pressure step
-  const physics::properties::PropertyModel property_model = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
-  physics::buoyancy::BuoyancyParams buoyancy_params;
-  buoyancy_params.gravity_axis = gravity_axis; buoyancy_params.coeff = 1; buoyancy_params.T_ref = 0;
-  buoyancy_params.a12pera11 = (std::fabs(property_model.a[2]) < real_t{1e-14}) ? real_t{0} : property_model.a[2] / property_model.a[1];
-  buoyancy_params.delta_T   = static_cast<real_t>(DeltaT);
+  const auto property_model  = physics::properties::glycerol(static_cast<real_t>(DeltaT));
+  const auto buoyancy_params = physics::buoyancy::BuoyancyParams::from_property_model(property_model, gravity_axis);
 
   double t_next_out = t_stat_start;   // 다음 통계 파일을 기록할 물리시간 (아래 루프에서 갱신)
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
