@@ -39,7 +39,7 @@ inline std::size_t idx_Y(int ix, int j, int k, int h1pY, int n2m)
 
 PressureSolver::PressureSolver(const grid::Grid&                  grid,
                                 const parallel::mpi::Subdomain&    sub,
-                                const boundary::Problem&           problem,
+                                const boundary::BoundaryCondition&           problem,
                                 linear_solver::tdma::TdmaRegistry& tdma)
   : PressureSolverBase(grid, sub, problem, tdma)
 {

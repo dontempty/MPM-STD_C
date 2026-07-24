@@ -5,7 +5,7 @@
 #include "core/variables.hpp"
 #include "core/system.hpp"
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::pressure {
 
 // Pressure step (rev.2 §7), bundled: div(U*) → pencil-FFT/transpose/z-TDMA
 // Poisson → dP unpack into Fields[P] → project Fields[U,V,W] divergence-free.
@@ -14,14 +14,14 @@ namespace mpmstd::equation {
 // variable-density ExtraTerm to the Poisson RHS and applies the (invRhoc-1)*∇P̂
 // correction in the velocity projection (PaScaL_TCS mpi_pressure_RHS §214-225 +
 // mpi_pressure_Projection §804-817).
-void solve_pressure_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_pressure_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                         core::CpuFields& fields, core::PressureSystem& poi, real_t dt,
                         const real_t* inv_rho = nullptr);
-void solve_pressure_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_pressure_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                         core::GpuFields& fields, core::PressureSystem& poi, real_t dt);
 
 // NOB GPU pressure solve: adds ExtraTerm + NOB projection, updates internal dPhat.
-void solve_pressure_nob_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_pressure_nob_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                              core::GpuFields& fields, core::PressureSystem& poi, real_t dt,
                              const core::GpuField& inv_rho);
 
@@ -49,4 +49,4 @@ void add_pressure_gradient_nob_gpu(const core::Domain& domain, core::GpuMomentum
 void accumulate_pressure_cpu(core::CpuField& P_acc, const core::CpuField& dP);
 void accumulate_pressure_gpu(core::GpuField& P_acc, const core::GpuField& dP);
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::pressure

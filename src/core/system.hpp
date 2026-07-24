@@ -2,7 +2,7 @@
 
 #include "core/field_cpu.hpp"
 #include "core/field_gpu.hpp"
-#include "core/mpi_topology.hpp"   // Subdomain
+#include "core/gpu_binding.hpp"   // Subdomain
 #include "common/direction.hpp"    // Direction, Component, to_int
 
 #include <array>
@@ -32,7 +32,7 @@ struct ScalarSystemT {
   std::vector<real_t> A, B, C, D;   // tridiagonal bands [n_row × n_sys]
   std::array<int, 3>  n_total{}, n_interior{};
 
-  explicit ScalarSystemT(const Subdomain& sub)
+  explicit ScalarSystemT(const parallel::mpi::Subdomain& sub)
     : n_total(sub.n_total()), n_interior(sub.n_interior()) {
     const std::size_t nf  = static_cast<std::size_t>(n_total[0]) * n_total[1] * n_total[2];
     const std::size_t nin = static_cast<std::size_t>(n_interior[0]) * n_interior[1] * n_interior[2];
@@ -58,7 +58,7 @@ struct MomentumSystemT {
   std::vector<real_t> A, B, C, D;                     // tridiagonal bands [n_row × n_sys]
   std::array<int, 3>  n_total{}, n_interior{};
 
-  explicit MomentumSystemT(const Subdomain& sub)
+  explicit MomentumSystemT(const parallel::mpi::Subdomain& sub)
     : dU(sub, "dU"), dV(sub, "dV"), dW(sub, "dW"),
       n_total(sub.n_total()), n_interior(sub.n_interior()) {
     const std::size_t nf  = static_cast<std::size_t>(n_total[0]) * n_total[1] * n_total[2];

@@ -1332,12 +1332,12 @@ static void adi_component_ob(
         const double* d_q,         // own velocity (device)
         const double* d_U, const double* d_V, const double* d_W,  // advecting velocities
         bool z_stag,
-        const mpmstd::core::FieldBoundary& fbc,
+        const mpmstd::boundary::FieldBoundary& fbc,
         const mpmstd::core::Domain& domain,
-        const mpmstd::core::BoundaryCondition& bc,
+        const mpmstd::boundary::BoundaryCondition& bc,
         double nu, double dt,
         double* out_device,        // destination GpuField.data()
-        const mpmstd::core::gpu::GpuGridArrays* dg,
+        const mpmstd::core::GpuGridArrays* dg,
         int n1i, int n2i, int n3i,
         int n1t, int n2t, int n3t)
 {
@@ -1417,12 +1417,12 @@ static void adi_component_var(
         const double* d_mu, const double* d_irho,
         mpmstd::Direction own_dir,
         bool z_stag,
-        const mpmstd::core::FieldBoundary& fbc,
+        const mpmstd::boundary::FieldBoundary& fbc,
         const mpmstd::core::Domain& domain,
-        const mpmstd::core::BoundaryCondition& bc,
+        const mpmstd::boundary::BoundaryCondition& bc,
         double Cmu, double dt,
         double* out_device,
-        const mpmstd::core::gpu::GpuGridArrays* dg,
+        const mpmstd::core::GpuGridArrays* dg,
         int n1i, int n2i, int n3i,
         int n1t, int n2t, int n3t,
         const char* dbg_tag = nullptr)
@@ -1508,7 +1508,7 @@ static void adi_component_var(
 //  Public GPU functions
 // ============================================================================
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::momentum {
 
 // ---------------------------------------------------------------------------
 //  assemble_momentum_const_visc_gpu  — OB const-property wrapper.
@@ -1531,7 +1531,7 @@ void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuField
     const double nu = static_cast<double>(fields.constant(core::Const::nu));
     ensure_mom_bufs(nf, nb);
 
-    const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+    const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
     const double* d_U = fields[core::Var::U].data();
     const double* d_V = fields[core::Var::V].data();
     const double* d_W = fields[core::Var::W].data();
@@ -1576,7 +1576,7 @@ void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields&
     const double Cmu = static_cast<double>(fields.constant(core::Const::nu));
     ensure_mom_bufs(nf, nb);
 
-    const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+    const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
     const double* d_U    = fields[core::Var::U].data();
     const double* d_V    = fields[core::Var::V].data();
     const double* d_W    = fields[core::Var::W].data();
@@ -1622,7 +1622,7 @@ void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields&
 //    sync dV (bc.V)
 //    block_couple_dU(dU ← dV, dW, U, ...)
 // ---------------------------------------------------------------------------
-void solve_momentum_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                          core::GpuFields& fields, core::GpuMomentumSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
@@ -1636,7 +1636,7 @@ void solve_momentum_gpu(const core::Domain& domain, const core::BoundaryConditio
     const double nu = static_cast<double>(fields.constant(core::Const::nu));
     ensure_mom_bufs(nf, nb);
 
-    const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+    const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
     const double* d_U = fields[core::Var::U].data();
     const double* d_V = fields[core::Var::V].data();
     const double* d_W = fields[core::Var::W].data();
@@ -1703,7 +1703,7 @@ void solve_momentum_gpu(const core::Domain& domain, const core::BoundaryConditio
 //    sync dV
 //    k_block_dU_var(dU ← dV, dW, ...)             [M12 + M13, post-hoc]
 // ---------------------------------------------------------------------------
-void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_momentum_var_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                               core::GpuFields& fields,
                               const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
                               core::GpuMomentumSystem& mom, real_t dt)
@@ -1719,7 +1719,7 @@ void solve_momentum_var_gpu(const core::Domain& domain, const core::BoundaryCond
     const double Cmu = static_cast<double>(fields.constant(core::Const::nu));
     ensure_mom_bufs(nf, nb);
 
-    const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+    const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
     const double* d_U    = fields[core::Var::U].data();
     const double* d_V    = fields[core::Var::V].data();
     const double* d_W    = fields[core::Var::W].data();
@@ -1891,4 +1891,4 @@ void debug_slabmax_gpu(const char* tag, const core::GpuField& f, const core::Dom
 #endif
 }
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::momentum

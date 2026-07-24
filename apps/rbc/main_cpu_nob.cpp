@@ -3,9 +3,10 @@
 // NOB path: variable mu/kappa/rho from PropertyModel; a12/a11 nonlinear buoyancy.
 
 #include "rbc_common.hpp"
+using namespace mpmstd;
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -15,9 +16,9 @@ int main(int argc, char** argv) {
   std::array<bool,3> periodic = {is_per(cfg.get_or<std::string>("topology","x","periodic")),
                                  is_per(cfg.get_or<std::string>("topology","y","periodic")),
                                  is_per(cfg.get_or<std::string>("topology","z","wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int,3> n_global = {cfg.get<int>("mesh","n1m"), cfg.get<int>("mesh","n2m"), cfg.get<int>("mesh","n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig,3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -26,8 +27,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>   ("domain", std::string("L")+char('x'+a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   core::Domain domain{grid, topo, sub, *tdma_owner};
@@ -47,9 +48,9 @@ int main(int argc, char** argv) {
   core::PressureSystem    pressure;
 
   const double DeltaT = cfg.get_or<double>("physics","DeltaT", 0.0);
-  physics::CpuPropertyFields props(sub);
-  const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
-  physics::BuoyancyParams buoy;
+  physics::properties::CpuPropertyFields props(sub);
+  const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  physics::buoyancy::BuoyancyParams buoy;
   buoy.gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2); buoy.coeff = 1; buoy.T_ref = 0;
   buoy.a12pera11 = (std::fabs(pmodel.a[2]) < real_t{1e-14}) ? real_t{0} : pmodel.a[2] / pmodel.a[1];
   buoy.delta_T   = static_cast<real_t>(DeltaT);
@@ -106,24 +107,24 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
+    physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    equation::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
+    equation::scalar::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
                                    props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    equation::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
-    equation::add_pressure_gradient_nob_cpu(domain, momentum, P_acc, props.invRho, dt);
-    equation::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    equation::update_velocity_cpu(fields, momentum);
+    equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
+    equation::pressure::add_pressure_gradient_nob_cpu(domain, momentum, P_acc, props.invRho, dt);
+    equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     rbc::zero_w_wall(fields[core::Var::W], sub);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.invRho.data());
-    equation::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.invRho.data());
+    equation::pressure::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     if (DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();

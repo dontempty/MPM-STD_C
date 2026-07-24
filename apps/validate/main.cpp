@@ -43,7 +43,7 @@ using namespace mpmstd;
 
 namespace {
 
-void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
+void zero_w_wall(core::CpuField& W, const parallel::mpi::Subdomain& sub) {
   const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
   real_t* w = W.data();
@@ -95,7 +95,7 @@ void add_buoyancy_face_u(core::CpuMomentumSystem& mom, const core::CpuField& T,
 
 // Dump interior field in the reference layout: i=X outer, j=Z middle, k=Y inner.
 // my storage idx = (iX*n2 + jY)*n3 + kZ.  Serial → interior = full domain.
-void dump_field(const core::CpuField& F, const core::Subdomain& sub, const std::string& path) {
+void dump_field(const core::CpuField& F, const parallel::mpi::Subdomain& sub, const std::string& path) {
   const auto nt = sub.n_total(); const int n2 = nt[1], n3 = nt[2];
   const auto ni = sub.n_interior(); const int i1 = ni[0], i2 = ni[1], i3 = ni[2];
   const int h = kHaloWidth;
@@ -114,7 +114,7 @@ void dump_field(const core::CpuField& F, const core::Subdomain& sub, const std::
 } // anonymous namespace
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/validate/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -124,9 +124,9 @@ int main(int argc, char** argv) {
   std::array<bool, 3> periodic = {is_per(cfg.get_or<std::string>("topology", "x", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "y", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "z", "wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int, 3> n_global = {cfg.get<int>("mesh", "n1m"), cfg.get<int>("mesh", "n2m"), cfg.get<int>("mesh", "n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig, 3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -135,8 +135,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>("domain", std::string("L") + char('x' + a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   auto& tdma       = *tdma_owner;
@@ -160,8 +160,8 @@ int main(int argc, char** argv) {
 
   const bool   faithful = cfg.get_or<int>("physics", "faithful", 1) != 0;
   const double DeltaT   = cfg.get_or<double>("physics", "DeltaT", 0.0);
-  physics::CpuPropertyFields   props(sub);
-  const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  physics::properties::CpuPropertyFields   props(sub);
+  const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   const real_t a12pera11 = (std::fabs(pmodel.a[2]) < static_cast<real_t>(1e-14)) ? 0 : pmodel.a[2] / pmodel.a[1];
 
   const real_t dt_fixed = static_cast<real_t>(cfg.get_or<double>("time", "dt_start", 0.004));
@@ -205,25 +205,25 @@ int main(int argc, char** argv) {
   while (step < n_steps) {
     const real_t dt = std::min(dt_fixed, driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_fixed));
 
-    physics::update_properties_cpu(props, fields[core::Var::T], pmodel);   // props≡1 at ΔT=0
+    physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);   // props≡1 at ΔT=0
 
     // energy: always the faithful var path (committed) so only momentum varies.
-    equation::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
+    equation::scalar::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP,
                                    props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    if (faithful) equation::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    else          equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    if (faithful) equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    else          equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
     add_buoyancy_face_u(momentum, fields[core::Var::T], props.invRho, domain, a12pera11, static_cast<real_t>(DeltaT), dt);
-    if (faithful) equation::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    else          equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
-    equation::update_velocity_cpu(fields, momentum);
+    if (faithful) equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    else          equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     zero_w_wall(fields[core::Var::W], sub);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
 
     time += static_cast<double>(dt);
     ++step;

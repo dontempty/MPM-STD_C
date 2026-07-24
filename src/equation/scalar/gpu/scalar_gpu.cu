@@ -102,7 +102,7 @@ __global__ void k_build_A_rhs_nob(
     int n1_tot, int n2_tot, int n3_tot,
     double Ct, double dt, bool is_stage1,
     bool z_owns_lower, bool z_owns_upper) {
-  using namespace mpmstd::equation::scalar::kernels::stencil;   // idx3, kH 등 → equation/scalar/scalar_var_stencil.hpp
+  using namespace mpmstd::equation::scalar::kernels;   // idx3, kH 등 → equation/scalar/scalar_var_stencil.hpp
 
   // sys in threadIdx.x so warp has adjacent sys values → coalesced writes to A/B/C/D[row*n_sys+sys]
   const int sys = blockIdx.x * blockDim.x + threadIdx.x;
@@ -158,7 +158,7 @@ __global__ void k_scatter_from_tdma(
     double* dst, const double* D_sol,
     int n1_int, int n2_int, int n3_int,
     int n1_tot, int n2_tot, int n3_tot) {
-  using namespace mpmstd::equation::scalar::kernels::stencil;   // idx3, kH 등 → equation/scalar/scalar_var_stencil.hpp
+  using namespace mpmstd::equation::scalar::kernels;   // idx3, kH 등 → equation/scalar/scalar_var_stencil.hpp
   const int sys = blockIdx.x * blockDim.x + threadIdx.x;
   const int row = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -185,7 +185,7 @@ __global__ void k_scatter_from_tdma(
 __global__ void k_add_increment(double* T, const double* delta,
                                  int n1i, int n2i, int n3i,
                                  int n2t, int n3t) {
-  using namespace mpmstd::equation::scalar::kernels::stencil;   // idx3, kH 등 → equation/scalar/scalar_var_stencil.hpp
+  using namespace mpmstd::equation::scalar::kernels;   // idx3, kH 등 → equation/scalar/scalar_var_stencil.hpp
   const int ii = blockIdx.x * blockDim.x + threadIdx.x;
   const int jj = blockIdx.y * blockDim.y + threadIdx.y;
   const int kk = blockIdx.z * blockDim.z + threadIdx.z;
@@ -259,7 +259,7 @@ cuda_tdma(mpmstd::linear_solver::tdma::TdmaRegistry& tdma,
 //  stage-1 explicit residual R is computed inline, no separate coef pass).
 // ============================================================================
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::scalar {
 
 // ###########################################################################
 // ## OB CONSTANT-DIFFUSIVITY SCALAR — DEAD FOR DHVC                        ##
@@ -270,7 +270,7 @@ namespace mpmstd::equation {
 // ## binary. DO NOT call from DHVC.                                       ##
 // ###########################################################################
 // 선언부: equation/scalar/solve.hpp
-void solve_scalar_ob_gpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_scalar_ob_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                        core::GpuFields& fields, core::GpuScalarSystem& sys, real_t dt) {
 #ifdef MPMSTD_BACKEND_CUDA
   const auto nt = domain.sub.n_total();
@@ -278,7 +278,7 @@ void solve_scalar_ob_gpu(const core::Domain& domain, const core::BoundaryConditi
   const double Ct = static_cast<double>(fields.constant(core::Const::alpha_T));
   ensure_ob_property_bufs(n_field, Ct);
 
-  const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);   // → core/gpu/gpu_grid.hpp
+  const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);   // → core/gpu/gpu_grid.hpp
   const int n1t = nt[0], n2t = nt[1], n3t = nt[2];
   const auto ni = domain.sub.n_interior();
   const int n1i = ni[0], n2i = ni[1], n3i = ni[2];
@@ -364,7 +364,7 @@ void solve_scalar_ob_gpu(const core::Domain& domain, const core::BoundaryConditi
 //   sys : CPU 경로용 밴드 저장소 — GPU 경로는 디바이스 캐시(d_A_ 등)를 쓰므로 미사용
 // 선언부: equation/scalar/solve.hpp
 void solve_scalar_nob_gpu(
-    const core::Domain& domain, const core::BoundaryCondition& bc,
+    const core::Domain& domain, const boundary::BoundaryCondition& bc,
     core::GpuFields& fields,
     const core::GpuField& KPP,   const core::GpuField& dKPP,
     const core::GpuField& invRhoCp, const core::GpuField& dinvRhoCp,
@@ -380,7 +380,7 @@ void solve_scalar_nob_gpu(
   const std::size_t n_band = (std::size_t)n1i * n2i * n3i;    // 내부 셀 수 = 밴드 길이
   ensure_scalar_device_bufs(n_field, n_band);   // d_A_~d_D_, d_rhs_/d_stage_ lazy 할당
 
-  const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);  // 격자 메트릭(dx,dmx) 디바이스 복사본 → core/gpu/gpu_grid.hpp
+  const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);  // 격자 메트릭(dx,dmx) 디바이스 복사본 → core/gpu/gpu_grid.hpp
   const real_t Ct = fields.constant(core::Const::alpha_T);    // Ct = 1/√(Ra·Pr) — TCS의 Ct
   const double* d_T  = fields[core::Var::T].data();           // θⁿ (디바이스 포인터)
   const double* d_U  = fields[core::Var::U].data();           // 대류 속도 U,V,W (MAC 면 값)
@@ -499,4 +499,4 @@ void solve_scalar_nob_gpu(
 #endif
 }
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::scalar

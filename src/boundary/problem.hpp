@@ -5,7 +5,7 @@
 
 namespace mpmstd::boundary {
 
-// Problem aggregates everything a Solver needs to know about boundary
+// BoundaryCondition aggregates everything a Solver needs to know about boundary
 // conditions:
 //   * the axis topology (which axes are periodic vs. non-periodic),
 //   * the per-field FaceBc descriptors for U, V, W, P, T.
@@ -19,14 +19,14 @@ namespace mpmstd::boundary {
 // hardcoded physical defaults in this class.
 //
 // Direct manual overrides are still supported for tests / one-off cases:
-//   Problem p;
+//   BoundaryCondition p;
 //   p.topology.axis[to_int(Direction::Z)] = AxisTopology::NonPeriodic;
 //   p.T.face(Direction::Z, Side::Minus) = FaceBc::dirichlet(2.5);
 //   p.validate();
 
-class Problem {
+class BoundaryCondition {
 public:
-  Problem();
+  BoundaryCondition();
 
   // Top-level state.
   DomainTopology topology;
@@ -42,7 +42,7 @@ public:
   FieldBoundary T;
 
   // Reset to the neutral all-Periodic state.  Called by the constructor;
-  // can be called again to wipe a Problem back to neutral before re-filling
+  // can be called again to wipe a BoundaryCondition back to neutral before re-filling
   // it from a different source.
   void apply_periodic_defaults();
 

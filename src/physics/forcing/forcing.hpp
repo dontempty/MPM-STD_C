@@ -3,7 +3,7 @@
 #include "core/domain.hpp"
 #include "core/variables.hpp"
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::forcing {
 
 // Channel forcing (rev.2 U7). The mean dP/dx STATE lives in the caller; these
 // free functions read/update it explicitly. Operate on Fields[U] + the Domain.
@@ -21,4 +21,4 @@ double apply_mass_flow_correction_cpu(const core::Domain& domain, core::CpuField
 double apply_mass_flow_correction_gpu(const core::Domain& domain, core::GpuFields& fields,
                                       double Ub_target, double dt, double total_vol, double& dpdx);
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::forcing

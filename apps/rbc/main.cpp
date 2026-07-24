@@ -47,7 +47,7 @@ using namespace mpmstd;
 
 namespace {
 
-void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
+void zero_w_wall(core::CpuField& W, const parallel::mpi::Subdomain& sub) {
   const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
   real_t* w = W.data();
@@ -124,7 +124,7 @@ double center_temp(const core::Domain& d, const core::CpuFields& f) {
 } // anonymous namespace
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -134,9 +134,9 @@ int main(int argc, char** argv) {
   std::array<bool, 3> periodic = {is_per(cfg.get_or<std::string>("topology", "x", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "y", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "z", "wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int, 3> n_global = {cfg.get<int>("mesh", "n1m"), cfg.get<int>("mesh", "n2m"), cfg.get<int>("mesh", "n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig, 3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -145,8 +145,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>("domain", std::string("L") + char('x' + a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   auto& tdma       = *tdma_owner;
@@ -171,15 +171,15 @@ int main(int argc, char** argv) {
   post::init_statistics_cpu(stats, domain);
 
   // RBC: gravity along z (wall-normal, vertical), F = θ on W, coeff = 1 (OB).
-  physics::BuoyancyParams buoy; buoy.gravity_axis = 2; buoy.coeff = 1; buoy.T_ref = 0;
+  physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis = 2; buoy.coeff = 1; buoy.T_ref = 0;
 
   // NOB (variable-property) path: nob=1 → variable-μ momentum driven by the
   // glycerol property fields. DeltaT sets the polynomial nonlinearity; DeltaT=0
   // ⇒ properties≡1, so nob=1/DeltaT=0 validates the var path against const-visc.
   const bool   nob    = cfg.get_or<int>("physics", "nob", 0) != 0;
   const double DeltaT = cfg.get_or<double>("physics", "DeltaT", 0.0);
-  physics::CpuPropertyFields  props(sub);
-  const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  physics::properties::CpuPropertyFields  props(sub);
+  const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   // NOB buoyancy nonlinearity: a12pera11 = a12/a11 of the density polynomial
   // (NOB_RBC_SPEC.md §5); guarded so OB (a12=0) and DeltaT=0 both give F = θ.
   buoy.a12pera11 = (std::fabs(pmodel.a[2]) < static_cast<real_t>(1e-14)) ? 0 : pmodel.a[2] / pmodel.a[1];
@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
 
   core::GpuMomentumSystem gpu_momentum(sub);
   core::GpuScalarSystem   gpu_scalar(sub);
-  physics::GpuPropertyFields gpu_props(sub);
+  physics::properties::GpuPropertyFields gpu_props(sub);
 
   gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
   gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());
@@ -267,23 +267,23 @@ int main(int argc, char** argv) {
     // ── GPU hybrid path (G3b): scalar+momentum GPU, pressure CPU ────────────
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
 
-    if (nob) physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+    if (nob) physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
     if (nob) {
-      equation::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
+      equation::scalar::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
                                      gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
     } else {
-      equation::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
+      equation::scalar::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
     }
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
-    if (nob) equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-    else     equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
-    if (nob) physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
-    else     physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-    if (nob) equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-    else     equation::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
-    equation::update_velocity_gpu(gpu_fields, gpu_momentum);
+    if (nob) equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    else     equation::momentum::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
+    if (nob) physics::buoyancy::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
+    else     physics::buoyancy::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    if (nob) equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    else     equation::momentum::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
+    equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
@@ -301,9 +301,9 @@ int main(int argc, char** argv) {
     gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
 
     // Update CPU properties for pressure (from transferred T)
-    if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
+    if (nob) physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt,
                                  nob ? props.invRho.data() : nullptr);
 
     if (nob && DeltaT > 0.0) {
@@ -323,29 +323,29 @@ int main(int argc, char** argv) {
     // ── CPU path ─────────────────────────────────────────────────────────────
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    if (nob) physics::update_properties_cpu(props, fields[core::Var::T], pmodel);
+    if (nob) physics::properties::update_properties_cpu(props, fields[core::Var::T], pmodel);
 
     if (nob) {
-      equation::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP, props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
+      equation::scalar::solve_scalar_nob_cpu(domain, bc, fields, props.KPP, props.dKPP, props.invRhoCp, props.dinvRhoCp, scalar_system, dt);
     } else {
-      equation::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
-      equation::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
+      equation::scalar::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
+      equation::scalar::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
     }
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    if (nob) equation::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    else     equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    if (nob) physics::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
-    else     physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    if (nob) equation::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    else     equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
-    equation::update_velocity_cpu(fields, momentum);
+    if (nob) equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    else     equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    if (nob) physics::buoyancy::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
+    else     physics::buoyancy::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
+    if (nob) equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    else     equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     zero_w_wall(fields[core::Var::W], sub);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt,
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt,
                                  nob ? props.invRho.data() : nullptr);
 
     if (nob && DeltaT > 0.0) {

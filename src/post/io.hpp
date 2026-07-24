@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/field_cpu.hpp"
-#include "core/mpi_topology.hpp"
-#include "core/grid.hpp"          // core::Grid (alias of grid::Grid) — xc/xf accessors
+#include "core/gpu_binding.hpp"
+#include "core/grid.hpp"          // grid::Grid (alias of grid::Grid) — xc/xf accessors
 
 #include <string>
 #include <vector>
@@ -12,14 +12,14 @@ namespace mpmstd::post {
 // Restart / field IO (rev.2 §10, U6: mandatory; target = existing global C-order
 // double format). Host-side even in GPU runs (to_host() first) ⇒ CPU only, no
 // _gpu twin. (body P1.)
-void write_restart_cpu(const core::CpuField& f, const core::Subdomain& sub, const std::string& path);
-void read_restart_cpu (core::CpuField& f,       const core::Subdomain& sub, const std::string& path);
+void write_restart_cpu(const core::CpuField& f, const parallel::mpi::Subdomain& sub, const std::string& path);
+void read_restart_cpu (core::CpuField& f,       const parallel::mpi::Subdomain& sub, const std::string& path);
 
 // Faster restart write for strided decompositions (z-split → the MPI-IO subarray
 // pattern is pathologically slow): gather the global interior to root (MPI_Gatherv)
 // and write it with one contiguous fwrite. Produces the IDENTICAL global C-order
 // double file that write_restart_cpu / read_global_field expect.
-void write_restart_gathered_cpu(const core::CpuField& f, const core::Subdomain& sub, const std::string& path);
+void write_restart_gathered_cpu(const core::CpuField& f, const parallel::mpi::Subdomain& sub, const std::string& path);
 
 // ── cross-mesh warm start ───────────────────────────────────────────────────────
 // Read the WHOLE global interior field (.bin = n1*n2*n3 raw real_t, C-order, the
@@ -66,7 +66,7 @@ void compute_src_z_box(const SrcMesh& sm, double z_min, double z_max, int margin
 // `src` may be either the WHOLE global field (kz0=0, slab_n3<0 ⇒ full sm.n[2]) or
 // a z-slab from read_source_slab (kz0,slab_n3 = that slab's z-origin/extent). The
 // trilinear math is identical in both cases — only the source z indexing shifts.
-void interp_global_to_field(core::CpuField& tgt, const core::Grid& tgt_grid,
+void interp_global_to_field(core::CpuField& tgt, const grid::Grid& tgt_grid,
                             const std::vector<real_t>& src, const SrcMesh& sm, int stagger_axis,
                             int kz0 = 0, int slab_n3 = -1);
 

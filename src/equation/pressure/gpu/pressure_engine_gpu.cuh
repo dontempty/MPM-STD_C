@@ -266,7 +266,7 @@ class PressureSolverGpu {
 public:
   PressureSolverGpu(const grid::Grid&                  grid,
                     const parallel::mpi::Subdomain&    sub,
-                    const boundary::Problem&           problem,
+                    const boundary::BoundaryCondition&           problem,
                     linear_solver::tdma::TdmaRegistry& tdma);
   ~PressureSolverGpu();
 
@@ -275,14 +275,14 @@ public:
 
   // OB pressure solve (constant density)
   void solve(real_t dt, core::GpuFields& gpu_fields,
-             const boundary::Problem& problem,
+             const boundary::BoundaryCondition& problem,
              const parallel::mpi::Subdomain& sub);
 
   // NOB pressure solve (variable density): adds ExtraTerm, NOB projection, then
   // extrapolates the predictor for next step (PaScaL_TCS §820-821):
   //   dP0 = (dPhat + dP0)/2 ;  dPhat = 2*dP - dP0.
   void solve_nob(real_t dt, core::GpuFields& gpu_fields,
-                 const boundary::Problem& problem,
+                 const boundary::BoundaryCondition& problem,
                  const parallel::mpi::Subdomain& sub,
                  const core::GpuField& inv_rho,
                  core::GpuField& dPhat, core::GpuField& dP0);
@@ -310,7 +310,7 @@ private:
   // ── shared geometry / decomposition state ────────────────────────────────
   const grid::Grid&                    grid_;
   const parallel::mpi::Subdomain&      sub_;
-  const boundary::Problem&             problem_;
+  const boundary::BoundaryCondition&             problem_;
   linear_solver::tdma::TdmaRegistry&   tdma_;
 
   int n1_tot_, n2_tot_, n3_tot_;
@@ -391,7 +391,7 @@ private:
 
 PressureSolverGpu::PressureSolverGpu(const grid::Grid&                  grid,
                                       const parallel::mpi::Subdomain&    sub,
-                                      const boundary::Problem&           problem,
+                                      const boundary::BoundaryCondition&           problem,
                                       linear_solver::tdma::TdmaRegistry& tdma)
   : grid_(grid), sub_(sub), problem_(problem), tdma_(tdma)
 {
@@ -1279,7 +1279,7 @@ void PressureSolverGpu::unpack_P_fast_(core::GpuField& P_gpu,
 // ── OB solve ──────────────────────────────────────────────────────────────────
 
 void PressureSolverGpu::solve(real_t dt, core::GpuFields& gpu_fields,
-                               const boundary::Problem& problem,
+                               const boundary::BoundaryCondition& problem,
                                const parallel::mpi::Subdomain& sub)
 {
   const std::size_t sz_C = (std::size_t)nx_loc_ * ny_loc_ * nz_loc_;
@@ -1317,7 +1317,7 @@ void PressureSolverGpu::solve(real_t dt, core::GpuFields& gpu_fields,
 // ── NOB solve ─────────────────────────────────────────────────────────────────
 
 void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
-                                   const boundary::Problem& problem,
+                                   const boundary::BoundaryCondition& problem,
                                    const parallel::mpi::Subdomain& sub,
                                    const core::GpuField& inv_rho,
                                    core::GpuField& dPhat, core::GpuField& dP0)

@@ -11,9 +11,8 @@
 // P1 numerics, rewired to the structural redesign (Domain + Fields + system).
 // Reads velocities/nu from Fields; increments live in the MomentumSystem.
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::momentum {
 
-namespace mk = momentum::kernels;
 
 // ---- assemble: explicit BW-ADI RHS per component (T-independent) ------------
 void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
@@ -28,11 +27,11 @@ void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuField
   const real_t* dx3 = domain.grid.dx_ptr(Direction::Z), *dmx3 = domain.grid.dmx_ptr(Direction::Z);
   const real_t conv = real_t{1};
 
-  mk::compute_mpmstd_rhs(mom.rhs_u.data(), up, up, vp, wp,
+  kernels::compute_mpmstd_rhs(mom.rhs_u.data(), up, up, vp, wp,
                          dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, nu, dt, Direction::X, false, conv);
-  mk::compute_mpmstd_rhs(mom.rhs_v.data(), vp, up, vp, wp,
+  kernels::compute_mpmstd_rhs(mom.rhs_v.data(), vp, up, vp, wp,
                          dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, nu, dt, Direction::Y, false, conv);
-  mk::compute_mpmstd_rhs(mom.rhs_w.data(), wp, up, vp, wp,
+  kernels::compute_mpmstd_rhs(mom.rhs_w.data(), wp, up, vp, wp,
                          dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, nu, dt, Direction::Z, true,  conv);
 }
 
@@ -55,11 +54,11 @@ void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields&
   // FAITHFUL per-component stage-1 residual (own×2 diffusion + skew-conv split +
   // weight-2 cross-stress, ref solvedU/W/V). Cross-stress is already folded in
   // (weight 2) → do NOT call add_transpose_stress_* on this path.
-  mk::compute_mpmstd_rhs_var(mom.rhs_u.data(), up, up, vp, wp, mu, irho,
+  kernels::compute_mpmstd_rhs_var(mom.rhs_u.data(), up, up, vp, wp, mu, irho,
                              dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, Direction::X);
-  mk::compute_mpmstd_rhs_var(mom.rhs_v.data(), vp, up, vp, wp, mu, irho,
+  kernels::compute_mpmstd_rhs_var(mom.rhs_v.data(), vp, up, vp, wp, mu, irho,
                              dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, Direction::Y);
-  mk::compute_mpmstd_rhs_var(mom.rhs_w.data(), wp, up, vp, wp, mu, irho,
+  kernels::compute_mpmstd_rhs_var(mom.rhs_w.data(), wp, up, vp, wp, mu, irho,
                              dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt, Direction::Z, true);
 }
 
@@ -67,7 +66,7 @@ void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields&
 namespace {
 void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
                    const real_t* qf, const real_t* Up, const real_t* Vp, const real_t* Wp, bool z_stag,
-                   const boundary::FieldBoundary& fbc, const core::Domain& domain, const core::BoundaryCondition& bc,
+                   const boundary::FieldBoundary& fbc, const core::Domain& domain, const boundary::BoundaryCondition& bc,
                    real_t nu, real_t dt, real_t* out) {
   const auto nt = mom.n_total; const auto ni = mom.n_interior;
   const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -81,7 +80,7 @@ void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
     const real_t* qadv = (dir == Direction::X) ? Up : (dir == Direction::Y) ? Vp : Wp;
     const bool    zs   = (dir == Direction::Z) && z_stag;
 
-    mk::build_adi_bands(dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
+    kernels::build_adi_bands(dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
                         in, qf, qadv, dxa, dmxa, n1, n2, n3, i1, i2, i3, nu, dt, real_t{0.5}, zs);
 
     int n_row = 0, n_sys = 0;
@@ -105,7 +104,7 @@ void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
       }
       domain.tdma.get(dir).solve_many(mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(), n_sys, n_row);
     }
-    mk::scatter_from_tdma(dir, outb, mom.D.data(), n1, n2, n3, i1, i2, i3);
+    kernels::scatter_from_tdma(dir, outb, mom.D.data(), n1, n2, n3, i1, i2, i3);
     std::swap(in, outb);
   }
   std::copy(in, in + static_cast<std::size_t>(n1) * n2 * n3, out);
@@ -116,7 +115,7 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
                        const real_t* qf, const real_t* Up, const real_t* Vp, const real_t* Wp,
                        const real_t* mu, const real_t* irho, Direction own_dir, bool z_stag,
                        const boundary::FieldBoundary& fbc, const core::Domain& domain,
-                       const core::BoundaryCondition& bc, real_t Cmu, real_t dt, real_t* out) {
+                       const boundary::BoundaryCondition& bc, real_t Cmu, real_t dt, real_t* out) {
   const auto nt = mom.n_total; const auto ni = mom.n_interior;
   const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int i1 = ni[0], i2 = ni[1], i3 = ni[2];
@@ -129,7 +128,7 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
     const real_t* dmxa = domain.grid.dmx_ptr(dir);
     const real_t* qadv = (dir == Direction::X) ? Up : (dir == Direction::Y) ? Vp : Wp;
     const bool    zs   = (dir == Direction::Z) && z_stag;
-    mk::build_adi_bands_var(dir, own_dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
+    kernels::build_adi_bands_var(dir, own_dir, mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(),
                             in, qf, qadv, mu, irho, dxa, dmxa, dxo, dmxo, n1, n2, n3, i1, i2, i3, Cmu, dt, zs);
     int n_row = 0, n_sys = 0;
     switch (dir) {
@@ -155,7 +154,7 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
       }
       domain.tdma.get(dir).solve_many(mom.A.data(), mom.B.data(), mom.C.data(), mom.D.data(), n_sys, n_row);
     }
-    mk::scatter_from_tdma(dir, outb, mom.D.data(), n1, n2, n3, i1, i2, i3);
+    kernels::scatter_from_tdma(dir, outb, mom.D.data(), n1, n2, n3, i1, i2, i3);
     std::swap(in, outb);
   }
   std::copy(in, in + static_cast<std::size_t>(n1) * n2 * n3, out);
@@ -163,7 +162,7 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
 } // anonymous namespace
 
 // ---- solve: 3-sweep ADI per component + block coupling (M2) -----------------
-void solve_momentum_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_momentum_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                         core::CpuFields& fields, core::CpuMomentumSystem& mom, real_t dt) {
   const real_t  nu = fields.constant(core::Const::nu);
   const real_t* Up = fields[core::Var::U].data();
@@ -179,11 +178,11 @@ void solve_momentum_cpu(const core::Domain& domain, const core::BoundaryConditio
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
 
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-  mk::block_couple_dV(mom.dV.data(), mom.dW.data(), fields[core::Var::V].data(),
+  kernels::block_couple_dV(mom.dV.data(), mom.dW.data(), fields[core::Var::V].data(),
                       domain.grid.dx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Y),
                       domain.grid.dx_ptr(Direction::Z), domain.grid.dmx_ptr(Direction::Z), n1, n2, n3, dt);
   core::sync_field_cpu(mom.dV, bc.V, domain.sub);
-  mk::block_couple_dU(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(),
+  kernels::block_couple_dU(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(),
                       domain.grid.dx_ptr(Direction::X), domain.grid.dmx_ptr(Direction::X),
                       domain.grid.dmx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Z), n1, n2, n3, dt);
 }
@@ -196,7 +195,7 @@ void solve_momentum_cpu(const core::Domain& domain, const core::BoundaryConditio
 // by block_couple_dV_var / block_couple_dU_var; otherwise it leaks into dV/dU
 // with 1/dmx3 wall-shear amplification — the bottom-wall-only U spike (Report/27).
 static void zero_dw_lower_wall_face(real_t* dW, const core::Domain& domain,
-                                    const core::BoundaryCondition& bc) {
+                                    const boundary::BoundaryCondition& bc) {
   if (bc.topology.is_periodic(Direction::Z)) return;
   if (domain.sub.topology().axis(Direction::Z).west_rank != MPI_PROC_NULL) return;
   const auto nt = domain.sub.n_total();
@@ -206,7 +205,7 @@ static void zero_dw_lower_wall_face(real_t* dW, const core::Domain& domain,
       dW[(i * n2 + j) * n3 + h] = real_t{0};
 }
 
-void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_momentum_var_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                             core::CpuFields& fields, const core::CpuField& mu_field,
                             const core::CpuField& inv_rho_field,
                             core::CpuMomentumSystem& mom, real_t dt) {
@@ -231,13 +230,13 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
   core::sync_field_cpu(mom.dU, bc.U, domain.sub);
 
   // 2) dV (own Y) — inject M21 (dU increment) into rhs_v, then solve.
-  mk::couple_dd_dV_var(mom.rhs_v.data(), mom.dU.data(), Vp, mu, irho,
+  kernels::couple_dd_dV_var(mom.rhs_v.data(), mom.dU.data(), Vp, mu, irho,
                        dx1, dmx1, dx2, dmx2, n1, n2, n3, Cmu, dt);
   adi_component_var(mom, mom.rhs_v, Vp, Up, Vp, Wp, mu, irho, Direction::Y, false, bc.V, domain, bc, Cmu, dt, mom.dV.data());
   core::sync_field_cpu(mom.dV, bc.V, domain.sub);
 
   // 3) dW (own Z, wall) — inject M31 (dU) + M32 (dV) into rhs_w, then solve.
-  mk::couple_dd_dW_var(mom.rhs_w.data(), mom.dU.data(), mom.dV.data(), Wp, mu, irho,
+  kernels::couple_dd_dW_var(mom.rhs_w.data(), mom.dU.data(), mom.dV.data(), Wp, mu, irho,
                        dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
   adi_component_var(mom, mom.rhs_w, Wp, Up, Vp, Wp, mu, irho, Direction::Z, true, bc.W, domain, bc, Cmu, dt, mom.dW.data());
   core::sync_field_cpu(mom.dW, bc.W, domain.sub);
@@ -247,19 +246,19 @@ void solve_momentum_var_cpu(const core::Domain& domain, const core::BoundaryCond
   // blockLdV corrects the horizontal dV using the wall-normal increment dW,
   // THEN blockLdU corrects dU using the corrected dV + dW increments. The
   // wall-normal dW receives NO post-hoc correction (Report/RBC reignition fix).
-  mk::block_couple_dV_var(mom.dV.data(), mom.dW.data(), fields[core::Var::V].data(), mu, irho,
+  kernels::block_couple_dV_var(mom.dV.data(), mom.dW.data(), fields[core::Var::V].data(), mu, irho,
                           dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
   core::sync_field_cpu(mom.dV, bc.V, domain.sub);
-  mk::block_couple_dU_var(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(), mu, irho,
+  kernels::block_couple_dU_var(mom.dU.data(), mom.dV.data(), mom.dW.data(), fields[core::Var::U].data(), mu, irho,
                           dx1, dmx1, dx2, dmx2, dx3, dmx3, n1, n2, n3, Cmu, dt);
 }
 
 // ---- pseudo-update: q += dq (interior; caller syncs U,V,W) ------------------
 void update_velocity_cpu(core::CpuFields& fields, const core::CpuMomentumSystem& mom) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
-  mk::add_increment(fields[core::Var::U].data(), mom.dU.data(), n1, n2, n3);
-  mk::add_increment(fields[core::Var::V].data(), mom.dV.data(), n1, n2, n3);
-  mk::add_increment(fields[core::Var::W].data(), mom.dW.data(), n1, n2, n3);
+  kernels::add_increment(fields[core::Var::U].data(), mom.dU.data(), n1, n2, n3);
+  kernels::add_increment(fields[core::Var::V].data(), mom.dV.data(), n1, n2, n3);
+  kernels::add_increment(fields[core::Var::W].data(), mom.dW.data(), n1, n2, n3);
 }
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::momentum

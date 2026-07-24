@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-namespace mpmstd::core::gpu {
+namespace mpmstd::core {
 
 static void cuda_check(cudaError_t e, const char* msg) {
   if (e != cudaSuccess) {
@@ -23,7 +23,7 @@ static double* upload_vec(const std::vector<real_t>& v) {
   return d;
 }
 
-GpuGridArrays::GpuGridArrays(const Grid& g) {
+GpuGridArrays::GpuGridArrays(const grid::Grid& g) {
   for (int a = 0; a < 3; ++a) {
     d_dx_[a]  = upload_vec(g.dx (static_cast<Direction>(a)));
     d_dmx_[a] = upload_vec(g.dmx(static_cast<Direction>(a)));
@@ -37,4 +37,4 @@ GpuGridArrays::~GpuGridArrays() {
   }
 }
 
-} // namespace mpmstd::core::gpu
+} // namespace mpmstd::core

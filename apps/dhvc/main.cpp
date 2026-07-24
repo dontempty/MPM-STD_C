@@ -44,7 +44,7 @@ using namespace mpmstd;
 
 namespace {
 
-void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
+void zero_w_wall(core::CpuField& W, const parallel::mpi::Subdomain& sub) {
   const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
   real_t* w = W.data();
@@ -76,7 +76,7 @@ double div_max(const core::Domain& d, const core::CpuFields& f) {
 } // anonymous namespace
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/dhvc/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -87,9 +87,9 @@ int main(int argc, char** argv) {
   std::array<bool, 3> periodic = {is_per(cfg.get_or<std::string>("topology", "x", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "y", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "z", "wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int, 3> n_global = {cfg.get<int>("mesh", "n1m"), cfg.get<int>("mesh", "n2m"), cfg.get<int>("mesh", "n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig, 3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -98,8 +98,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>("domain", std::string("L") + char('x' + a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   auto& tdma       = *tdma_owner;
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
   // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With constant properties the var
   // kernels reduce to the correct PaScaL_TCS scheme with semi-implicit
   // convection and −M·q^n residual correction, fixing the OB dt collapse.
-  physics::CpuPropertyFields props(sub);
+  physics::properties::CpuPropertyFields props(sub);
   {
     const auto nt = sub.n_total();
     const std::size_t n = (std::size_t)nt[0] * nt[1] * nt[2];
@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
   post::init_statistics_cpu(stats, domain);
 
   // OB Boussinesq: gravity along x (streamwise), F = θ, coeff = 1.
-  physics::BuoyancyParams buoy; buoy.gravity_axis = 0; buoy.coeff = 1; buoy.T_ref = 0;
+  physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis = 0; buoy.coeff = 1; buoy.T_ref = 0;
 
   // ── time / IO ──────────────────────────────────────────────────────────────
   const double t_end    = cfg.get_or<double>("time", "t_end", 400.0);
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
   // has no pressure gradient to balance the net buoyancy force (∫θ dz drifts off
   // zero once symmetry breaks), so a spurious net flow would otherwise accumulate
   // and swamp the antisymmetric shear jet. Enforce <U>=0 each step.
-  const double total_vol = physics::channel_total_volume_cpu(domain);
+  const double total_vol = physics::forcing::channel_total_volume_cpu(domain);
 
   // ── time loop ──────────────────────────────────────────────────────────────
   double time = 0.0; int step = 0;
@@ -211,29 +211,29 @@ int main(int argc, char** argv) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
     // (1) energy: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
-    equation::solve_scalar_nob_cpu(domain, bc, fields,
+    equation::scalar::solve_scalar_nob_cpu(domain, bc, fields,
         props.KPP, props.dKPP, props.invRhoCp, props.dinvRhoCp,
         scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
     // (2) momentum predictor + OB buoyancy (NOB var path with unit props)
-    equation::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
-    physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    equation::add_pressure_gradient_cpu(domain, momentum, P_acc, dt);  // incremental: −dt·∇Pⁿ
-    equation::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
-    equation::update_velocity_cpu(fields, momentum);
+    equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
+    equation::pressure::add_pressure_gradient_cpu(domain, momentum, P_acc, dt);  // incremental: −dt·∇Pⁿ
+    equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
+    equation::momentum::update_velocity_cpu(fields, momentum);
     // zero net streamwise flux (closed DHVC): subtract the bulk U the net
     // buoyancy would drive in the periodic streamwise direction.
     double net_dpdx = 0.0;
-    physics::apply_mass_flow_correction_cpu(domain, fields, 0.0, dt, total_vol, net_dpdx);
+    physics::forcing::apply_mass_flow_correction_cpu(domain, fields, 0.0, dt, total_vol, net_dpdx);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     zero_w_wall(fields[core::Var::W], sub);
 
     // (3) pressure: div → Poisson → project
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
-    equation::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    equation::pressure::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     time += static_cast<double>(dt);
     ++step;

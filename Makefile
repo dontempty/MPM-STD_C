@@ -117,7 +117,7 @@ TEST_CPP  := $(shell find $(ROOT_DIR)/tests/unit $(ROOT_DIR)/tests/integration $
 TEST_BINS := $(patsubst $(ROOT_DIR)/tests/%.cpp,$(BINDIR)/tests/%,$(TEST_CPP))
 
 # =============================================================================
-.PHONY: all cpu gpu lib apps tests clean info
+.PHONY: all cpu gpu lib apps tests clean info lint
 cpu: all
 gpu: all
 all: lib apps tests
@@ -203,3 +203,7 @@ info:
 	@echo "LIB_CU    = $(LIB_CU)"
 	@echo "APP_BINS  = $(APP_BINS)"
 	@echo "TEST_BINS = $(TEST_BINS)"
+
+# namespace = file-location convention guard (docs/namespace_convention.md)
+lint:
+	@bash scripts/check_namespace_convention.sh

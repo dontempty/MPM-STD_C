@@ -33,7 +33,7 @@ AxisKind parse_axis_kind(const std::string& s, const char* axis_name) {
 // Set every field face on (d, s) according to the axis kind. Called after
 // the topology has been read so that downstream override logic can rely on
 // each face holding the correct default.
-void apply_axis_defaults(Problem& p, AxisKind k, Direction d, Side s) {
+void apply_axis_defaults(BoundaryCondition& p, AxisKind k, Direction d, Side s) {
   switch (k) {
     case AxisKind::Periodic:
       p.U.face(d, s) = FaceBc::periodic();
@@ -97,8 +97,8 @@ void try_override_value(const config::Config& cfg,
 
 } // anonymous namespace
 
-Problem load_problem_from_config(const config::Config& cfg) {
-  Problem p;   // The default ctor seeds an RBC-like state; we overwrite below.
+BoundaryCondition load_problem_from_config(const config::Config& cfg) {
+  BoundaryCondition p;   // The default ctor seeds an RBC-like state; we overwrite below.
 
   // -----------------------------------------------------------------------
   // (1) Read [topology] for each axis.

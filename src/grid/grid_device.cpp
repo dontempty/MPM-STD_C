@@ -1,5 +1,5 @@
 #include "grid/grid_device.hpp"
-#include "parallel/cuda/cuda_memory.hpp"
+#include "parallel/cuda_helpers/cuda_memory.hpp"
 
 namespace mpmstd::grid {
 

@@ -145,7 +145,7 @@ inline void locate(const real_t* cs, int ns, double ct, double L, bool periodic,
 }
 } // anonymous namespace
 
-void interp_global_to_field(core::CpuField& tgt, const core::Grid& tgt_grid,
+void interp_global_to_field(core::CpuField& tgt, const grid::Grid& tgt_grid,
                             const std::vector<real_t>& src, const SrcMesh& sm, int stagger_axis,
                             int kz0, int slab_n3) {
   const int h = kHaloWidth;

@@ -4,7 +4,7 @@
 #include "core/variables.hpp"
 #include "core/system.hpp"
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::scalar {
 
 // OB(CPU) coefficient step — builds the explicit Crank-Nicolson RHS (full
 // Laplacian + conservative convection) into the ScalarSystem before
@@ -16,4 +16,4 @@ namespace mpmstd::equation {
 void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
                         core::CpuScalarSystem& scalar_system, real_t dt);
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::scalar

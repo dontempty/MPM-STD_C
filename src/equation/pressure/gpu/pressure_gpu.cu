@@ -10,7 +10,7 @@
 #include <cuda_runtime.h>
 #include <memory>
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::pressure {
 
 namespace {
 
@@ -73,7 +73,7 @@ void add_pressure_gradient_gpu(const core::Domain& domain, core::GpuMomentumSyst
   const auto nt = domain.sub.n_total();
   const int nx = ni[0], ny = ni[1], nz = ni[2];
   const int n2t = nt[1], n3t = nt[2], h = kHaloWidth;
-  const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+  const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
   const dim3 blk(64, 4, 1);
   const dim3 grd((nz + 63) / 64, (ny + 3) / 4, nx);
   k_pred_pgrad<<<grd, blk>>>(mom.dU.data(), mom.dV.data(), mom.dW.data(), P_acc.data(),
@@ -88,7 +88,7 @@ void add_pressure_gradient_nob_gpu(const core::Domain& domain, core::GpuMomentum
   const auto nt = domain.sub.n_total();
   const int nx = ni[0], ny = ni[1], nz = ni[2];
   const int n2t = nt[1], n3t = nt[2], h = kHaloWidth;
-  const auto* dg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+  const auto* dg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
   const dim3 blk(64, 4, 1);
   const dim3 grd((nz + 63) / 64, (ny + 3) / 4, nx);
   k_pred_pgrad_var<<<grd, blk>>>(mom.dU.data(), mom.dV.data(), mom.dW.data(),
@@ -108,7 +108,7 @@ void accumulate_pressure_gpu(core::GpuField& P_acc, const core::GpuField& dP) {
 // ── OB GPU pressure solve ─────────────────────────────────────────────────────
 
 void solve_pressure_gpu(const core::Domain&             domain,
-                        const core::BoundaryCondition&  bc,
+                        const boundary::BoundaryCondition&  bc,
                         core::GpuFields&                gpu_fields,
                         core::PressureSystem&           poi,
                         real_t                          dt)
@@ -126,7 +126,7 @@ void solve_pressure_gpu(const core::Domain&             domain,
 // ── NOB GPU pressure solve ────────────────────────────────────────────────────
 
 void solve_pressure_nob_gpu(const core::Domain&             domain,
-                             const core::BoundaryCondition&  bc,
+                             const boundary::BoundaryCondition&  bc,
                              core::GpuFields&                gpu_fields,
                              core::PressureSystem&           poi,
                              real_t                          dt,
@@ -158,4 +158,4 @@ void solve_pressure_nob_gpu(const core::Domain&             domain,
   eng.solve_nob(dt, gpu_fields, bc, domain.sub, inv_rho, dPhat, dP0);
 }
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::pressure

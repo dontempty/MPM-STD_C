@@ -10,9 +10,8 @@
 // (byte-identical kernels) onto the structural-redesign API (Domain + Fields +
 // ScalarSystem). OB constant diffusivity; CN delta-form, 3-sweep ADI.
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::scalar {
 
-namespace sk = scalar::kernels;
 
 // ---- assemble: explicit CN RHS (Laplacian + convection) ---------------------
 void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
@@ -22,21 +21,21 @@ void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
   const real_t  alpha = fields.constant(core::Const::alpha_T);
 
   // (1) explicit full Laplacian: rhs = dt*alpha*(Lx+Ly+Lz) T
-  sk::laplacian_explicit_rhs(scalar_system.rhs.data(), T,
+  kernels::laplacian_explicit_rhs(scalar_system.rhs.data(), T,
       domain.grid.dx_ptr(Direction::X), domain.grid.dmx_ptr(Direction::X),
       domain.grid.dx_ptr(Direction::Y), domain.grid.dmx_ptr(Direction::Y),
       domain.grid.dx_ptr(Direction::Z), domain.grid.dmx_ptr(Direction::Z),
       n1, n2, n3, dt * alpha);
 
   // (1b) convection: rhs += -dt * u·∇T (conservative flux, cell-centred T, face vel)
-  sk::add_convection_rhs(scalar_system.rhs.data(), T,
+  kernels::add_convection_rhs(scalar_system.rhs.data(), T,
       fields[core::Var::U].data(), fields[core::Var::V].data(), fields[core::Var::W].data(),
       domain.grid.dx_ptr(Direction::X), domain.grid.dx_ptr(Direction::Y), domain.grid.dx_ptr(Direction::Z),
       n1, n2, n3, -dt);
 }
 
 // ---- solve: 3-sweep ADI (sweep order from BC) + T += increment --------------
-void solve_scalar_ob_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_scalar_ob_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                       core::CpuFields& fields, core::CpuScalarSystem& sys, real_t dt) {
   const auto nt = sys.n_total; const auto ni = sys.n_interior;
   const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -47,7 +46,7 @@ void solve_scalar_ob_cpu(const core::Domain& domain, const core::BoundaryConditi
   real_t* in   = sys.rhs.data();
   real_t* outb = sys.stage.data();
   for (Direction d : bc.topology.sweep_order()) {
-    sk::build_adi_bands(d, sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
+    kernels::build_adi_bands(d, sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
                         in, domain.grid.dx_ptr(d), domain.grid.dmx_ptr(d),
                         n1, n2, n3, i1, i2, i3, alpha, dt);
 
@@ -64,11 +63,11 @@ void solve_scalar_ob_cpu(const core::Domain& domain, const core::BoundaryConditi
                                 sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
       domain.tdma.get(d).solve_many(sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
     }
-    sk::scatter_from_tdma(d, outb, sys.D.data(), n1, n2, n3, i1, i2, i3);
+    kernels::scatter_from_tdma(d, outb, sys.D.data(), n1, n2, n3, i1, i2, i3);
     std::swap(in, outb);
   }
   // `in` holds the final increment δ; T^{n+1} = T^n + δ (caller syncs T).
-  sk::add_increment(fields[core::Var::T].data(), in, n1, n2, n3);
+  kernels::add_increment(fields[core::Var::T].data(), in, n1, n2, n3);
 }
 
 // =============================================================================
@@ -82,7 +81,7 @@ void solve_scalar_ob_cpu(const core::Domain& domain, const core::BoundaryConditi
 //  With κ̂≡1, dκ̂≡0, invρĈp≡1, dinvρĈp≡0 the diffusion reduces to the const
 //  Laplacian; the semi-implicit convection is the faithful upgrade.
 // =============================================================================
-void solve_scalar_nob_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_scalar_nob_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                           core::CpuFields& fields,
                           const core::CpuField& KPP, const core::CpuField& dKPP,
                           const core::CpuField& invRhoCp, const core::CpuField& dinvRhoCp,
@@ -112,7 +111,7 @@ void solve_scalar_nob_cpu(const core::Domain& domain, const core::BoundaryCondit
       && (z_axis_own.east_rank == MPI_PROC_NULL);
   bool first = true;
   for (Direction d : bc.topology.sweep_order()) {
-    sk::build_A_rhs_nob(
+    kernels::build_A_rhs_nob(
         d, sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(),
         in, T, U, V, W, KPP.data(), dKPP.data(), invRhoCp.data(), dinvRhoCp.data(),
         dx1, dmx1, dx2, dmx2, dx3, dmx3,
@@ -132,12 +131,12 @@ void solve_scalar_nob_cpu(const core::Domain& domain, const core::BoundaryCondit
                                 sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
       domain.tdma.get(d).solve_many(sys.A.data(), sys.B.data(), sys.C.data(), sys.D.data(), n_sys, n_row);
     }
-    sk::scatter_from_tdma(d, outb, sys.D.data(), n1, n2, n3, i1, i2, i3);
+    kernels::scatter_from_tdma(d, outb, sys.D.data(), n1, n2, n3, i1, i2, i3);
     std::swap(in, outb);
     first = false;
   }
   // `in` holds δθ; θ^{n+1} = θ^n + δθ (caller syncs T).
-  sk::add_increment(fields[core::Var::T].data(), in, n1, n2, n3);
+  kernels::add_increment(fields[core::Var::T].data(), in, n1, n2, n3);
 }
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::scalar

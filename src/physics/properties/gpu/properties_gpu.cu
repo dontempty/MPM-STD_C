@@ -13,10 +13,10 @@ namespace {
 // passed to the kernel by value directly.
 __global__ void k_update_properties(
     real_t* Mu, real_t* invRho, real_t* KPP, real_t* dKPP, real_t* invRhoCp, real_t* dinvRhoCp,
-    const real_t* T, int n, const mpmstd::physics::PropertyModel pm) {
+    const real_t* T, int n, const mpmstd::physics::properties::PropertyModel pm) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n) return;
-  const mpmstd::physics::PropertyValues v = mpmstd::physics::evaluate_properties(pm, T[idx]);
+  const mpmstd::physics::properties::PropertyValues v = mpmstd::physics::properties::evaluate_properties(pm, T[idx]);
   Mu[idx] = v.Mu;             invRho[idx] = v.invRho;
   KPP[idx] = v.KPP;           dKPP[idx] = v.dKPP;
   invRhoCp[idx] = v.invRhoCp; dinvRhoCp[idx] = v.dinvRhoCp;
@@ -24,7 +24,7 @@ __global__ void k_update_properties(
 
 } // anonymous namespace
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::properties {
 
 void update_properties_gpu(GpuPropertyFields& p, const core::GpuField& T, const PropertyModel& m) {
   const auto nt = T.n_total();
@@ -36,10 +36,10 @@ void update_properties_gpu(GpuPropertyFields& p, const core::GpuField& T, const 
     p.invRhoCp.data(), p.dinvRhoCp.data(), T.data(), n, m);
 }
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::properties
 
 #else
-namespace mpmstd::physics {
+namespace mpmstd::physics::properties {
 void update_properties_gpu(GpuPropertyFields&, const core::GpuField&, const PropertyModel&) {}
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::properties
 #endif

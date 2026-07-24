@@ -43,7 +43,7 @@ void build_A_rhs_nob(Direction      d,
                      bool           z_owns_lower, bool z_owns_upper) {
   auto build_cell = [&](int i, int j, int k, int p, bool wall_lo, bool wall_hi) {
     real_t am, ac, ap, Dv;
-    stencil::build_A_rhs_cell(d, i, j, k, n1_tot, n2_tot, n3_tot,
+    build_A_rhs_cell(d, i, j, k, n1_tot, n2_tot, n3_tot,
                               src, T, U, V, W, KPP, dKPP, invRhoCp, dinvRhoCp,
                               dx1, dmx1, dx2, dmx2, dx3, dmx3,
                               Ct, dt, is_stage1, wall_lo, wall_hi, am, ac, ap, Dv);

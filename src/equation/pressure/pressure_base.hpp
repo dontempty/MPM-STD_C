@@ -9,8 +9,8 @@
 #include "common/types.hpp"
 #include "core/field_cpu.hpp"
 #include "core/grid.hpp"                          // grid::Grid
-#include "core/boundary.hpp"                      // boundary::Problem
-#include "core/mpi_topology.hpp"                  // Subdomain
+#include "core/boundary.hpp"                      // boundary::BoundaryCondition
+#include "core/gpu_binding.hpp"                  // Subdomain
 #include "core/halo.hpp"                          // exchange_halo_cpu
 #include "core/boundary_ops.hpp"                  // apply_ghost_cpu
 #include "linear_solver/tdma/tdma_registry.hpp"
@@ -32,7 +32,7 @@ public:
 protected:
   PressureSolverBase(const grid::Grid&                  grid,
                      const parallel::mpi::Subdomain&    sub,
-                     const boundary::Problem&           problem,
+                     const boundary::BoundaryCondition&           problem,
                      linear_solver::tdma::TdmaRegistry& tdma);
 
   void compute_divergence_rhs_(real_t* buf,
@@ -53,7 +53,7 @@ protected:
   // ── Common state ─────────────────────────────────────────────────────────
   const grid::Grid&                  grid_;
   const parallel::mpi::Subdomain&    sub_;
-  const boundary::Problem&           problem_;
+  const boundary::BoundaryCondition&           problem_;
   linear_solver::tdma::TdmaRegistry& tdma_;
 
   int n1_tot_, n2_tot_, n3_tot_;

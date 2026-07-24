@@ -15,7 +15,6 @@
 #include "common/direction.hpp"
 
 namespace mpmstd::equation::scalar::kernels {
-namespace stencil {
 
 static constexpr int kH = 1;  // halo width
 
@@ -183,5 +182,4 @@ build_A_rhs_cell(Direction d,
   }
 }
 
-} // namespace stencil
 } // namespace mpmstd::equation::scalar::kernels

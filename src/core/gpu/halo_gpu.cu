@@ -58,7 +58,7 @@ DevHaloBufs g_y_bufs, g_z_bufs;
 
 namespace mpmstd::core {
 
-void exchange_halo_gpu(GpuField& field, const Subdomain& sub)
+void exchange_halo_gpu(GpuField& field, const parallel::mpi::Subdomain& sub)
 {
     using Direction = mpmstd::Direction;
 
@@ -209,7 +209,7 @@ void exchange_halo_gpu(GpuField& field, const Subdomain& sub)
     }
 }
 
-void bind_gpu_to_local_rank_gpu(const MpiContext& ctx) {
+void bind_gpu_to_local_rank_gpu(const parallel::mpi::MpiContext& ctx) {
     int ndev = 0;
     cudaError_t err = cudaGetDeviceCount(&ndev);
     if (err == cudaSuccess && ndev > 0) {

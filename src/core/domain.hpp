@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/grid.hpp"          // Grid
-#include "core/mpi_topology.hpp"  // MpiTopology, Subdomain
+#include "core/gpu_binding.hpp"  // MpiTopology, Subdomain
 #include "linear_solver/tdma/tdma_registry.hpp"
 
 namespace mpmstd::core {
@@ -19,9 +19,9 @@ namespace mpmstd::core {
 // `tdma` is a reference (the unique_ptr from make_default is unwrapped ONCE in
 // main: `TdmaRegistry& tdma = *owner;`) so call sites never see a `*`.
 struct Domain {
-  const Grid&                        grid;
-  const MpiTopology&                 topo;
-  const Subdomain&                   sub;
+  const grid::Grid&                        grid;
+  const parallel::mpi::MpiTopology&                 topo;
+  const parallel::mpi::Subdomain&                   sub;
   linear_solver::tdma::TdmaRegistry& tdma;
   // Device-resident grid arrays (GpuGridArrays*) for CUDA builds; null in CPU builds.
   const void*                        gpu_grid = nullptr;

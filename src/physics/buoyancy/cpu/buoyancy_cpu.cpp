@@ -8,7 +8,7 @@
 // (momentum source_name = "T"). gravity_axis picks the component: DHVC = x
 // (streamwise), RBC = z (wall-normal). coeff = 1 for the free-fall nondim.
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::buoyancy {
 
 void add_buoyancy_force_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom,
                             const core::CpuField& T, const BuoyancyParams& p, real_t dt) {
@@ -66,4 +66,4 @@ void add_buoyancy_force_nob_cpu(const core::Domain& domain, core::CpuMomentumSys
       }
 }
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::buoyancy

@@ -1,4 +1,4 @@
-#include "parallel/cuda/cuda_memory.hpp"
+#include "parallel/cuda_helpers/cuda_memory.hpp"
 #include "common/macros.hpp"
 
 #include <cstdlib>

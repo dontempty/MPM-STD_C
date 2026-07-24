@@ -5,11 +5,11 @@
 
 namespace mpmstd::boundary {
 
-Problem::Problem() {
+BoundaryCondition::BoundaryCondition() {
   apply_periodic_defaults();
 }
 
-void Problem::apply_periodic_defaults() {
+void BoundaryCondition::apply_periodic_defaults() {
   // Neutral default: every axis periodic, every field face Periodic.
   // Non-trivial problems are populated by load_problem_from_config() or by
   // explicit per-face overrides — never by hidden physics-specific defaults.
@@ -27,7 +27,7 @@ void Problem::apply_periodic_defaults() {
   }
 }
 
-void Problem::validate() const {
+void BoundaryCondition::validate() const {
   // Invariant: for every field, if topology.axis[d] is Periodic, then both
   // faces along d must have BcKind::Periodic — and vice versa.
   const FieldBoundary* fields[5] = { &U, &V, &W, &P, &T };
@@ -42,7 +42,7 @@ void Problem::validate() const {
         const bool face_per = (k == BcKind::Periodic);
         if (axis_per != face_per) {
           throw std::runtime_error(
-            std::string("Problem::validate: field '") + names[f] +
+            std::string("BoundaryCondition::validate: field '") + names[f] +
             "' face (" + direction_name(d) + "," + side_name(s) +
             ") has BcKind=" + bc_kind_name(k) +
             " but axis " + direction_name(d) +

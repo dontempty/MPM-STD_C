@@ -15,7 +15,7 @@ using boundary::FaceBc;
 
 namespace {
 
-bool is_global_boundary(const Subdomain& sub, Direction d, Side s) {
+bool is_global_boundary(const parallel::mpi::Subdomain& sub, Direction d, Side s) {
   const auto& axis = sub.topology().axis(d);
   return (s == Side::Minus) ? axis.west_rank == MPI_PROC_NULL
                             : axis.east_rank == MPI_PROC_NULL;
@@ -61,7 +61,7 @@ void fill_neumann(CpuField& phi, Direction d, Side s, const FaceBc& bc, real_t t
 
 } // anonymous namespace
 
-void apply_ghost_cpu(CpuField& phi, const FieldBoundary& fbc, const Subdomain& sub, real_t t) {
+void apply_ghost_cpu(CpuField& phi, const boundary::FieldBoundary& fbc, const parallel::mpi::Subdomain& sub, real_t t) {
   for (int a = 0; a < 3; ++a) {
     const Direction d = static_cast<Direction>(a);
     for (Side s : {Side::Minus, Side::Plus}) {
@@ -79,7 +79,7 @@ void apply_ghost_cpu(CpuField& phi, const FieldBoundary& fbc, const Subdomain& s
   }
 }
 
-void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
+void modify_tdma_row_cpu(Direction wall_axis, const boundary::FieldBoundary& fbc,
                          const parallel::mpi::CartComm1D& axis_comm,
                          real_t* A, real_t* B, real_t* C, real_t* /*D*/,
                          int n_sys, int n_row) {
@@ -117,19 +117,19 @@ void modify_tdma_row_cpu(Direction wall_axis, const FieldBoundary& fbc,
   if (owns_upper) fold_upper(fbc.face(wall_axis, Side::Plus));
 }
 
-void sync_field_cpu(CpuField& field, const FieldBoundary& fbc, const Subdomain& sub, real_t t) {
+void sync_field_cpu(CpuField& field, const boundary::FieldBoundary& fbc, const parallel::mpi::Subdomain& sub, real_t t) {
   exchange_halo_cpu(field, sub);       // neighbour-rank halos
   apply_ghost_cpu(field, fbc, sub, t); // global-boundary ghost
 }
 
-const FieldBoundary& face_bc_for(const BoundaryCondition& bc, Var v) {
+const boundary::FieldBoundary& face_bc_for(const boundary::BoundaryCondition& bc, Var v) {
   switch (v) {
     case Var::U: return bc.U; case Var::V: return bc.V; case Var::W: return bc.W;
     case Var::P: return bc.P; case Var::T: return bc.T; default: return bc.U;
   }
 }
 
-void sync_field_cpu(CpuFields& fields, Var v, const BoundaryCondition& bc, const Subdomain& sub) {
+void sync_field_cpu(CpuFields& fields, Var v, const boundary::BoundaryCondition& bc, const parallel::mpi::Subdomain& sub) {
   sync_field_cpu(fields[v], face_bc_for(bc, v), sub);
 }
 

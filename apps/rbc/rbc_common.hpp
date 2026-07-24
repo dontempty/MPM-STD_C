@@ -31,11 +31,11 @@
 #include <string>
 #include <vector>
 
-using namespace mpmstd;
 
 namespace rbc {
+using namespace mpmstd;
 
-inline void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
+inline void zero_w_wall(core::CpuField& W, const parallel::mpi::Subdomain& sub) {
   const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
   real_t* w = W.data();
@@ -117,7 +117,7 @@ struct RbcStats {
 struct RestartMeta { int step = 0; double time = 0.0;
                      double tc_sum = 0.0; long tc_n = 0; double wt_sum = 0.0; };
 
-inline void write_restart(const core::CpuFields& fields, const core::Subdomain& sub,
+inline void write_restart(const core::CpuFields& fields, const parallel::mpi::Subdomain& sub,
                           const RbcStats& stats, int step, double time,
                           const std::string& dir, MPI_Comm comm) {
   std::error_code ec; std::filesystem::create_directories(dir, ec);
@@ -144,8 +144,8 @@ inline void write_restart(const core::CpuFields& fields, const core::Subdomain& 
   }
 }
 
-inline RestartMeta read_restart(core::CpuFields& fields, const core::BoundaryCondition& bc,
-                                const core::Subdomain& sub,
+inline RestartMeta read_restart(core::CpuFields& fields, const boundary::BoundaryCondition& bc,
+                                const parallel::mpi::Subdomain& sub,
                                 const std::string& dir, MPI_Comm comm) {
   post::read_restart_cpu(fields[core::Var::U], sub, dir + "/U.bin");
   post::read_restart_cpu(fields[core::Var::V], sub, dir + "/V.bin");
@@ -198,7 +198,7 @@ inline void apply_stats_from_restart(RbcStats& stats, const RestartMeta& m) {
   stats.tc_sum = m.tc_sum; stats.tc_n = m.tc_n; stats.wt_sum = m.wt_sum;
 }
 
-inline void accumulate(RbcStats& s, const core::Domain& d, const core::Subdomain& sub,
+inline void accumulate(RbcStats& s, const core::Domain& d, const parallel::mpi::Subdomain& sub,
                        const core::CpuFields& f, const real_t* dx3_z, int nstat_start, int step) {
   if (step < nstat_start) return;
   s.tc_sum += center_temp(d, f);
@@ -235,7 +235,7 @@ inline void print_step(const RbcStats& s, const core::Domain& d, const core::Cpu
   }
 }
 
-inline void print_final(RbcStats& s, const core::Subdomain& sub,
+inline void print_final(RbcStats& s, const parallel::mpi::Subdomain& sub,
                         double Ra, double Pr, double alpha_T, bool is_root, const char* tag) {
   const double theta_c_out = (s.tc_n > 0) ? s.tc_sum / s.tc_n : 0.0;
   if (is_root) std::printf("[%s] done: Ra=%.2e Pr=%.4g  Theta_c=%.5f\n", tag, Ra, Pr, theta_c_out);

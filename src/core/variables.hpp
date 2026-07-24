@@ -2,7 +2,7 @@
 
 #include "core/field_cpu.hpp"
 #include "core/field_gpu.hpp"
-#include "core/mpi_topology.hpp"   // Subdomain
+#include "core/gpu_binding.hpp"   // Subdomain
 #include "common/types.hpp"
 
 #include <array>
@@ -52,7 +52,7 @@ struct Constant {
 template <class FieldT>
 class FieldStore {
 public:
-  FieldT& add(Var v, const Subdomain& sub) {
+  FieldT& add(Var v, const parallel::mpi::Subdomain& sub) {
     auto& slot = fields_[to_idx(v)];
     if (!slot) slot = std::make_unique<FieldT>(sub, std::string(var_name(v)));
     return *slot;

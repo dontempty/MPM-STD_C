@@ -50,12 +50,12 @@ __global__ void k_shift_u(mpmstd::real_t* U, int n1, int n2, int n3, int h,
 
 } // anonymous namespace
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::forcing {
 
 double channel_bulk_velocity_gpu(const core::Domain& domain,
                                   const core::GpuFields& fields,
                                   double total_vol) {
-    const auto& ga = *static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+    const auto& ga = *static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
     const auto nt = domain.sub.n_total();
     const int n1 = nt[0], n2 = nt[1], n3 = nt[2], h = kHaloWidth;
 
@@ -98,13 +98,13 @@ double apply_mass_flow_correction_gpu(const core::Domain& domain,
 
 void apply_body_force_gpu(core::GpuFields&, real_t, real_t) {}
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::forcing
 
 #else  // CPU build stubs
-namespace mpmstd::physics {
+namespace mpmstd::physics::forcing {
 void apply_body_force_gpu(core::GpuFields&, real_t, real_t) {}
 double channel_bulk_velocity_gpu(const core::Domain&, const core::GpuFields&, double) { return 0.0; }
 double apply_mass_flow_correction_gpu(const core::Domain&, core::GpuFields&,
                                        double, double, double, double& dpdx) { return dpdx; }
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::forcing
 #endif

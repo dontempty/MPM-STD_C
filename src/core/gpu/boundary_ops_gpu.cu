@@ -17,7 +17,7 @@ using boundary::FaceBc;
 
 namespace {
 
-bool is_global_boundary(const Subdomain& sub, Direction d, Side s) {
+bool is_global_boundary(const parallel::mpi::Subdomain& sub, Direction d, Side s) {
   const auto& axis = sub.topology().axis(d);
   return (s == Side::Minus) ? axis.west_rank == MPI_PROC_NULL
                             : axis.east_rank == MPI_PROC_NULL;
@@ -110,7 +110,7 @@ void launch_ghost_kernel(real_t* phi, Direction d, Side s, const FaceBc& bc,
 
 } // anonymous namespace
 
-void apply_ghost_gpu(GpuField& phi, const FieldBoundary& fbc, const Subdomain& sub, real_t /*t*/) {
+void apply_ghost_gpu(GpuField& phi, const boundary::FieldBoundary& fbc, const parallel::mpi::Subdomain& sub, real_t /*t*/) {
   const int n1 = phi.n_total(Direction::X);
   const int n2 = phi.n_total(Direction::Y);
   const int n3 = phi.n_total(Direction::Z);
@@ -128,12 +128,12 @@ void apply_ghost_gpu(GpuField& phi, const FieldBoundary& fbc, const Subdomain& s
   cudaDeviceSynchronize();
 }
 
-void sync_field_gpu(GpuField& field, const FieldBoundary& fbc, const Subdomain& sub, real_t t) {
+void sync_field_gpu(GpuField& field, const boundary::FieldBoundary& fbc, const parallel::mpi::Subdomain& sub, real_t t) {
   exchange_halo_gpu(field, sub);
   apply_ghost_gpu(field, fbc, sub, t);
 }
 
-void sync_field_gpu(GpuFields& fields, Var v, const BoundaryCondition& bc, const Subdomain& sub) {
+void sync_field_gpu(GpuFields& fields, Var v, const boundary::BoundaryCondition& bc, const parallel::mpi::Subdomain& sub) {
   sync_field_gpu(fields[v], face_bc_for(bc, v), sub);
 }
 

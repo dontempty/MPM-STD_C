@@ -5,7 +5,7 @@
 #include "core/field_gpu.hpp"
 #include "core/domain.hpp"   // Domain (grid metrics for face-interpolated buoyancy T)
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::buoyancy {
 
 // OB/NOB Boussinesq buoyancy. Composed in main AFTER momentum assemble (adds to
 // the RHS b). Omit the call ⇒ no buoyancy. (rev.2 §9)
@@ -32,4 +32,4 @@ void add_buoyancy_force_gpu(const core::Domain& domain, core::GpuMomentumSystem&
 void add_buoyancy_force_nob_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom, const core::CpuField& T, const core::CpuField& inv_rho, const BuoyancyParams& p, real_t dt);
 void add_buoyancy_force_nob_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom, const core::GpuField& T, const core::GpuField& inv_rho, const BuoyancyParams& p, real_t dt);
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::buoyancy

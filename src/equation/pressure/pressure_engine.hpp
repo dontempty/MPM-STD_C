@@ -29,7 +29,7 @@ class PressureSolver : public PressureSolverBase {
 public:
   PressureSolver(const grid::Grid&                  grid,
                   const parallel::mpi::Subdomain&    sub,
-                  const boundary::Problem&           problem,
+                  const boundary::BoundaryCondition&           problem,
                   linear_solver::tdma::TdmaRegistry& tdma);
   ~PressureSolver();
 

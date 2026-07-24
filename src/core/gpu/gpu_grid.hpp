@@ -6,14 +6,14 @@
 
 #include "core/grid.hpp"  // Grid = grid::Grid — type alias, cannot be forward-declared
 
-namespace mpmstd::core::gpu {
+namespace mpmstd::core {
 
 // Holds device pointers to per-axis dx/dmx arrays.
 // Constructed from a host Grid; freed in destructor.
 // Only usable in CUDA builds.
 class GpuGridArrays {
 public:
-  explicit GpuGridArrays(const Grid& host_grid);
+  explicit GpuGridArrays(const grid::Grid& host_grid);
   ~GpuGridArrays();
 
   GpuGridArrays(const GpuGridArrays&)            = delete;
@@ -31,4 +31,4 @@ private:
   double* d_dmx_[3] = {};
 };
 
-} // namespace mpmstd::core::gpu
+} // namespace mpmstd::core

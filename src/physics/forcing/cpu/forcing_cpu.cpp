@@ -5,7 +5,7 @@
 
 // P1 channel forcing rewired to Domain + Fields. dP/dx threaded by the caller.
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::forcing {
 
 void apply_body_force_cpu(core::CpuFields& fields, real_t dpdx, real_t dt) {
   core::CpuField& U = fields[core::Var::U];
@@ -74,4 +74,4 @@ double apply_mass_flow_correction_cpu(const core::Domain& domain, core::CpuField
   return dpdx;
 }
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::forcing

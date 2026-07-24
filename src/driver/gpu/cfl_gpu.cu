@@ -113,7 +113,7 @@ real_t compute_cfl_dt_gpu(const core::Domain& domain, const core::GpuFields& fie
   const real_t* v = fields[core::Var::V].data();
   const real_t* w = fields[core::Var::W].data();
 
-  const auto* gg = static_cast<const core::gpu::GpuGridArrays*>(domain.gpu_grid);
+  const auto* gg = static_cast<const core::GpuGridArrays*>(domain.gpu_grid);
   const double* dx1 = gg->d_dx1();
   const double* dx2 = gg->d_dx2();
   const double* dx3 = gg->d_dx3();

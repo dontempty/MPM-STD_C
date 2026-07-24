@@ -5,7 +5,7 @@
 
 namespace mpmstd::boundary {
 
-// Build a Problem from a Config file.
+// Build a BoundaryCondition from a Config file.
 //
 // Config schema
 // -------------
@@ -45,6 +45,6 @@ namespace mpmstd::boundary {
 //   extended to accept expression strings (e.g. T = "0.5*cos(2*pi*x/Lx)")
 //   without changing any callers.  Not implemented yet.
 
-Problem load_problem_from_config(const config::Config& cfg);
+BoundaryCondition load_problem_from_config(const config::Config& cfg);
 
 } // namespace mpmstd::boundary

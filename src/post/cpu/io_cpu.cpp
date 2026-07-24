@@ -16,7 +16,7 @@ namespace mpmstd::post {
 
 namespace {
 
-MPI_Datatype make_global_view(const core::Subdomain& sub) {
+MPI_Datatype make_global_view(const parallel::mpi::Subdomain& sub) {
   const auto n_glb = sub.n_global();
   const auto n_int = sub.n_interior();
   const auto off   = sub.global_offset();
@@ -30,7 +30,7 @@ MPI_Datatype make_global_view(const core::Subdomain& sub) {
   return dt;
 }
 
-MPI_Datatype make_local_view(const core::Subdomain& sub) {
+MPI_Datatype make_local_view(const parallel::mpi::Subdomain& sub) {
   const auto n_tot = sub.n_total();
   const auto n_int = sub.n_interior();
   int sizes[3]    = {n_tot[0], n_tot[1], n_tot[2]};
@@ -45,7 +45,7 @@ MPI_Datatype make_local_view(const core::Subdomain& sub) {
 
 } // anonymous namespace
 
-void write_restart_cpu(const core::CpuField& f, const core::Subdomain& sub, const std::string& path) {
+void write_restart_cpu(const core::CpuField& f, const parallel::mpi::Subdomain& sub, const std::string& path) {
   MPI_Comm comm = sub.topology().cart_comm();
   MPI_Datatype filetype = make_global_view(sub);
   MPI_Datatype memtype  = make_local_view(sub);
@@ -70,7 +70,7 @@ void write_restart_cpu(const core::CpuField& f, const core::Subdomain& sub, cons
 // broadcasts it; every rank then copies out its own interior block locally.
 // Memory cost = one full global field per rank (same tradeoff as the existing
 // "replicate" warm-start path) — acceptable at these problem sizes.
-void read_restart_cpu(core::CpuField& f, const core::Subdomain& sub, const std::string& path) {
+void read_restart_cpu(core::CpuField& f, const parallel::mpi::Subdomain& sub, const std::string& path) {
   MPI_Comm comm = sub.topology().cart_comm();
   int rank = 0; MPI_Comm_rank(comm, &rank);
   const auto n_glb = sub.n_global();
@@ -103,7 +103,7 @@ void read_restart_cpu(core::CpuField& f, const core::Subdomain& sub, const std::
       }
 }
 
-void write_restart_gathered_cpu(const core::CpuField& f, const core::Subdomain& sub, const std::string& path) {
+void write_restart_gathered_cpu(const core::CpuField& f, const parallel::mpi::Subdomain& sub, const std::string& path) {
   MPI_Comm comm = sub.topology().cart_comm();
   int rank = 0, nproc = 1;
   MPI_Comm_rank(comm, &rank); MPI_Comm_size(comm, &nproc);

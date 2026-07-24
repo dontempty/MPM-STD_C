@@ -1,4 +1,4 @@
-#include "parallel/cuda/cuda_runtime.hpp"
+#include "parallel/cuda_helpers/cuda_runtime.hpp"
 #include "common/macros.hpp"
 
 #ifdef MPMSTD_BACKEND_CUDA

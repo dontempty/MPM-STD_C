@@ -3,9 +3,10 @@
 // Free-fall nondim: nu=sqrt(Pr/Ra), alpha=1/sqrt(Ra*Pr).
 
 #include "rbc_common.hpp"
+using namespace mpmstd;
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -15,9 +16,9 @@ int main(int argc, char** argv) {
   std::array<bool,3> periodic = {is_per(cfg.get_or<std::string>("topology","x","periodic")),
                                  is_per(cfg.get_or<std::string>("topology","y","periodic")),
                                  is_per(cfg.get_or<std::string>("topology","z","wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int,3> n_global = {cfg.get<int>("mesh","n1m"), cfg.get<int>("mesh","n2m"), cfg.get<int>("mesh","n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig,3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -26,8 +27,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>   ("domain", std::string("L")+char('x'+a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   core::Domain domain{grid, topo, sub, *tdma_owner};
@@ -46,7 +47,7 @@ int main(int argc, char** argv) {
   core::CpuScalarSystem   scalar_system(sub);
   core::PressureSystem    pressure;
 
-  physics::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
+  physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
 
   const double t_end    = cfg.get_or<double>("time","t_end",   400.0);
   const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time","dt_start",  0.02));
@@ -93,20 +94,20 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
-    equation::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
-    equation::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
+    equation::scalar::coef_scalar_ob_cpu(domain, fields, scalar_system, dt);
+    equation::scalar::solve_scalar_ob_cpu(domain, bc, fields, scalar_system, dt);
     core::sync_field_cpu(fields, core::Var::T, bc, sub);
 
-    equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    physics::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
-    equation::update_velocity_cpu(fields, momentum);
+    equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    physics::buoyancy::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
+    equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
     rbc::zero_w_wall(fields[core::Var::W], sub);
 
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt, nullptr);
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt, nullptr);
 
     time += double(dt); ++step;
     rbc::accumulate(stats, domain, sub, fields, dx3_z, nstat_start, step);

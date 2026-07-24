@@ -17,7 +17,7 @@
 #include "core/config.hpp"
 #include "core/field_gpu.hpp"
 #include "core/gpu/gpu_grid.hpp"
-#include "core/mpi_topology.hpp"
+#include "core/gpu_binding.hpp"
 
 #include "config/logger.hpp"
 #include "boundary/problem_loader.hpp"
@@ -191,8 +191,8 @@ struct GpuDhvcAccum {
     std::vector<double> zc_local, zc_global;
     const double* d_dx1, *d_dx2, *d_dx3;
 
-    GpuDhvcAccum(const core::Subdomain& sub, const core::Grid& grid,
-                 const core::gpu::GpuGridArrays& gg)
+    GpuDhvcAccum(const parallel::mpi::Subdomain& sub, const grid::Grid& grid,
+                 const core::GpuGridArrays& gg)
     {
         const auto ni=sub.n_interior(); nx=ni[0]; ny=ni[1]; nzl=ni[2];
         const auto nt=sub.n_total(); n2t=nt[1]; n3t=nt[2]; h=kHaloWidth;
@@ -348,7 +348,7 @@ inline void gpu_write_stats_dhvc(GpuDhvcAccum& ga, post::Stats& s,
 } // anonymous namespace
 
 int main(int argc, char** argv) {
-    core::MpiContext mpi(&argc, &argv);
+    parallel::mpi::MpiContext mpi(&argc, &argv);
     config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
     const std::string input_path = (argc >= 2) ? argv[1] : "apps/dhvc/input.toml";
     auto cfg = config::Config::load(input_path);
@@ -358,9 +358,9 @@ int main(int argc, char** argv) {
     std::array<bool,3> periodic = {is_per(cfg.get_or<std::string>("topology","x","periodic")),
                                    is_per(cfg.get_or<std::string>("topology","y","periodic")),
                                    is_per(cfg.get_or<std::string>("topology","z","wall"))};
-    core::MpiTopology topo(mpi, dims, periodic);
+    parallel::mpi::MpiTopology topo(mpi, dims, periodic);
     std::array<int,3> n_global = {cfg.get<int>("mesh","n1m"), cfg.get<int>("mesh","n2m"), cfg.get<int>("mesh","n3m")};
-    core::Subdomain sub(topo, n_global);
+    parallel::mpi::Subdomain sub(topo, n_global);
 
     std::array<grid::AxisConfig,3> axes;
     for (int a = 0; a < 3; ++a) {
@@ -369,8 +369,8 @@ int main(int argc, char** argv) {
         const double L      = cfg.get<double>   ("domain", std::string("L")+char('x'+a));
         axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
     }
-    core::Grid grid(sub, axes);
-    core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+    grid::Grid grid(sub, axes);
+    boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
     bc.validate();
     auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
     core::Domain domain{grid, topo, sub, *tdma_owner};
@@ -511,7 +511,7 @@ int main(int argc, char** argv) {
 
     // GPU setup
     core::bind_gpu_to_local_rank_gpu(mpi);
-    core::gpu::GpuGridArrays gpu_grid_arrays(grid);
+    core::GpuGridArrays gpu_grid_arrays(grid);
     domain.gpu_grid = &gpu_grid_arrays;
 
     core::GpuFields gpu_fields;
@@ -544,15 +544,15 @@ int main(int argc, char** argv) {
     // PropertyModel evaluates to unit constants on every cell → the var kernels
     // reduce to the correct PaScaL_TCS OB scheme with semi-implicit convection
     // and −M·q^n residual correction, fixing the dt collapse at Ra=1e7.
-    physics::GpuPropertyFields gpu_props(sub);
-    physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T],
-                                   physics::PropertyModel{});
+    physics::properties::GpuPropertyFields gpu_props(sub);
+    physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T],
+                                   physics::properties::PropertyModel{});
 
     // Warm start: the interpolated velocity is not discretely divergence-free →
     // one pressure projection cleans it before time marching (methodology step 4).
     if (!restart_in.empty()) {
         const real_t dt0 = static_cast<real_t>(cfg.get_or<double>("time","dt_start",0.001));
-        equation::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt0);
+        equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt0);
         if (mpi.is_root())
             std::printf("[warm-start] projected interpolated field divergence-free (dt0=%.2e)\n", dt0);
     }
@@ -570,11 +570,11 @@ int main(int argc, char** argv) {
         if (mon_fp) std::fprintf(mon_fp, "step,t,dt,div,Re_dstar,Re_inst,KE,Nu,theta_rms\n");
     }
 
-    physics::BuoyancyParams buoy;
+    physics::buoyancy::BuoyancyParams buoy;
     buoy.gravity_axis = 0; buoy.coeff=1.0; buoy.T_ref=0.0;
     buoy.a12pera11=0.0; buoy.delta_T=0.0;
 
-    const double total_vol = physics::channel_total_volume_cpu(domain);
+    const double total_vol = physics::forcing::channel_total_volume_cpu(domain);
     const auto& ztopo = sub.topology().axis(Direction::Z);
     const bool has_lo = (ztopo.west_rank == MPI_PROC_NULL);
     const bool has_hi = (ztopo.east_rank == MPI_PROC_NULL);
@@ -608,24 +608,24 @@ int main(int argc, char** argv) {
         if (do_timing) { cudaDeviceSynchronize(); ts_cfl += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (1) Scalar: T^n → T^{n+1}  (NOB var path with unit props = PaScaL_TCS scheme)
-        equation::solve_scalar_nob_gpu(domain, bc, gpu_fields,
+        equation::scalar::solve_scalar_nob_gpu(domain, bc, gpu_fields,
             gpu_props.KPP, gpu_props.dKPP, gpu_props.invRhoCp, gpu_props.dinvRhoCp,
             gpu_scalar, dt);
         core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
         if (do_timing) { cudaDeviceSynchronize(); ts_scalar += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (2) Momentum predictor + OB buoyancy  (NOB var path with unit props)
-        equation::assemble_momentum_var_visc_gpu(domain, gpu_fields,
+        equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields,
             gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-        physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-        equation::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_P_acc, dt);  // incremental: −dt·∇Pⁿ
-        equation::solve_momentum_var_gpu(domain, bc, gpu_fields,
+        physics::buoyancy::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+        equation::pressure::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_P_acc, dt);  // incremental: −dt·∇Pⁿ
+        equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields,
             gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-        equation::update_velocity_gpu(gpu_fields, gpu_momentum);
+        equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
         if (do_timing) { cudaDeviceSynchronize(); ts_mom += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (3) Zero net streamwise flux
-        physics::apply_mass_flow_correction_gpu(domain, gpu_fields, 0.0, double(dt), total_vol, net_dpdx);
+        physics::forcing::apply_mass_flow_correction_gpu(domain, gpu_fields, 0.0, double(dt), total_vol, net_dpdx);
         if (do_timing) { cudaDeviceSynchronize(); ts_corr += ms_since(tPrev); tPrev = hrc::now(); }
 
         core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
@@ -644,8 +644,8 @@ int main(int argc, char** argv) {
         if (do_timing) { cudaDeviceSynchronize(); ts_sync += ms_since(tPrev); tPrev = hrc::now(); }
 
         // (5) Pressure
-        equation::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
-        equation::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+        equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
+        equation::pressure::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
         if (do_timing) { cudaDeviceSynchronize(); ts_pres += ms_since(tPrev); }
 
         time += double(dt); ++step;

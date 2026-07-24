@@ -3,6 +3,7 @@
 // Gravity along z. Hot bottom +0.5, cold top -0.5. No-slip U,V,W.
 
 #include "rbc_common.hpp"
+using namespace mpmstd;
 #include "core/gpu/gpu_grid.hpp"
 #include <chrono>
 #include <cuda_runtime.h>
@@ -183,7 +184,7 @@ struct GpuRbcAccum {
   int nzl, nx, ny, nz, n2t, n3t, h, kc_local, nxg, nyg, koff, nz_global;
   const double* d_dx1; const double* d_dx2; const double* d_dx3;
 
-  GpuRbcAccum(const core::Subdomain& sub, const core::gpu::GpuGridArrays& gg) {
+  GpuRbcAccum(const parallel::mpi::Subdomain& sub, const core::GpuGridArrays& gg) {
     const auto ni = sub.n_interior(); nx=ni[0]; ny=ni[1]; nz=ni[2]; nzl=nz;
     const auto nt = sub.n_total();    n2t=nt[1]; n3t=nt[2]; h=kHaloWidth;
     const auto ng = sub.n_global();   nxg=ng[0]; nyg=ng[1]; nz_global=ng[2];
@@ -299,7 +300,7 @@ inline void gpu_print_step_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
 inline void gpu_write_stats_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
     const std::string& path, int step, double Ra, double DeltaT,
     bool is_root, MPI_Comm comm,
-    const core::Grid& grid, const core::Subdomain& sub)
+    const grid::Grid& grid, const parallel::mpi::Subdomain& sub)
 {
   if (s.tc_n == 0) return;
   const int nzl = ga.nzl, nzg = ga.nz_global;
@@ -345,7 +346,7 @@ inline void gpu_write_stats_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
 
 //----------------------------------------------- Main -----------------------------------------------
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -402,10 +403,10 @@ int main(int argc, char** argv) {
   //  [조립] 위 입력값으로 객체를 만든다 (스칼라 cfg 읽기는 위에서 끝; BC만 전용
   //  로더 load_problem_from_config 가 [topology]/[bc.*] 섹션을 직접 해석).
   // ═══════════════════════════════════════════════════════════════════════════
-  core::MpiTopology topo(mpi, dims, periodic);
-  core::Subdomain sub(topo, n_global);
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::Subdomain sub(topo, n_global);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   core::Domain domain{grid, topo, sub, *tdma_owner};
@@ -420,9 +421,9 @@ int main(int argc, char** argv) {
 
   core::PressureSystem pressure;
 
-  physics::CpuPropertyFields props(sub);   // CPU copy for pressure step
-  const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
-  physics::BuoyancyParams buoy;
+  physics::properties::CpuPropertyFields props(sub);   // CPU copy for pressure step
+  const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
+  physics::buoyancy::BuoyancyParams buoy;
   buoy.gravity_axis = gravity_axis; buoy.coeff = 1; buoy.T_ref = 0;
   buoy.a12pera11 = (std::fabs(pmodel.a[2]) < real_t{1e-14}) ? real_t{0} : pmodel.a[2] / pmodel.a[1];
   buoy.delta_T   = static_cast<real_t>(DeltaT);
@@ -458,7 +459,7 @@ int main(int argc, char** argv) {
 
   // GPU setup: bind device, upload grid metrics, allocate GPU fields
   core::bind_gpu_to_local_rank_gpu(mpi);
-  core::gpu::GpuGridArrays gpu_grid_arrays(grid);
+  core::GpuGridArrays gpu_grid_arrays(grid);
   domain.gpu_grid = &gpu_grid_arrays;
 
   core::GpuFields gpu_fields;
@@ -470,7 +471,7 @@ int main(int argc, char** argv) {
 
   core::GpuMomentumSystem  gpu_momentum(sub);
   core::GpuScalarSystem    gpu_scalar(sub);
-  physics::GpuPropertyFields gpu_props(sub);
+  physics::properties::GpuPropertyFields gpu_props(sub);
 
   gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
   gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());
@@ -523,7 +524,7 @@ int main(int argc, char** argv) {
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
     // [2] NOB 변물성 갱신: 현재 온도 Tⁿ으로 μ, 1/ρ, κ, 1/(ρcp) 등을 다항식(글리세롤 모델)으로 재계산
     //     — 아래 에너지 방정식이 이 Tⁿ 물성을 사용
-    physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+    physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
     // [3] 에너지(온도) 방정식 — 대류 + 변수-κ 확산, 준음해 델타-폼:
     //     solve 안에서 sweep마다 A 밴드와 RHS를 동시에 조립(k_build_A_rhs_nob, 융합 build_A_RHS;
@@ -531,7 +532,7 @@ int main(int argc, char** argv) {
     //     sync_field = MPI 할로 교환 + 경계조건 재적용 (Tⁿ⁺¹ 완성)
     cudaDeviceSynchronize();
     auto t_s0 = hrc::now();
-    equation::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
+    equation::scalar::solve_scalar_nob_gpu(domain, bc, gpu_fields, gpu_props.KPP, gpu_props.dKPP,
                                    gpu_props.invRhoCp, gpu_props.dinvRhoCp, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
     cudaDeviceSynchronize();
@@ -542,7 +543,7 @@ int main(int argc, char** argv) {
     // (mu, inv_rho) and the NOB buoyancy inv_rho use T^{n+1} — matches PaScaL_TCS
     // momentum_coeffi(T) called AFTER thermal_solver (MPM-STD staggered-time scheme).
     // Energy above already used the T^n properties from line 408.
-    physics::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
+    physics::properties::update_properties_gpu(gpu_props, gpu_fields[core::Var::T], pmodel);
 
     // [5] 운동량 예측자(predictor) — 중간 속도 U*,V*,W* 계산:
     //     assemble  : 대류 + 변수-μ 확산의 명시 RHS 조립
@@ -551,19 +552,19 @@ int main(int argc, char** argv) {
     //     solve     : 3-sweep ADI(TDMA) + 블록 하삼각 속도 커플링으로 증분 δU,δV,δW 계산
     //     update    : U += δU 등으로 중간 속도 완성 (아직 발산 ≠ 0)
     auto t_m0 = hrc::now();
-    equation::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-    physics::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
-    equation::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_P_acc, gpu_props.invRho, dt);
-    equation::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
-    equation::update_velocity_gpu(gpu_fields, gpu_momentum);
+    equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    physics::buoyancy::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
+    equation::pressure::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_P_acc, gpu_props.invRho, dt);
+    equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
+    equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);   // 할로 교환 + BC 재적용 (U,V,W)
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
     cudaDeviceSynchronize();
     t_mom += ms_since(t_m0);
     // 디버그: 운동량 직후 상단 슬랩 |U|,|W| 최대값 (환경변수 MPMSTD_MOMDBG≥1일 때만 출력, 평소 no-op)
-    equation::debug_slabmax_gpu("U.postmom", gpu_fields[core::Var::U], domain, 'U');
-    equation::debug_slabmax_gpu("W.postmom", gpu_fields[core::Var::W], domain, 'W');
+    equation::momentum::debug_slabmax_gpu("U.postmom", gpu_fields[core::Var::U], domain, 'U');
+    equation::momentum::debug_slabmax_gpu("W.postmom", gpu_fields[core::Var::W], domain, 'W');
 
     // [6] 벽면 W=0 강제 — MAC 격자에서 z-벽의 W 면(내부 인덱스 k=h)은 TDMA에 안 접혀서
     //     솔브 후 명시적으로 0으로 눌러줘야 함
@@ -590,12 +591,12 @@ int main(int argc, char** argv) {
     // (invRhoc-1)*∇dPhat velocity term are a cancelling PAIR (div=0 exact), not
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
-    equation::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
-    equation::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
+    equation::pressure::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
     t_pressure += ms_since(t_p0);
-    equation::debug_slabmax_gpu("U.postproj", gpu_fields[core::Var::U], domain);
-    equation::debug_slabmax_gpu("W.postproj", gpu_fields[core::Var::W], domain);
+    equation::momentum::debug_slabmax_gpu("U.postproj", gpu_fields[core::Var::U], domain);
+    equation::momentum::debug_slabmax_gpu("W.postproj", gpu_fields[core::Var::W], domain);
 
     // [8] 온도 클리핑(NOB 전용, DeltaT>0일 때만) — 물성 다항식의 유효 범위를 벗어나는
     //     오버슛 T를 잘라냄; 몇 셀이 잘렸는지 d_clip_count에 기록해 모니터 때 보고

@@ -7,13 +7,13 @@
 
 namespace mpmstd::core {
 
-void exchange_halo_cpu(CpuField& field, const Subdomain& sub) {
+void exchange_halo_cpu(CpuField& field, const parallel::mpi::Subdomain& sub) {
   // Subdomain::exchange_halo wraps the 6 face MPI_Sendrecv calls (periodic wrap
   // handled by the axis communicators). Host buffer here.
   sub.exchange_halo(field.data());
 }
 
-void bind_gpu_to_local_rank_cpu(const MpiContext& /*ctx*/) {
+void bind_gpu_to_local_rank_cpu(const parallel::mpi::MpiContext& /*ctx*/) {
   // No GPU on the CPU backend — intentional no-op so backend-parameterized code
   // can call the matching suffix uniformly.
 }

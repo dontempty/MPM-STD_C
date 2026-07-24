@@ -36,7 +36,7 @@ using namespace mpmstd;
 namespace {
 
 // Enforce W=0 on global z-wall faces (MAC stagger).
-void zero_w_wall(core::CpuField& W, const core::Subdomain& sub) {
+void zero_w_wall(core::CpuField& W, const parallel::mpi::Subdomain& sub) {
   const auto nt = sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
   real_t* w = W.data();
@@ -69,7 +69,7 @@ double div_max(const core::Domain& d, const core::CpuFields& fields) {
 } // anonymous namespace
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/channel/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -80,9 +80,9 @@ int main(int argc, char** argv) {
   std::array<bool, 3> periodic = {is_per(cfg.get_or<std::string>("topology", "x", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "y", "periodic")),
                                   is_per(cfg.get_or<std::string>("topology", "z", "wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int, 3> n_global = {cfg.get<int>("mesh", "n1m"), cfg.get<int>("mesh", "n2m"), cfg.get<int>("mesh", "n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig, 3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -91,8 +91,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>("domain", std::string("L") + char('x' + a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   auto& tdma       = *tdma_owner;                       // unwrap once — no `*` in the loop
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
   const bool   mass_flow  = (fmode == "mass_flow");
   const double target_Ub  = cfg.get_or<double>("channel_forcing", "target_bulk_velocity", 1.0);
   const double target_dpdx= cfg.get_or<double>("channel_forcing", "target_dPdx", cfg.get_or<double>("source", "U_force", 3.0 * nu));
-  const double total_vol  = physics::channel_total_volume_cpu(domain);
+  const double total_vol  = physics::forcing::channel_total_volume_cpu(domain);
   double dpdx = mass_flow ? -(3.0 * nu) : -target_dpdx;
 
   // ── solver state (momentum owns its increments) ───────────────────────────
@@ -208,20 +208,20 @@ int main(int argc, char** argv) {
     const real_t dt = driver::compute_cfl_dt_cpu(domain, fields, max_cfl, dt_cap);
 
     // (2) momentum: RHS → 3-sweep ADI + block coupling → U += dU
-    equation::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
-    equation::solve_momentum_cpu(domain, bc, fields, momentum, dt);
-    equation::update_velocity_cpu(fields, momentum);
+    equation::momentum::assemble_momentum_const_visc_cpu(domain, fields, momentum, dt);
+    equation::momentum::solve_momentum_cpu(domain, bc, fields, momentum, dt);
+    equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::V, bc, sub);
     core::sync_field_cpu(fields, core::Var::W, bc, sub);
 
     // (3) channel forcing: mean dP/dx + (mass-flow) bulk correction
-    physics::apply_body_force_cpu(fields, static_cast<real_t>(dpdx), dt);
-    if (mass_flow) physics::apply_mass_flow_correction_cpu(domain, fields, target_Ub, dt, total_vol, dpdx);
+    physics::forcing::apply_body_force_cpu(fields, static_cast<real_t>(dpdx), dt);
+    if (mass_flow) physics::forcing::apply_mass_flow_correction_cpu(domain, fields, target_Ub, dt, total_vol, dpdx);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
     zero_w_wall(fields[core::Var::W], sub);
 
     // (4) pressure: div → Poisson → project U,V,W (P updated)
-    equation::solve_pressure_cpu(domain, bc, fields, pressure, dt);
+    equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
 
     time += static_cast<double>(dt);
     ++step;
@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
       post::accumulate_statistics_cpu(stats, domain, fields);
     if (step % nmonitor == 0) {
       const double dv = div_max(domain, fields);
-      const double ub = physics::channel_bulk_velocity_cpu(domain, fields, total_vol);
+      const double ub = physics::forcing::channel_bulk_velocity_cpu(domain, fields, total_vol);
       if (mpi.is_root())
         std::printf("step=%d time=%.4g dt=%.3g div=%.3e Ub=%.4f dPdx=%.4e\n", step, time, double(dt), dv, ub, dpdx);
     }

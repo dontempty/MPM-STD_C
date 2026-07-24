@@ -3,12 +3,12 @@
 // differs ONLY by the input BC (all walls + moving lid, no periodic axis →
 // all-Neumann pressure ⇒ DCT+TDMA + null-space pin).
 
-#include "core/mpi_topology.hpp"
+#include "core/gpu_binding.hpp"
 
 #include <cstdio>
 
 int main(int argc, char** argv) {
-  mpmstd::core::MpiContext mpi(&argc, &argv);
+  mpmstd::parallel::mpi::MpiContext mpi(&argc, &argv);
   if (mpi.is_root())
     std::printf("[mpmstd] cavity (skeleton, P0) — links libmpmstd; validated in P3b\n");
   return 0;

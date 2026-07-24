@@ -9,7 +9,7 @@
 // P1 pressure step rewired to Domain + Fields. Lazily builds the validated
 // pencil-FFT engine (from Domain+BC) and runs the full step on the Fields.
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::pressure {
 
 void add_pressure_gradient_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom,
                                const core::CpuField& P_acc, real_t dt) {
@@ -76,7 +76,7 @@ void accumulate_pressure_cpu(core::CpuField& P_acc, const core::CpuField& dP) {
   for (std::size_t q = 0; q < n; ++q) pa[q] += dp[q];   // ref mom.f90... pre.f90:818 P=P+dP
 }
 
-void solve_pressure_cpu(const core::Domain& domain, const core::BoundaryCondition& bc,
+void solve_pressure_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                         core::CpuFields& fields, core::PressureSystem& poi, real_t dt,
                         const real_t* inv_rho) {
   if (!poi.engine)
@@ -95,4 +95,4 @@ void solve_pressure_cpu(const core::Domain& domain, const core::BoundaryConditio
   }
 }
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::pressure

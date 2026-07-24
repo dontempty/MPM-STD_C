@@ -4,7 +4,7 @@
 #include "core/variables.hpp"
 #include "core/system.hpp"
 
-namespace mpmstd::equation {
+namespace mpmstd::equation::momentum {
 
 // Momentum assemble — T-independent (rev.2 §9). Reads the velocity fields + the
 // nu constant from `Fields`, builds the explicit MPM-STD BW-ADI RHS per component
@@ -24,4 +24,4 @@ void assemble_momentum_var_visc_gpu  (const core::Domain& domain, core::GpuField
                                       const core::GpuField& mu, const core::GpuField& inv_rho,
                                       core::GpuMomentumSystem& mom, real_t dt);
 
-} // namespace mpmstd::equation
+} // namespace mpmstd::equation::momentum

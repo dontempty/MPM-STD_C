@@ -2,7 +2,7 @@
 
 #include "core/field_cpu.hpp"
 #include "core/field_gpu.hpp"
-#include "core/mpi_topology.hpp"   // Subdomain
+#include "core/gpu_binding.hpp"   // Subdomain
 
 namespace mpmstd::core {
 
@@ -22,7 +22,7 @@ namespace mpmstd::core {
 // Faces only (no edges/corners) — matches the underlying Subdomain routine;
 // extend there if a cross-derivative stencil ever needs corners.
 // =============================================================================
-void exchange_halo_cpu(CpuField& field, const Subdomain& sub);
-void exchange_halo_gpu(GpuField& field, const Subdomain& sub);
+void exchange_halo_cpu(CpuField& field, const parallel::mpi::Subdomain& sub);
+void exchange_halo_gpu(GpuField& field, const parallel::mpi::Subdomain& sub);
 
 } // namespace mpmstd::core

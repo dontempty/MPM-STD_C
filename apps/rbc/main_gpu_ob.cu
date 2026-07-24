@@ -3,10 +3,11 @@
 // Gravity along z. Hot bottom +0.5, cold top -0.5. No-slip U,V,W.
 
 #include "rbc_common.hpp"
+using namespace mpmstd;
 #include "core/gpu/gpu_grid.hpp"
 
 int main(int argc, char** argv) {
-  core::MpiContext mpi(&argc, &argv);
+  parallel::mpi::MpiContext mpi(&argc, &argv);
   config::Logger::init(mpi.world_rank(), config::LogLevel::Info);
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
@@ -16,9 +17,9 @@ int main(int argc, char** argv) {
   std::array<bool,3> periodic = {is_per(cfg.get_or<std::string>("topology","x","periodic")),
                                  is_per(cfg.get_or<std::string>("topology","y","periodic")),
                                  is_per(cfg.get_or<std::string>("topology","z","wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
+  parallel::mpi::MpiTopology topo(mpi, dims, periodic);
   std::array<int,3> n_global = {cfg.get<int>("mesh","n1m"), cfg.get<int>("mesh","n2m"), cfg.get<int>("mesh","n3m")};
-  core::Subdomain sub(topo, n_global);
+  parallel::mpi::Subdomain sub(topo, n_global);
 
   std::array<grid::AxisConfig,3> axes;
   for (int a = 0; a < 3; ++a) {
@@ -27,8 +28,8 @@ int main(int argc, char** argv) {
     const double L      = cfg.get<double>   ("domain", std::string("L")+char('x'+a));
     axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
-  core::Grid grid(sub, axes);
-  core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
+  grid::Grid grid(sub, axes);
+  boundary::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
   auto  tdma_owner = linear_solver::tdma::TdmaRegistry::make_default(topo);
   core::Domain domain{grid, topo, sub, *tdma_owner};
@@ -44,7 +45,7 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   core::PressureSystem pressure;
-  physics::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
+  physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
 
   const double t_end    = cfg.get_or<double>("time","t_end",   400.0);
   const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time","dt_start",  0.02));
@@ -81,7 +82,7 @@ int main(int argc, char** argv) {
 
   // GPU setup: bind device, upload grid metrics, allocate GPU fields
   core::bind_gpu_to_local_rank_gpu(mpi);
-  core::gpu::GpuGridArrays gpu_grid_arrays(grid);
+  core::GpuGridArrays gpu_grid_arrays(grid);
   domain.gpu_grid = &gpu_grid_arrays;
 
   core::GpuFields gpu_fields;
@@ -112,13 +113,13 @@ int main(int argc, char** argv) {
   while (time < t_end && step < n_steps) {
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
 
-    equation::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
+    equation::scalar::solve_scalar_ob_gpu(domain, bc, gpu_fields, gpu_scalar, dt);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
 
-    equation::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
-    physics::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-    equation::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
-    equation::update_velocity_gpu(gpu_fields, gpu_momentum);
+    equation::momentum::assemble_momentum_const_visc_gpu(domain, gpu_fields, gpu_momentum, dt);
+    physics::buoyancy::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
+    equation::momentum::solve_momentum_gpu(domain, bc, gpu_fields, gpu_momentum, dt);
+    equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
@@ -130,7 +131,7 @@ int main(int argc, char** argv) {
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
 
     // G4: GPU pressure solve (OB — no H↔D transfers for pressure)
-    equation::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
+    equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
 
     // Download U, V, W, T for diagnostics (rbc::accumulate + print_step use CPU fields)
     gpu_fields[core::Var::U].to_host(fields[core::Var::U].data());

@@ -3,9 +3,9 @@
 #include "common/macros.hpp"       // MPMSTD_HD
 #include "core/field_cpu.hpp"
 #include "core/field_gpu.hpp"
-#include "core/mpi_topology.hpp"   // Subdomain
+#include "core/gpu_binding.hpp"   // Subdomain
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::properties {
 
 // NOB temperature-dependent properties (PaScaL_TCS reference module_global.f90).
 // All properties are polynomials in the argument Δθ = DeltaT·θ (θ∈[−0.5,0.5]);
@@ -94,7 +94,7 @@ struct PropertyFieldsT {
   // Field names follow the PaScaL_TCS reference arrays (module_solve_momentum/
   // thermal.f90): Mu, invRho, KPP, dKPP, invRhoCp, dinvRhoCp.
   FieldT Mu, invRho, KPP, dKPP, invRhoCp, dinvRhoCp;
-  explicit PropertyFieldsT(const core::Subdomain& sub)
+  explicit PropertyFieldsT(const parallel::mpi::Subdomain& sub)
     : Mu(sub, "Mu"), invRho(sub, "invRho"), KPP(sub, "KPP"),
       dKPP(sub, "dKPP"), invRhoCp(sub, "invRhoCp"), dinvRhoCp(sub, "dinvRhoCp") {}
 };
@@ -104,4 +104,4 @@ using GpuPropertyFields = PropertyFieldsT<core::GpuField>;
 void update_properties_cpu(CpuPropertyFields& props, const core::CpuField& T, const PropertyModel& m);
 void update_properties_gpu(GpuPropertyFields& props, const core::GpuField& T, const PropertyModel& m);
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::properties

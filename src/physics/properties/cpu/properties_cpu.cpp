@@ -9,7 +9,7 @@
 // (incl. halo, since T is already synced) so the face interpolations + ghosts
 // downstream are valid.
 
-namespace mpmstd::physics {
+namespace mpmstd::physics::properties {
 
 // The property formulas themselves live in properties.hpp
 // (evaluate_properties, shared with the gpu/ backend); this file only loops it
@@ -30,4 +30,4 @@ void update_properties_cpu(CpuPropertyFields& p, const core::CpuField& T, const 
   }
 }
 
-} // namespace mpmstd::physics
+} // namespace mpmstd::physics::properties

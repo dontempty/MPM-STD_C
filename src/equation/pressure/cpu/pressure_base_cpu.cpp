@@ -24,7 +24,7 @@ inline int idx3f(int k, int i, int j, int n1, int n2) {
 
 PressureSolverBase::PressureSolverBase(const grid::Grid&                  grid,
                                        const parallel::mpi::Subdomain&    sub,
-                                       const boundary::Problem&           problem,
+                                       const boundary::BoundaryCondition&           problem,
                                        linear_solver::tdma::TdmaRegistry& tdma)
   : grid_(grid), sub_(sub), problem_(problem), tdma_(tdma) {
 
