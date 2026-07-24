@@ -136,7 +136,7 @@ private:
   // ---- TDMA z (distributed over comm_xz)
   std::vector<double> tdma_A_r_, tdma_B_r_, tdma_C_r_, tdma_D_r_;
   std::vector<double> tdma_A_c_, tdma_B_c_, tdma_C_c_, tdma_D_c_;
-  std::unique_ptr<linear_solver::tdma::TdmaSolver> tdma_z_;
+  std::unique_ptr<linear_solver::tdma::PaScaLTDMACpuBackend> tdma_z_;
   parallel::mpi::CartComm1D comm_xz_1d_;
 };
 

@@ -247,8 +247,7 @@ static int modify_ghost_kind(const mpmstd::boundary::FaceBc& face) {
 static mpmstd::linear_solver::tdma::PaScaLTDMACudaBackend&
 cuda_tdma(mpmstd::linear_solver::tdma::TdmaRegistry& tdma,
           mpmstd::Direction d) {
-  return static_cast<mpmstd::linear_solver::tdma::PaScaLTDMACudaBackend&>(
-      tdma.get(d));
+  return tdma.get(d);
 }
 
 #endif // MPMSTD_BACKEND_CUDA

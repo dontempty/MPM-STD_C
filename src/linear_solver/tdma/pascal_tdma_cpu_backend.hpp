@@ -1,6 +1,6 @@
 #pragma once
 
-#include "linear_solver/tdma/tdma_solver.hpp"
+#include "common/types.hpp"
 #include "parallel/mpi/mpi_topology.hpp"
 
 #include <memory>
@@ -12,20 +12,20 @@ namespace mpmstd::linear_solver::tdma {
 // Plans are cached by n_sys; the same backend object can be re-used across
 // many time steps and ADI stages that share the same per-direction n_sys.
 
-class PaScaLTDMACpuBackend final : public TdmaSolver {
+class PaScaLTDMACpuBackend final {
 public:
   // axis_comm carries the per-direction CartComm1D from MpiTopology.
   explicit PaScaLTDMACpuBackend(const parallel::mpi::CartComm1D& axis_comm);
-  ~PaScaLTDMACpuBackend() override;
+  ~PaScaLTDMACpuBackend();
 
   PaScaLTDMACpuBackend(const PaScaLTDMACpuBackend&) = delete;
   PaScaLTDMACpuBackend& operator=(const PaScaLTDMACpuBackend&) = delete;
 
   void solve_many(real_t* A, real_t* B, real_t* C, real_t* D,
-                   int n_sys, int n_row) override;
+                   int n_sys, int n_row);
 
   void solve_many_cyclic(real_t* A, real_t* B, real_t* C, real_t* D,
-                          int n_sys, int n_row) override;
+                          int n_sys, int n_row);
 
 private:
   // Forward declaration to avoid leaking PaScaL_TDMA's headers from this hpp.

@@ -1,18 +1,33 @@
 #pragma once
 
 #include "common/direction.hpp"
-#include "linear_solver/tdma/tdma_solver.hpp"
 #include "parallel/mpi/mpi_topology.hpp"
+#ifdef MPMSTD_BACKEND_CUDA
+#include "linear_solver/tdma/pascal_tdma_cuda_backend.hpp"
+#else
+#include "linear_solver/tdma/pascal_tdma_cpu_backend.hpp"
+#endif
 
 #include <array>
 #include <memory>
 
 namespace mpmstd::linear_solver::tdma {
 
-// TdmaRegistry holds one TdmaSolver instance per axis.  Equation modules pick
-// the right backend by direction; the factory function decides at build time
-// whether to use the CPU or CUDA backend, but the registry interface is the
-// same either way.
+// TdmaBackend is the build's concrete TDMA backend.  There is exactly one
+// backend per build (selected at compile time), so the registry stores it by
+// concrete type rather than through a virtual base:
+//   CPU build  → PaScaLTDMACpuBackend
+//   CUDA build → PaScaLTDMACudaBackend  (also exposes solve_many_device for the
+//                GPU-resident path — a member a shared virtual base could not
+//                carry, which is why the GPU kernels had to static_cast).
+#ifdef MPMSTD_BACKEND_CUDA
+using TdmaBackend = PaScaLTDMACudaBackend;
+#else
+using TdmaBackend = PaScaLTDMACpuBackend;
+#endif
+
+// TdmaRegistry holds one TdmaBackend instance per axis.  Equation modules pick
+// the right backend by direction.
 //
 // Plans inside each backend are cached by n_sys (built lazily), so the same
 // registry can service the entire time-loop without re-creating MPI
@@ -21,15 +36,13 @@ namespace mpmstd::linear_solver::tdma {
 class TdmaRegistry {
 public:
   // Build a registry that uses the build's default backend for every axis.
-  // CPU build → PaScaLTDMACpuBackend on each axis_comm.
-  // CUDA build → PaScaLTDMACudaBackend on each axis_comm.
   static std::unique_ptr<TdmaRegistry>
   make_default(const parallel::mpi::MpiTopology& topo);
 
-  TdmaSolver& get(Direction d) { return *backends_[to_int(d)]; }
+  TdmaBackend& get(Direction d) { return *backends_[to_int(d)]; }
 
 private:
-  std::array<std::unique_ptr<TdmaSolver>, 3> backends_;
+  std::array<std::unique_ptr<TdmaBackend>, 3> backends_;
 };
 
 } // namespace mpmstd::linear_solver::tdma

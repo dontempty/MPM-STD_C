@@ -1316,8 +1316,7 @@ static mpmstd::linear_solver::tdma::PaScaLTDMACudaBackend&
 cuda_tdma_mom(mpmstd::linear_solver::tdma::TdmaRegistry& tdma,
               mpmstd::Direction d)
 {
-    return static_cast<mpmstd::linear_solver::tdma::PaScaLTDMACudaBackend&>(
-        tdma.get(d));
+    return tdma.get(d);
 }
 
 // ===========================================================================

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "linear_solver/tdma/tdma_solver.hpp"
+#include "common/types.hpp"
 #include "parallel/mpi/mpi_topology.hpp"
 
 #include <memory>
@@ -14,19 +14,19 @@ namespace mpmstd::linear_solver::tdma {
 // build so callers cannot accidentally instantiate it; the solve methods
 // throw "not implemented" stubs that will be filled in M5'.
 
-class PaScaLTDMACudaBackend final : public TdmaSolver {
+class PaScaLTDMACudaBackend final {
 public:
   explicit PaScaLTDMACudaBackend(const parallel::mpi::CartComm1D& axis_comm);
-  ~PaScaLTDMACudaBackend() override;
+  ~PaScaLTDMACudaBackend();
 
   PaScaLTDMACudaBackend(const PaScaLTDMACudaBackend&) = delete;
   PaScaLTDMACudaBackend& operator=(const PaScaLTDMACudaBackend&) = delete;
 
   void solve_many(real_t* A, real_t* B, real_t* C, real_t* D,
-                   int n_sys, int n_row) override;
+                   int n_sys, int n_row);
 
   void solve_many_cyclic(real_t* A, real_t* B, real_t* C, real_t* D,
-                          int n_sys, int n_row) override;
+                          int n_sys, int n_row);
 
   // Device-pointer variants: A/B/C/D are already on device — no H↔D transfer.
   void solve_many_device(double* d_A, double* d_B, double* d_C, double* d_D,
