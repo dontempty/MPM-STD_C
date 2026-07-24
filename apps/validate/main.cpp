@@ -15,7 +15,9 @@
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
+#include "equation/scalar/linear_system.hpp"
+#include "equation/pressure/linear_system.hpp"
 #include "core/config.hpp"
 
 #include "config/logger.hpp"
@@ -75,7 +77,7 @@ double div_max(const core::Domain& d, const core::CpuFields& f) {
 // Reference face-interpolated buoyancy on U (ref solvedU 347-352):
 //   rhs_u += dt · invRhoc · (Tc + a12pera11·Tc²·ΔT),  Cmt=1,
 //   Tc = 0.5·(dx1(im)·T(i) + dx1(i)·T(im))/dmx1(i) ,  invRhoc face-interp.
-void add_buoyancy_face_u(core::CpuMomentumSystem& mom, const core::CpuField& T,
+void add_buoyancy_face_u(equation::momentum::CpuLinearSystem& mom, const core::CpuField& T,
                          const core::CpuField& inv_rho, const core::Domain& d,
                          real_t a12pera11, real_t dT, real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -154,9 +156,9 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::CpuMomentumSystem momentum(sub);
-  core::CpuScalarSystem   scalar_system(sub);
-  core::PressureSystem    pressure;
+  equation::momentum::CpuLinearSystem momentum(sub);
+  equation::scalar::CpuLinearSystem   scalar_system(sub);
+  equation::pressure::LinearSystem    pressure;
 
   const bool   faithful = cfg.get_or<int>("physics", "faithful", 1) != 0;
   const double DeltaT   = cfg.get_or<double>("physics", "DeltaT", 0.0);

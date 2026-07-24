@@ -3,7 +3,8 @@
 
 #include "core/domain.hpp"
 #include "core/field_gpu.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
+#include "equation/pressure/linear_system.hpp"
 #include "core/gpu/gpu_grid.hpp"
 #include "common/macros.hpp"
 
@@ -67,7 +68,7 @@ __global__ void k_pacc_add(double* Pacc, const double* dP, long n) {
 
 } // anonymous namespace
 
-void add_pressure_gradient_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
+void add_pressure_gradient_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
                                const core::GpuField& P_acc, real_t dt) {
   const auto ni = domain.sub.n_interior();
   const auto nt = domain.sub.n_total();
@@ -81,7 +82,7 @@ void add_pressure_gradient_gpu(const core::Domain& domain, core::GpuMomentumSyst
       static_cast<double>(dt));
 }
 
-void add_pressure_gradient_nob_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
+void add_pressure_gradient_nob_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
                                    const core::GpuField& P_acc, const core::GpuField& inv_rho,
                                    real_t dt) {
   const auto ni = domain.sub.n_interior();
@@ -98,11 +99,26 @@ void add_pressure_gradient_nob_gpu(const core::Domain& domain, core::GpuMomentum
       n2t, n3t, nx, ny, nz, h, static_cast<double>(dt));
 }
 
-void accumulate_pressure_gpu(core::GpuField& P_acc, const core::GpuField& dP) {
+// accumulate: Pⁿ⁺¹ = Pⁿ + δp, i.e. the accumulator Var::P += the system's increment poi.dP.
+void accumulate_pressure_gpu(core::GpuFields& fields, const equation::pressure::LinearSystem& poi) {
+  core::GpuField& P_acc = fields[core::Var::P];
+  const auto& dP = *static_cast<const core::GpuField*>(poi.dP_gpu_field.get());
   const long n = static_cast<long>(P_acc.n_elements());
   const int blk = 256;
   const int grd = static_cast<int>((n + blk - 1) / blk);
   k_pacc_add<<<grd, blk>>>(P_acc.data(), dP.data(), n);
+}
+
+// Lazy-allocate the system-owned δp GPU field (zero-init), like dPhat/dP0.
+static core::GpuField& ensure_dP_gpu(equation::pressure::LinearSystem& poi,
+                                     const parallel::mpi::Subdomain& sub) {
+  if (!poi.dP_gpu_field) {
+    auto* f = new core::GpuField(sub, "dP_gpu");
+    CUDA_CHK(cudaMemset(f->data(), 0, f->n_elements() * sizeof(real_t)));
+    poi.dP_gpu_field = std::shared_ptr<void>(f,
+        [](void* p){ delete static_cast<core::GpuField*>(p); });
+  }
+  return *static_cast<core::GpuField*>(poi.dP_gpu_field.get());
 }
 
 // ── OB GPU pressure solve ─────────────────────────────────────────────────────
@@ -110,16 +126,17 @@ void accumulate_pressure_gpu(core::GpuField& P_acc, const core::GpuField& dP) {
 void solve_pressure_gpu(const core::Domain&             domain,
                         const boundary::BoundaryCondition&  bc,
                         core::GpuFields&                gpu_fields,
-                        core::PressureSystem&           poi,
+                        equation::pressure::LinearSystem&           poi,
                         real_t                          dt)
 {
   using Eng = pressure::PressureSolverGpu;
 
-  if (!poi.engine_gpu) {
-    poi.engine_gpu = std::make_shared<Eng>(domain.grid, domain.sub, bc, domain.tdma);
+  if (!poi.pressure_solver_gpu) {
+    poi.pressure_solver_gpu = std::make_shared<Eng>(domain.grid, domain.sub, bc, domain.tdma);
   }
-  auto& eng = *std::static_pointer_cast<Eng>(poi.engine_gpu);
-  eng.solve(dt, gpu_fields, bc, domain.sub);
+  auto& eng = *std::static_pointer_cast<Eng>(poi.pressure_solver_gpu);
+  core::GpuField& dP = ensure_dP_gpu(poi, domain.sub);
+  eng.solve(dt, gpu_fields, bc, domain.sub, dP);
 }
 
 
@@ -128,14 +145,14 @@ void solve_pressure_gpu(const core::Domain&             domain,
 void solve_pressure_nob_gpu(const core::Domain&             domain,
                              const boundary::BoundaryCondition&  bc,
                              core::GpuFields&                gpu_fields,
-                             core::PressureSystem&           poi,
+                             equation::pressure::LinearSystem&           poi,
                              real_t                          dt,
                              const core::GpuField&           inv_rho)
 {
   using Eng = pressure::PressureSolverGpu;
 
-  if (!poi.engine_gpu) {
-    poi.engine_gpu = std::make_shared<Eng>(domain.grid, domain.sub, bc, domain.tdma);
+  if (!poi.pressure_solver_gpu) {
+    poi.pressure_solver_gpu = std::make_shared<Eng>(domain.grid, domain.sub, bc, domain.tdma);
   }
 
   // Lazy-init dPhat + dP0 GPU fields (zero-initialized)
@@ -152,10 +169,11 @@ void solve_pressure_nob_gpu(const core::Domain&             domain,
         [](void* p){ delete static_cast<core::GpuField*>(p); });
   }
 
-  auto& eng   = *std::static_pointer_cast<Eng>(poi.engine_gpu);
+  auto& eng   = *std::static_pointer_cast<Eng>(poi.pressure_solver_gpu);
   auto& dPhat = *static_cast<core::GpuField*>(poi.dPhat_gpu_field.get());
   auto& dP0   = *static_cast<core::GpuField*>(poi.dP0_gpu_field.get());
-  eng.solve_nob(dt, gpu_fields, bc, domain.sub, inv_rho, dPhat, dP0);
+  core::GpuField& dP = ensure_dP_gpu(poi, domain.sub);
+  eng.solve_nob(dt, gpu_fields, bc, domain.sub, inv_rho, dPhat, dP0, dP);
 }
 
 } // namespace mpmstd::equation::pressure

@@ -54,7 +54,7 @@ __global__ void k_add_buoyancy_nob(real_t* rhs, const real_t* T, const real_t* i
 
 namespace mpmstd::physics::buoyancy {
 
-void add_buoyancy_force_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
+void add_buoyancy_force_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
                              const core::GpuField& T, const BuoyancyParams& p, real_t dt) {
   const auto nt = mom.dU.n_total();
   const int n1t = nt[0], n2t = nt[1], n3t = nt[2], h = kHaloWidth;
@@ -72,7 +72,7 @@ void add_buoyancy_force_gpu(const core::Domain& domain, core::GpuMomentumSystem&
                                p.coeff, p.T_ref, dt);
 }
 
-void add_buoyancy_force_nob_gpu(const core::Domain& domain, core::GpuMomentumSystem& mom,
+void add_buoyancy_force_nob_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
                                  const core::GpuField& T, const core::GpuField& inv_rho,
                                  const BuoyancyParams& p, real_t dt) {
   const auto nt = mom.dU.n_total();
@@ -94,7 +94,7 @@ void add_buoyancy_force_nob_gpu(const core::Domain& domain, core::GpuMomentumSys
 
 #else
 namespace mpmstd::physics::buoyancy {
-void add_buoyancy_force_gpu(const core::Domain&, core::GpuMomentumSystem&, const core::GpuField&, const BuoyancyParams&, real_t) {}
-void add_buoyancy_force_nob_gpu(const core::Domain&, core::GpuMomentumSystem&, const core::GpuField&, const core::GpuField&, const BuoyancyParams&, real_t) {}
+void add_buoyancy_force_gpu(const core::Domain&, equation::momentum::GpuLinearSystem&, const core::GpuField&, const BuoyancyParams&, real_t) {}
+void add_buoyancy_force_nob_gpu(const core::Domain&, equation::momentum::GpuLinearSystem&, const core::GpuField&, const core::GpuField&, const BuoyancyParams&, real_t) {}
 } // namespace mpmstd::physics::buoyancy
 #endif

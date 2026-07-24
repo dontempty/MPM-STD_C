@@ -43,9 +43,9 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::CpuMomentumSystem momentum(sub);
-  core::CpuScalarSystem   scalar_system(sub);
-  core::PressureSystem    pressure;
+  equation::momentum::CpuLinearSystem momentum(sub);
+  equation::scalar::CpuLinearSystem   scalar_system(sub);
+  equation::pressure::LinearSystem    pressure;
 
   const double DeltaT = cfg.get_or<double>("physics","DeltaT", 0.0);
   physics::properties::CpuPropertyFields props(sub);
@@ -97,7 +97,6 @@ int main(int argc, char** argv) {
   // (Var::P) and Pⁿ⁺¹ = Pⁿ + δp. Zero-seeded (no restart support in this app):
   // self-starting — the first solve returns the full pressure. Matches the
   // rbc_gpu_nob path (Report/32); CPU was left non-incremental until now.
-  core::CpuField P_acc(sub, "P_acc");
 
   // ── time loop ─────────────────────────────────────────────────────────────
   double time=0.0; int step=0;
@@ -115,7 +114,7 @@ int main(int argc, char** argv) {
 
     equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
     physics::buoyancy::add_buoyancy_force_nob_cpu(domain, momentum, fields[core::Var::T], props.invRho, buoy, dt);
-    equation::pressure::add_pressure_gradient_nob_cpu(domain, momentum, P_acc, props.invRho, dt);
+    equation::pressure::add_pressure_gradient_nob_cpu(domain, momentum, fields[core::Var::P], props.invRho, dt);
     equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     core::sync_field_cpu(fields, core::Var::U, bc, sub);
@@ -124,7 +123,7 @@ int main(int argc, char** argv) {
     rbc::zero_w_wall(fields[core::Var::W], sub);
 
     equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt, props.invRho.data());
-    equation::pressure::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::accumulate_pressure_cpu(fields, pressure);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     if (DeltaT > 0.0) {
       real_t* t_ptr = fields[core::Var::T].data();

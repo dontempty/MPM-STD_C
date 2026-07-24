@@ -16,7 +16,7 @@ namespace mpmstd::equation::momentum {
 
 // ---- assemble: explicit BW-ADI RHS per component (T-independent) ------------
 void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
-                                      core::CpuMomentumSystem& mom, real_t dt) {
+                                      equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const real_t* up = fields[core::Var::U].data();
   const real_t* vp = fields[core::Var::V].data();
@@ -41,7 +41,7 @@ void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuField
 // for constant μ.)  Cmu = √(Pr/Ra) = the same nu constant.
 void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
                                     const core::CpuField& mu_field, const core::CpuField& inv_rho_field,
-                                    core::CpuMomentumSystem& mom, real_t dt) {
+                                    equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const auto nt = domain.sub.n_total(); const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const real_t* up = fields[core::Var::U].data();
   const real_t* vp = fields[core::Var::V].data();
@@ -64,7 +64,7 @@ void assemble_momentum_var_visc_cpu(const core::Domain& domain, core::CpuFields&
 
 // ---- one component: 3-sweep ADI (rhs_buf → out increment) -------------------
 namespace {
-void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
+void adi_component(equation::momentum::CpuLinearSystem& mom, std::vector<real_t>& rhs_buf,
                    const real_t* qf, const real_t* Up, const real_t* Vp, const real_t* Wp, bool z_stag,
                    const boundary::FieldBoundary& fbc, const core::Domain& domain, const boundary::BoundaryCondition& bc,
                    real_t nu, real_t dt, real_t* out) {
@@ -111,7 +111,7 @@ void adi_component(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
 }
 
 // variable-viscosity twin (faithful per-component build_adi_bands_var)
-void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_buf,
+void adi_component_var(equation::momentum::CpuLinearSystem& mom, std::vector<real_t>& rhs_buf,
                        const real_t* qf, const real_t* Up, const real_t* Vp, const real_t* Wp,
                        const real_t* mu, const real_t* irho, Direction own_dir, bool z_stag,
                        const boundary::FieldBoundary& fbc, const core::Domain& domain,
@@ -163,7 +163,7 @@ void adi_component_var(core::CpuMomentumSystem& mom, std::vector<real_t>& rhs_bu
 
 // ---- solve: 3-sweep ADI per component + block coupling (M2) -----------------
 void solve_momentum_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
-                        core::CpuFields& fields, core::CpuMomentumSystem& mom, real_t dt) {
+                        core::CpuFields& fields, equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const real_t  nu = fields.constant(core::Const::nu);
   const real_t* Up = fields[core::Var::U].data();
   const real_t* Vp = fields[core::Var::V].data();
@@ -208,7 +208,7 @@ static void zero_dw_lower_wall_face(real_t* dW, const core::Domain& domain,
 void solve_momentum_var_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                             core::CpuFields& fields, const core::CpuField& mu_field,
                             const core::CpuField& inv_rho_field,
-                            core::CpuMomentumSystem& mom, real_t dt) {
+                            equation::momentum::CpuLinearSystem& mom, real_t dt) {
   const real_t  Cmu = fields.constant(core::Const::nu);
   const real_t* Up = fields[core::Var::U].data();
   const real_t* Vp = fields[core::Var::V].data();
@@ -254,7 +254,7 @@ void solve_momentum_var_cpu(const core::Domain& domain, const boundary::Boundary
 }
 
 // ---- pseudo-update: q += dq (interior; caller syncs U,V,W) ------------------
-void update_velocity_cpu(core::CpuFields& fields, const core::CpuMomentumSystem& mom) {
+void update_velocity_cpu(core::CpuFields& fields, const equation::momentum::CpuLinearSystem& mom) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   kernels::add_increment(fields[core::Var::U].data(), mom.dU.data(), n1, n2, n3);
   kernels::add_increment(fields[core::Var::V].data(), mom.dV.data(), n1, n2, n3);

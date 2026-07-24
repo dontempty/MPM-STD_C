@@ -2,7 +2,7 @@
 
 #include "core/domain.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
 
 namespace mpmstd::equation::momentum {
 
@@ -13,15 +13,15 @@ namespace mpmstd::equation::momentum {
 //   const_visc : scalar nu (Fields constant), NO cross-stress  → channel/cavity/DHVC (P1)
 //   var_visc   : mu field,  WITH cross-stress → NOB/LES (P7)
 void assemble_momentum_const_visc_cpu(const core::Domain& domain, core::CpuFields& fields,
-                                      core::CpuMomentumSystem& mom, real_t dt);
+                                      equation::momentum::CpuLinearSystem& mom, real_t dt);
 void assemble_momentum_var_visc_cpu  (const core::Domain& domain, core::CpuFields& fields,
                                       const core::CpuField& mu, const core::CpuField& inv_rho,
-                                      core::CpuMomentumSystem& mom, real_t dt);
+                                      equation::momentum::CpuLinearSystem& mom, real_t dt);
 
 void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuFields& fields,
-                                      core::GpuMomentumSystem& mom, real_t dt);
+                                      equation::momentum::GpuLinearSystem& mom, real_t dt);
 void assemble_momentum_var_visc_gpu  (const core::Domain& domain, core::GpuFields& fields,
                                       const core::GpuField& mu, const core::GpuField& inv_rho,
-                                      core::GpuMomentumSystem& mom, real_t dt);
+                                      equation::momentum::GpuLinearSystem& mom, real_t dt);
 
 } // namespace mpmstd::equation::momentum

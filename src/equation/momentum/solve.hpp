@@ -3,7 +3,7 @@
 #include "core/domain.hpp"
 #include "core/boundary.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
 
 namespace mpmstd::equation::momentum {
 
@@ -12,23 +12,23 @@ namespace mpmstd::equation::momentum {
 // the MomentumSystem's own dU,dV,dW (created inside momentum). Distributed
 // (P)TDMA via Domain::tdma; BC via core::modify_tdma_row_cpu + sync.
 void solve_momentum_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
-                        core::CpuFields& fields, core::CpuMomentumSystem& mom, real_t dt);
+                        core::CpuFields& fields, equation::momentum::CpuLinearSystem& mom, real_t dt);
 void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
-                        core::GpuFields& fields, core::GpuMomentumSystem& mom, real_t dt);
+                        core::GpuFields& fields, equation::momentum::GpuLinearSystem& mom, real_t dt);
 
 // Variable-viscosity (NOB) twin: same 3-sweep ADI + block coupling but with the
 // face-μ + 1/ρ̂ variable-viscosity bands (build_adi_bands_var). With μ≡1, invρ≡1
 // it reproduces solve_momentum_cpu.
 void solve_momentum_var_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                             core::CpuFields& fields, const core::CpuField& mu, const core::CpuField& inv_rho,
-                            core::CpuMomentumSystem& mom, real_t dt);
+                            equation::momentum::CpuLinearSystem& mom, real_t dt);
 void solve_momentum_var_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                             core::GpuFields& fields, const core::GpuField& mu, const core::GpuField& inv_rho,
-                            core::GpuMomentumSystem& mom, real_t dt);
+                            equation::momentum::GpuLinearSystem& mom, real_t dt);
 
 // pseudo-update: U += dU (etc.); caller syncs U,V,W afterwards.
-void update_velocity_cpu(core::CpuFields& fields, const core::CpuMomentumSystem& mom);
-void update_velocity_gpu(core::GpuFields& fields, const core::GpuMomentumSystem& mom);
+void update_velocity_cpu(core::CpuFields& fields, const equation::momentum::CpuLinearSystem& mom);
+void update_velocity_gpu(core::GpuFields& fields, const equation::momentum::GpuLinearSystem& mom);
 
 // Report/30 §6 instrumentation: prints max|f| over the top-wall slab (last 6
 // interior k-planes) vs the remaining interior. No-op unless MPMSTD_MOMDBG>=1.

@@ -11,7 +11,7 @@
 
 namespace mpmstd::equation::pressure {
 
-void add_pressure_gradient_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom,
+void add_pressure_gradient_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
                                const core::CpuField& P_acc, real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
   const int h = kHaloWidth;
@@ -37,7 +37,7 @@ void add_pressure_gradient_cpu(const core::Domain& domain, core::CpuMomentumSyst
 // PaScaL_TCS mom.f90:331/343 — invRhoc is the dx-weighted face mean of invRho:
 //   invRhoc = 0.5·(dx(im)·invRho(i) + dx(i)·invRho(im))/dmx(i)
 // Mirrors the GPU kernel k_pred_pgrad_var (pressure_gpu.cu) — see Report/32.
-void add_pressure_gradient_nob_cpu(const core::Domain& domain, core::CpuMomentumSystem& mom,
+void add_pressure_gradient_nob_cpu(const core::Domain& domain, equation::momentum::CpuLinearSystem& mom,
                                    const core::CpuField& P_acc, const core::CpuField& inv_rho,
                                    real_t dt) {
   const auto nt = mom.n_total; const int n1 = nt[0], n2 = nt[1], n3 = nt[2];
@@ -69,29 +69,32 @@ void add_pressure_gradient_nob_cpu(const core::Domain& domain, core::CpuMomentum
       }
 }
 
-void accumulate_pressure_cpu(core::CpuField& P_acc, const core::CpuField& dP) {
-  real_t*       pa = P_acc.data();
-  const real_t* dp = dP.data();
-  const std::size_t n = P_acc.n_elements();
-  for (std::size_t q = 0; q < n; ++q) pa[q] += dp[q];   // ref mom.f90... pre.f90:818 P=P+dP
+// accumulate: Pⁿ⁺¹ = Pⁿ + δp — accumulator Var::P += the system's increment poi.dP.
+void accumulate_pressure_cpu(core::CpuFields& fields, const equation::pressure::LinearSystem& poi) {
+  real_t*       pa = fields[core::Var::P].data();
+  const real_t* dp = poi.dP->data();
+  const std::size_t n = fields[core::Var::P].n_elements();
+  for (std::size_t q = 0; q < n; ++q) pa[q] += dp[q];   // ref pre.f90:818 P=P+dP
 }
 
 void solve_pressure_cpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
-                        core::CpuFields& fields, core::PressureSystem& poi, real_t dt,
+                        core::CpuFields& fields, equation::pressure::LinearSystem& poi, real_t dt,
                         const real_t* inv_rho) {
-  if (!poi.engine)
-    poi.engine = std::make_shared<pressure::PressureSolver>(domain.grid, domain.sub, bc, domain.tdma);
+  if (!poi.pressure_solver)
+    poi.pressure_solver = std::make_shared<pressure::PressureSolver>(domain.grid, domain.sub, bc, domain.tdma);
+  if (!poi.dP)
+    poi.dP = std::make_unique<core::CpuField>(domain.sub, "dP");          // δp scratch (owned by the system)
   if (inv_rho) {
     if (!poi.dPhat)
       poi.dPhat = std::make_unique<core::CpuField>(domain.sub, "dPhat");  // zero-init
     if (!poi.dP0)
       poi.dP0 = std::make_unique<core::CpuField>(domain.sub, "dP0");      // zero-init
-    poi.engine->solve_nob(dt,
+    poi.pressure_solver->solve_nob(dt,
                           fields[core::Var::U], fields[core::Var::V],
-                          fields[core::Var::W], fields[core::Var::P],
+                          fields[core::Var::W], *poi.dP,
                           inv_rho, *poi.dPhat, *poi.dP0);
   } else {
-    poi.engine->solve(dt, fields[core::Var::U], fields[core::Var::V], fields[core::Var::W], fields[core::Var::P]);
+    poi.pressure_solver->solve(dt, fields[core::Var::U], fields[core::Var::V], fields[core::Var::W], *poi.dP);
   }
 }
 

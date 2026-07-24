@@ -271,7 +271,7 @@ namespace mpmstd::equation::scalar {
 // ###########################################################################
 // 선언부: equation/scalar/solve.hpp
 void solve_scalar_ob_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
-                       core::GpuFields& fields, core::GpuScalarSystem& sys, real_t dt) {
+                       core::GpuFields& fields, equation::scalar::GpuLinearSystem& sys, real_t dt) {
 #ifdef MPMSTD_BACKEND_CUDA
   const auto nt = domain.sub.n_total();
   const std::size_t n_field = (std::size_t)nt[0] * nt[1] * nt[2];
@@ -368,7 +368,7 @@ void solve_scalar_nob_gpu(
     core::GpuFields& fields,
     const core::GpuField& KPP,   const core::GpuField& dKPP,
     const core::GpuField& invRhoCp, const core::GpuField& dinvRhoCp,
-    core::GpuScalarSystem& sys, real_t dt) {
+    equation::scalar::GpuLinearSystem& sys, real_t dt) {
 #ifdef MPMSTD_BACKEND_CUDA
   // 로컬 배열 크기: n?t = 할로 포함 전체(total), n?i = 내부(interior)만
   const auto nt = domain.sub.n_total();

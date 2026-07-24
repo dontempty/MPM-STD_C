@@ -13,7 +13,9 @@
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
+#include "equation/scalar/linear_system.hpp"
+#include "equation/pressure/linear_system.hpp"
 #include "core/config.hpp"
 #include "core/field_gpu.hpp"
 #include "core/gpu/gpu_grid.hpp"
@@ -527,17 +529,13 @@ int main(int argc, char** argv) {
     gpu_fields[core::Var::P].to_device(cpu_fields[core::Var::P].data());
     gpu_fields[core::Var::T].to_device(cpu_fields[core::Var::T].data());
 
-    core::GpuMomentumSystem gpu_momentum(sub);
-    core::GpuScalarSystem   gpu_scalar(sub);
-    core::PressureSystem    pressure;
+    equation::momentum::GpuLinearSystem gpu_momentum(sub);
+    equation::scalar::GpuLinearSystem   gpu_scalar(sub);
+    equation::pressure::LinearSystem    pressure;
 
-    // Accumulated pressure Pⁿ for the incremental (van Kan) projection. The
-    // predictor subtracts dt·∇P_acc; after each solve we add the increment δp.
-    core::GpuField gpu_P_acc(sub, "P_acc");
-    if (restart_in.empty())
-        cudaMemset(gpu_P_acc.data(), 0, gpu_P_acc.n_elements() * sizeof(double));
-    else
-        gpu_P_acc.to_device(cpu_fields[core::Var::P].data());   // seed accumulated pressure from interp
+    // Accumulated pressure Pⁿ (van Kan) lives in Var::P — already seeded by the
+    // gpu_fields[Var::P] upload above (0 on cold start, interpolated P on warm-
+    // start). The per-step increment δp is owned by the pressure LinearSystem.
 
     // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
     // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With DeltaT=0 the default
@@ -618,7 +616,7 @@ int main(int argc, char** argv) {
         equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields,
             gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
         physics::buoyancy::add_buoyancy_force_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], buoy, dt);
-        equation::pressure::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_P_acc, dt);  // incremental: −dt·∇Pⁿ
+        equation::pressure::add_pressure_gradient_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
         equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields,
             gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
         equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
@@ -645,7 +643,7 @@ int main(int argc, char** argv) {
 
         // (5) Pressure
         equation::pressure::solve_pressure_gpu(domain, bc, gpu_fields, pressure, dt);
-        equation::pressure::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+        equation::pressure::accumulate_pressure_gpu(gpu_fields, pressure);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
         if (do_timing) { cudaDeviceSynchronize(); ts_pres += ms_since(tPrev); }
 
         time += double(dt); ++step;
@@ -715,7 +713,7 @@ int main(int argc, char** argv) {
         gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
         gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
         gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
-        gpu_P_acc.to_host(cpu_fields[core::Var::P].data());   // P.bin = accumulated pressure
+        gpu_fields[core::Var::P].to_host(cpu_fields[core::Var::P].data());   // P.bin = accumulated pressure
         std::error_code ec; std::filesystem::create_directories(restart_out, ec);
         MPI_Barrier(topo.cart_comm());
         post::write_restart_gathered_cpu(cpu_fields[core::Var::U], sub, restart_out + "/U.bin");

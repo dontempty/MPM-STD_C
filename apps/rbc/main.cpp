@@ -17,7 +17,9 @@
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
+#include "equation/scalar/linear_system.hpp"
+#include "equation/pressure/linear_system.hpp"
 #include "core/config.hpp"
 
 #include "config/logger.hpp"
@@ -164,9 +166,9 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::CpuMomentumSystem momentum(sub);
-  core::CpuScalarSystem   scalar_system(sub);
-  core::PressureSystem    pressure;
+  equation::momentum::CpuLinearSystem momentum(sub);
+  equation::scalar::CpuLinearSystem   scalar_system(sub);
+  equation::pressure::LinearSystem    pressure;
   post::Stats             stats;
   post::init_statistics_cpu(stats, domain);
 
@@ -239,8 +241,8 @@ int main(int argc, char** argv) {
   gpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   gpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::GpuMomentumSystem gpu_momentum(sub);
-  core::GpuScalarSystem   gpu_scalar(sub);
+  equation::momentum::GpuLinearSystem gpu_momentum(sub);
+  equation::scalar::GpuLinearSystem   gpu_scalar(sub);
   physics::properties::GpuPropertyFields gpu_props(sub);
 
   gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());

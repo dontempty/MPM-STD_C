@@ -14,7 +14,9 @@
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
+#include "equation/scalar/linear_system.hpp"
+#include "equation/pressure/linear_system.hpp"
 #include "core/config.hpp"
 
 #include "config/logger.hpp"
@@ -119,12 +121,11 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   // ── solver state ──────────────────────────────────────────────────────────
-  core::CpuMomentumSystem momentum(sub);
-  core::CpuScalarSystem   scalar_system(sub);
-  core::PressureSystem    pressure;
+  equation::momentum::CpuLinearSystem momentum(sub);
+  equation::scalar::CpuLinearSystem   scalar_system(sub);
+  equation::pressure::LinearSystem    pressure;
 
   // Accumulated pressure Pⁿ for the incremental (van Kan) projection (zero-init).
-  core::CpuField P_acc(sub, "P_acc");
 
   // OB unit property fields for NOB var kernels (mu=1, inv_rho=1, kappa=1,
   // dkappa=0, inv_rhocp=1, dinv_rhocp=0).  With constant properties the var
@@ -219,7 +220,7 @@ int main(int argc, char** argv) {
     // (2) momentum predictor + OB buoyancy (NOB var path with unit props)
     equation::momentum::assemble_momentum_var_visc_cpu(domain, fields, props.Mu, props.invRho, momentum, dt);
     physics::buoyancy::add_buoyancy_force_cpu(domain, momentum, fields[core::Var::T], buoy, dt);
-    equation::pressure::add_pressure_gradient_cpu(domain, momentum, P_acc, dt);  // incremental: −dt·∇Pⁿ
+    equation::pressure::add_pressure_gradient_cpu(domain, momentum, fields[core::Var::P], dt);  // incremental: −dt·∇Pⁿ
     equation::momentum::solve_momentum_var_cpu(domain, bc, fields, props.Mu, props.invRho, momentum, dt);
     equation::momentum::update_velocity_cpu(fields, momentum);
     // zero net streamwise flux (closed DHVC): subtract the bulk U the net
@@ -233,7 +234,7 @@ int main(int argc, char** argv) {
 
     // (3) pressure: div → Poisson → project
     equation::pressure::solve_pressure_cpu(domain, bc, fields, pressure, dt);
-    equation::pressure::accumulate_pressure_cpu(P_acc, fields[core::Var::P]);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::accumulate_pressure_cpu(fields, pressure);  // incremental: Pⁿ⁺¹ = Pⁿ + δp
 
     time += static_cast<double>(dt);
     ++step;

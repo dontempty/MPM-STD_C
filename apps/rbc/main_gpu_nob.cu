@@ -419,8 +419,6 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::PressureSystem pressure;
-
   physics::properties::CpuPropertyFields props(sub);   // CPU copy for pressure step
   const physics::properties::PropertyModel pmodel = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   physics::buoyancy::BuoyancyParams buoy;
@@ -469,8 +467,9 @@ int main(int argc, char** argv) {
   gpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   gpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::GpuMomentumSystem  gpu_momentum(sub);
-  core::GpuScalarSystem    gpu_scalar(sub);
+  equation::scalar::GpuLinearSystem    gpu_scalar(sub);
+  equation::momentum::GpuLinearSystem  gpu_momentum(sub);
+  equation::pressure::LinearSystem pressure;
   physics::properties::GpuPropertyFields gpu_props(sub);
 
   gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
@@ -483,8 +482,6 @@ int main(int argc, char** argv) {
   // Predictor subtracts dt·(1/ρ̂)∇Pⁿ; the Poisson then solves the increment δp
   // (Var::P) and Pⁿ⁺¹ = Pⁿ + δp. Seeded from the restart P (zero when absent —
   // self-starting: the first solve returns the full pressure). Report/32.
-  core::GpuField gpu_P_acc(sub, "P_acc");
-  gpu_P_acc.to_device(fields[core::Var::P].data());
 
   if (mpi.is_root())
     std::printf("[rbc_gpu_nob] Ra=%.2e Pr=%.4g DeltaT=%.1f nu=%.4e alpha=%.4e  n=%dx%dx%d  (GPU hybrid)\n",
@@ -554,7 +551,7 @@ int main(int argc, char** argv) {
     auto t_m0 = hrc::now();
     equation::momentum::assemble_momentum_var_visc_gpu(domain, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     physics::buoyancy::add_buoyancy_force_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_props.invRho, buoy, dt);
-    equation::pressure::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_P_acc, gpu_props.invRho, dt);
+    equation::pressure::add_pressure_gradient_nob_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], gpu_props.invRho, dt);
     equation::momentum::solve_momentum_var_gpu(domain, bc, gpu_fields, gpu_props.Mu, gpu_props.invRho, gpu_momentum, dt);
     equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);   // 할로 교환 + BC 재적용 (U,V,W)
@@ -592,7 +589,7 @@ int main(int argc, char** argv) {
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
     auto t_p0 = hrc::now();
     equation::pressure::solve_pressure_nob_gpu(domain, bc, gpu_fields, pressure, dt, gpu_props.invRho);
-    equation::pressure::accumulate_pressure_gpu(gpu_P_acc, gpu_fields[core::Var::P]);  // Pⁿ⁺¹ = Pⁿ + δp
+    equation::pressure::accumulate_pressure_gpu(gpu_fields, pressure);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
     t_pressure += ms_since(t_p0);
     equation::momentum::debug_slabmax_gpu("U.postproj", gpu_fields[core::Var::U], domain);
@@ -663,7 +660,7 @@ int main(int argc, char** argv) {
       gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
       gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
       gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
-      gpu_P_acc.to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
+      gpu_fields[core::Var::P].to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
       const bool odd = ((step / nrestart_write) % 2) != 0;
       const std::string ckpt = restart_out + (odd ? "/ckpt_b" : "/ckpt_a");
       rbc::write_restart(fields, sub, stats, step, time, ckpt, topo.cart_comm());
@@ -715,7 +712,7 @@ int main(int argc, char** argv) {
     gpu_fields[core::Var::V].to_host(fields[core::Var::V].data());
     gpu_fields[core::Var::W].to_host(fields[core::Var::W].data());
     gpu_fields[core::Var::T].to_host(fields[core::Var::T].data());
-    gpu_P_acc.to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
+    gpu_fields[core::Var::P].to_host(fields[core::Var::P].data());   // accumulated pressure Pⁿ
     rbc::write_restart(fields, sub, stats, step, time, restart_out, topo.cart_comm());
   }
   return 0;

@@ -2,7 +2,7 @@
 
 #include "core/domain.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/scalar/linear_system.hpp"
 
 namespace mpmstd::equation::scalar {
 
@@ -14,6 +14,6 @@ namespace mpmstd::equation::scalar {
 // A bands inside their solve (build_A_rhs_nob / k_build_A_rhs_nob) — no coef
 // call needed there.
 void coef_scalar_ob_cpu(const core::Domain& domain, core::CpuFields& fields,
-                        core::CpuScalarSystem& scalar_system, real_t dt);
+                        equation::scalar::CpuLinearSystem& scalar_system, real_t dt);
 
 } // namespace mpmstd::equation::scalar

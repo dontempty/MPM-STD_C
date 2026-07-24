@@ -276,7 +276,8 @@ public:
   // OB pressure solve (constant density)
   void solve(real_t dt, core::GpuFields& gpu_fields,
              const boundary::BoundaryCondition& problem,
-             const parallel::mpi::Subdomain& sub);
+             const parallel::mpi::Subdomain& sub,
+             core::GpuField& dP);   // δp output (owned by pressure LinearSystem)
 
   // NOB pressure solve (variable density): adds ExtraTerm, NOB projection, then
   // extrapolates the predictor for next step (PaScaL_TCS §820-821):
@@ -285,7 +286,8 @@ public:
                  const boundary::BoundaryCondition& problem,
                  const parallel::mpi::Subdomain& sub,
                  const core::GpuField& inv_rho,
-                 core::GpuField& dPhat, core::GpuField& dP0);
+                 core::GpuField& dPhat, core::GpuField& dP0,
+                 core::GpuField& dP);   // δp output (owned by pressure LinearSystem)
 
 private:
   void transpose_C_to_I_();
@@ -1280,7 +1282,8 @@ void PressureSolverGpu::unpack_P_fast_(core::GpuField& P_gpu,
 
 void PressureSolverGpu::solve(real_t dt, core::GpuFields& gpu_fields,
                                const boundary::BoundaryCondition& problem,
-                               const parallel::mpi::Subdomain& sub)
+                               const parallel::mpi::Subdomain& sub,
+                               core::GpuField& dP)
 {
   const std::size_t sz_C = (std::size_t)nx_loc_ * ny_loc_ * nz_loc_;
   double* d_U = gpu_fields[core::Var::U].data();
@@ -1301,12 +1304,12 @@ void PressureSolverGpu::solve(real_t dt, core::GpuFields& gpu_fields,
   run_backward_pipeline_();
 
   // 6. Unpack P, sync P on GPU
-  if (gpu_fast_path_) unpack_P_fast_(gpu_fields[core::Var::P], sub);
-  else                unpack_P_to_gpu_(gpu_fields[core::Var::P], sub);
-  core::sync_field_gpu(gpu_fields[core::Var::P], problem.P, sub);
+  if (gpu_fast_path_) unpack_P_fast_(dP, sub);
+  else                unpack_P_to_gpu_(dP, sub);
+  core::sync_field_gpu(dP, problem.P, sub);
 
   // 7. GPU OB projection — no D2H P, no H2D U,V,W
-  project_ob_gpu_(d_U, d_V, d_W, gpu_fields[core::Var::P].data(), static_cast<double>(dt));
+  project_ob_gpu_(d_U, d_V, d_W, dP.data(), static_cast<double>(dt));
 
   core::sync_field_gpu(gpu_fields[core::Var::U], problem.U, sub);
   core::sync_field_gpu(gpu_fields[core::Var::V], problem.V, sub);
@@ -1320,7 +1323,8 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
                                    const boundary::BoundaryCondition& problem,
                                    const parallel::mpi::Subdomain& sub,
                                    const core::GpuField& inv_rho,
-                                   core::GpuField& dPhat, core::GpuField& dP0)
+                                   core::GpuField& dPhat, core::GpuField& dP0,
+                                   core::GpuField& dP)
 {
   using hrc = std::chrono::high_resolution_clock;
   auto ms_ = [](hrc::time_point t0){
@@ -1358,12 +1362,12 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
   run_backward_pipeline_();
   auto T5 = hrc::now();
   // 7. Unpack P, sync P
-  if (gpu_fast_path_) unpack_P_fast_(gpu_fields[core::Var::P], sub);
-  else                unpack_P_to_gpu_(gpu_fields[core::Var::P], sub);
-  core::sync_field_gpu(gpu_fields[core::Var::P], problem.P, sub);
+  if (gpu_fast_path_) unpack_P_fast_(dP, sub);
+  else                unpack_P_to_gpu_(dP, sub);
+  core::sync_field_gpu(dP, problem.P, sub);
   auto T6 = hrc::now();
   // 8. GPU NOB projection
-  project_nob_gpu_(d_U, d_V, d_W, gpu_fields[core::Var::P].data(), d_ph, d_ir,
+  project_nob_gpu_(d_U, d_V, d_W, dP.data(), d_ph, d_ir,
                    static_cast<double>(dt));
   auto T7 = hrc::now();
   // 9. Extrapolate predictor for next step (PaScaL_TCS §820-821):
@@ -1372,7 +1376,7 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
     const int blk = 256;
     const int grd = (int)((nf + blk - 1) / blk);
     k_dphat_extrapolate<<<grd, blk>>>(dPhat.data(), dP0.data(),
-                                      gpu_fields[core::Var::P].data(), nf);
+                                      dP.data(), nf);
   }
   // dPhat halo exchange — REQUIRED for the next step's extra-term/projection to
   // cancel across MPI boundaries (PaScaL_TCS main.f90:199 ghostcell_update(dPhat)).

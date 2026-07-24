@@ -8,7 +8,8 @@
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"    // sync_field_cpu
 #include "core/variables.hpp"
-#include "core/system.hpp"
+#include "equation/momentum/linear_system.hpp"
+#include "equation/pressure/linear_system.hpp"
 #include "core/config.hpp"
 
 #include "config/logger.hpp"
@@ -116,8 +117,8 @@ int main(int argc, char** argv) {
   double dpdx = mass_flow ? -(3.0 * nu) : -target_dpdx;
 
   // ── solver state (momentum owns its increments) ───────────────────────────
-  core::CpuMomentumSystem momentum(sub);
-  core::PressureSystem    pressure;
+  equation::momentum::CpuLinearSystem momentum(sub);
+  equation::pressure::LinearSystem    pressure;
   post::Stats             stats;
   post::init_statistics_cpu(stats, domain);
 

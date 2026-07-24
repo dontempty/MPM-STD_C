@@ -1327,7 +1327,7 @@ cuda_tdma_mom(mpmstd::linear_solver::tdma::TdmaRegistry& tdma,
 //  On exit:   out_device contains the increment for this velocity component
 // ===========================================================================
 static void adi_component_ob(
-        mpmstd::core::GpuMomentumSystem& mom,
+        mpmstd::equation::momentum::GpuLinearSystem& mom,
         double* d_rhs_buf,         // device pointer to pre-filled RHS for this component
         const double* d_q,         // own velocity (device)
         const double* d_U, const double* d_V, const double* d_W,  // advecting velocities
@@ -1410,7 +1410,7 @@ static void adi_component_ob(
 //  ADI component (NOB): 3-sweep var-visc ADI, writes result into out_device
 // ===========================================================================
 static void adi_component_var(
-        mpmstd::core::GpuMomentumSystem& mom,
+        mpmstd::equation::momentum::GpuLinearSystem& mom,
         double* d_rhs_buf,
         const double* d_q,
         const double* d_U, const double* d_V, const double* d_W,
@@ -1518,7 +1518,7 @@ namespace mpmstd::equation::momentum {
 //  Buoyancy is added to mom.dW between assemble and solve.
 // ---------------------------------------------------------------------------
 void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuFields& fields,
-                                       core::GpuMomentumSystem& mom, real_t dt)
+                                       equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
     const auto nt = domain.sub.n_total();
@@ -1563,7 +1563,7 @@ void assemble_momentum_const_visc_gpu(const core::Domain& domain, core::GpuField
 // ---------------------------------------------------------------------------
 void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields& fields,
                                      const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
-                                     core::GpuMomentumSystem& mom, real_t dt)
+                                     equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
     const auto nt = domain.sub.n_total();
@@ -1623,7 +1623,7 @@ void assemble_momentum_var_visc_gpu(const core::Domain& domain, core::GpuFields&
 //    block_couple_dU(dU ← dV, dW, U, ...)
 // ---------------------------------------------------------------------------
 void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
-                         core::GpuFields& fields, core::GpuMomentumSystem& mom, real_t dt)
+                         core::GpuFields& fields, equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
     const auto nt = domain.sub.n_total();
@@ -1706,7 +1706,7 @@ void solve_momentum_gpu(const core::Domain& domain, const boundary::BoundaryCond
 void solve_momentum_var_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                               core::GpuFields& fields,
                               const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
-                              core::GpuMomentumSystem& mom, real_t dt)
+                              equation::momentum::GpuLinearSystem& mom, real_t dt)
 {
 #ifdef MPMSTD_BACKEND_CUDA
     const auto nt = domain.sub.n_total();
@@ -1847,7 +1847,7 @@ void solve_momentum_var_gpu(const core::Domain& domain, const boundary::Boundary
 // ---------------------------------------------------------------------------
 //  update_velocity_gpu  — U += dU, V += dV, W += dW  (interior cells)
 // ---------------------------------------------------------------------------
-void update_velocity_gpu(core::GpuFields& fields, const core::GpuMomentumSystem& mom)
+void update_velocity_gpu(core::GpuFields& fields, const equation::momentum::GpuLinearSystem& mom)
 {
 #ifdef MPMSTD_BACKEND_CUDA
     const auto nt = mom.n_total;

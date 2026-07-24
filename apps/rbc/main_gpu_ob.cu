@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::PressureSystem pressure;
+  equation::pressure::LinearSystem pressure;
   physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
 
   const double t_end    = cfg.get_or<double>("time","t_end",   400.0);
@@ -92,8 +92,8 @@ int main(int argc, char** argv) {
   gpu_fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   gpu_fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::GpuMomentumSystem gpu_momentum(sub);
-  core::GpuScalarSystem   gpu_scalar(sub);
+  equation::momentum::GpuLinearSystem gpu_momentum(sub);
+  equation::scalar::GpuLinearSystem   gpu_scalar(sub);
 
   gpu_fields[core::Var::U].to_device(fields[core::Var::U].data());
   gpu_fields[core::Var::V].to_device(fields[core::Var::V].data());

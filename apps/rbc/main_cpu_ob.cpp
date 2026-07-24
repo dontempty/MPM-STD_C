@@ -43,9 +43,9 @@ int main(int argc, char** argv) {
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
-  core::CpuMomentumSystem momentum(sub);
-  core::CpuScalarSystem   scalar_system(sub);
-  core::PressureSystem    pressure;
+  equation::momentum::CpuLinearSystem momentum(sub);
+  equation::scalar::CpuLinearSystem   scalar_system(sub);
+  equation::pressure::LinearSystem    pressure;
 
   physics::buoyancy::BuoyancyParams buoy; buoy.gravity_axis=2; buoy.coeff=1; buoy.T_ref=0; buoy.a12pera11=0; buoy.delta_T=0;
 

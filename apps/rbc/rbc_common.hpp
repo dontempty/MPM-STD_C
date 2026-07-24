@@ -5,7 +5,7 @@
 #include "core/boundary.hpp"
 #include "core/boundary_ops.hpp"
 #include "core/variables.hpp"
-#include "core/system.hpp"
+
 #include "core/config.hpp"
 #include "config/logger.hpp"
 #include "boundary/problem_loader.hpp"
