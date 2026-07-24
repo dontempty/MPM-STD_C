@@ -709,11 +709,7 @@ int main(int argc, char** argv) {
     // C-order MPI-IO (decomposition-independent). meta.txt carries t/step/mesh/Ra for
     // continuation + the (future) cross-mesh interpolation warm-start.
     if (!restart_out.empty()) {
-        gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
-        gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
-        gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
-        gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
-        gpu_fields[core::Var::P].to_host(cpu_fields[core::Var::P].data());   // P.bin = accumulated pressure
+        core::copy_all_to_host(gpu_fields, cpu_fields);   // U/V/W/T/P device→host (P.bin = accumulated pressure)
         std::error_code ec; std::filesystem::create_directories(restart_out, ec);
         MPI_Barrier(topo.cart_comm());
         post::write_restart_gathered_cpu(cpu_fields[core::Var::U], sub, restart_out + "/U.bin");
