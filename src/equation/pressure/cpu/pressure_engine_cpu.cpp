@@ -41,8 +41,11 @@ PressureSolver::PressureSolver(const grid::Grid&                  grid,
                                 const parallel::mpi::Subdomain&    sub,
                                 const boundary::BoundaryCondition&           problem,
                                 linear_solver::tdma::TdmaRegistry& tdma)
-  : PressureSolverBase(grid, sub, problem, tdma)
+  : grid_(grid), sub_(sub), problem_(problem), tdma_(tdma)
 {
+  n1_tot_ = sub_.n_total()[0];   n1_int_ = sub_.n_interior()[0];
+  n2_tot_ = sub_.n_total()[1];   n2_int_ = sub_.n_interior()[1];
+  n3_tot_ = sub_.n_total()[2];   n3_int_ = sub_.n_interior()[2];
   if (!problem_.topology.is_periodic(Direction::X) ||
       !problem_.topology.is_periodic(Direction::Y)) {
     throw std::runtime_error(

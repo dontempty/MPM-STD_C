@@ -1,6 +1,13 @@
 #pragma once
 
-#include "equation/pressure/pressure_base.hpp"
+#include "common/types.hpp"
+#include "core/field_cpu.hpp"
+#include "core/grid.hpp"                          // grid::Grid
+#include "core/boundary.hpp"                      // boundary::BoundaryCondition
+#include "core/gpu_binding.hpp"                   // parallel::mpi::Subdomain
+#include "core/halo.hpp"                          // exchange_halo_cpu
+#include "core/boundary_ops.hpp"                  // apply_ghost_cpu
+#include "linear_solver/tdma/tdma_registry.hpp"
 #include "linear_solver/tdma/pascal_tdma_cpu_backend.hpp"
 #include "parallel/mpi/mpi_topology.hpp"
 
@@ -25,7 +32,10 @@ namespace mpmstd::equation::pressure {
 //   IFFT y, Y→I, IFFT x
 //   scale, unpack, transpose I→C
 //   apply Neumann ghost + halo exchange + project
-class PressureSolver : public PressureSolverBase {
+// Pencil-FFT pressure Poisson solver. (Formerly split into an abstract
+// PressureSolverBase + this concrete FFT derivative for a never-built DCT
+// sibling; merged back into one concrete class — no virtual dispatch.)
+class PressureSolver {
 public:
   PressureSolver(const grid::Grid&                  grid,
                   const parallel::mpi::Subdomain&    sub,
@@ -40,7 +50,7 @@ public:
              core::CpuField& U,
              core::CpuField& V,
              core::CpuField& W,
-             core::CpuField& P) override;
+             core::CpuField& P);
 
   // NOB: adds ∇·[(1-invRho)·∇dPhat] to Poisson RHS, applies (invRhoc-1)*∇dPhat
   // in projection, then extrapolates the predictor for next step (PaScaL_TCS §820-821):
@@ -63,6 +73,25 @@ private:
   void fft_y_forward_();
   void fft_y_backward_();
   void solve_tdma_z_();
+
+  // ── merged from the former PressureSolverBase (field-agnostic common steps) ──
+  void compute_divergence_rhs_(real_t* buf,
+                               const core::CpuField& U, const core::CpuField& V, const core::CpuField& W,
+                               real_t dt) const;
+  void unpack_from_buf_(const real_t* buf, real_t scale, core::CpuField& P);
+  void project_(real_t dt,
+                core::CpuField& U, core::CpuField& V, core::CpuField& W, const core::CpuField& P);
+  void project_nob_(real_t dt,
+                    core::CpuField& U, core::CpuField& V, core::CpuField& W,
+                    const core::CpuField& P,
+                    const real_t* inv_rho, const real_t* dPhat);
+
+  const grid::Grid&                  grid_;
+  const parallel::mpi::Subdomain&    sub_;
+  const boundary::BoundaryCondition& problem_;
+  linear_solver::tdma::TdmaRegistry& tdma_;
+  int n1_tot_, n2_tot_, n3_tot_;
+  int n1_int_, n2_int_, n3_int_;
 
   // ---- cached pointers to current solve() arguments (avoid passing everywhere)
   const core::CpuField* cur_U_ = nullptr;

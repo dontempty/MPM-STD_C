@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "equation/pressure/pressure_engine.hpp"   // includes: PressureSolverBase, Grid, Subdomain, Problem, TdmaRegistry
+#include "equation/pressure/pressure_engine.hpp"   // includes: Grid, Subdomain, Problem, TdmaRegistry
 #include "core/boundary_ops.hpp"                    // sync_field_gpu
 #include "core/field_gpu.hpp"                       // GpuField
 #include "common/macros.hpp"                        // kHaloWidth

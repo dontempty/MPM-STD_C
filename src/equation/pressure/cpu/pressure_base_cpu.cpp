@@ -1,4 +1,4 @@
-#include "equation/pressure/pressure_base.hpp"
+#include "equation/pressure/pressure_engine.hpp"
 #include "common/macros.hpp"
 
 #include <mpi.h>
@@ -22,21 +22,11 @@ inline int idx3f(int k, int i, int j, int n1, int n2) {
 
 // ── constructor ──────────────────────────────────────────────────────────────
 
-PressureSolverBase::PressureSolverBase(const grid::Grid&                  grid,
-                                       const parallel::mpi::Subdomain&    sub,
-                                       const boundary::BoundaryCondition&           problem,
-                                       linear_solver::tdma::TdmaRegistry& tdma)
-  : grid_(grid), sub_(sub), problem_(problem), tdma_(tdma) {
-
-  n1_tot_ = sub_.n_total()[0];   n1_int_ = sub_.n_interior()[0];
-  n2_tot_ = sub_.n_total()[1];   n2_int_ = sub_.n_interior()[1];
-  n3_tot_ = sub_.n_total()[2];   n3_int_ = sub_.n_interior()[2];
-}
 
 
 // ── compute_divergence_rhs_ ──────────────────────────────────────────────────
 
-void PressureSolverBase::compute_divergence_rhs_(real_t*                   buf,
+void PressureSolver::compute_divergence_rhs_(real_t*                   buf,
                                                   const core::CpuField& U,
                                                   const core::CpuField& V,
                                                   const core::CpuField& W,
@@ -73,7 +63,7 @@ void PressureSolverBase::compute_divergence_rhs_(real_t*                   buf,
 
 // ── unpack_from_buf_ ─────────────────────────────────────────────────────────
 
-void PressureSolverBase::unpack_from_buf_(const real_t* buf,
+void PressureSolver::unpack_from_buf_(const real_t* buf,
                                            real_t        scale,
                                            core::CpuField& P) {
   const int h = kHaloWidth;
@@ -104,7 +94,7 @@ void PressureSolverBase::unpack_from_buf_(const real_t* buf,
 
 // ── project_ ────────────────────────────────────────────────────────────────
 
-void PressureSolverBase::project_(real_t dt,
+void PressureSolver::project_(real_t dt,
                                    core::CpuField& U,
                                    core::CpuField& V,
                                    core::CpuField& W,
@@ -146,7 +136,7 @@ void PressureSolverBase::project_(real_t dt,
 //   u -= dt * [ (dP[i]-dP[i-1])/dmx1[i]  +  (invRhoc-1)*(dPhat[i]-dPhat[i-1])/dmx1[i] ]
 // invRhoc at x-face i-1/2:  0.5/dmx1[i] * (dx1[i-1]*invRho[i] + dx1[i]*invRho[i-1])
 
-void PressureSolverBase::project_nob_(real_t dt,
+void PressureSolver::project_nob_(real_t dt,
                                        core::CpuField& U,
                                        core::CpuField& V,
                                        core::CpuField& W,
