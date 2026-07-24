@@ -74,4 +74,14 @@ private:
 using CpuFields = FieldStore<CpuField>;
 using GpuFields = FieldStore<GpuField>;
 
+// Stage every registered variable device→host — the checkpoint/restart helper
+// that replaces the hand-rolled `to_host` reptition in the GPU mains. Only the
+// variables present in BOTH stores are copied. (GpuField::to_host is const.)
+inline void copy_all_to_host(const GpuFields& gpu, CpuFields& cpu) {
+  for (int i = 0; i < static_cast<int>(Var::Count); ++i) {
+    const Var v = static_cast<Var>(i);
+    if (gpu.has(v) && cpu.has(v)) gpu[v].to_host(cpu[v].data());
+  }
+}
+
 } // namespace mpmstd::core

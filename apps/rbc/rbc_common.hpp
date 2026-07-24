@@ -21,6 +21,7 @@
 #include "driver/cfl.hpp"
 #include "post/statistics.hpp"
 #include "post/io.hpp"
+#include "post/restart.hpp"
 #include <mpi.h>
 #include <array>
 #include <cmath>
@@ -113,89 +114,14 @@ struct RbcStats {
   explicit RbcStats(int nzg) : t_sum_z(nzg, 0.0), w2_sum_z(nzg, 0.0) {}
 };
 
-// ── restart helpers ───────────────────────────────────────────────────────────
-struct RestartMeta { int step = 0; double time = 0.0;
-                     double tc_sum = 0.0; long tc_n = 0; double wt_sum = 0.0; };
-
-inline void write_restart(const core::CpuFields& fields, const parallel::mpi::Subdomain& sub,
-                          const RbcStats& stats, int step, double time,
-                          const std::string& dir, MPI_Comm comm) {
-  std::error_code ec; std::filesystem::create_directories(dir, ec);
-  MPI_Barrier(comm);
-  // gathered (root-gather + fwrite), NOT the MPI-IO collective write_restart_cpu:
-  // the matching MPI-IO read (read_restart_cpu) deadlocked on this cluster's NFS
-  // at np=2/256^3 (see Report/34 addendum) — DHVC's restart write already uses
-  // this same gathered path for the same reason.
-  post::write_restart_gathered_cpu(fields[core::Var::U], sub, dir + "/U.bin");
-  post::write_restart_gathered_cpu(fields[core::Var::V], sub, dir + "/V.bin");
-  post::write_restart_gathered_cpu(fields[core::Var::W], sub, dir + "/W.bin");
-  post::write_restart_gathered_cpu(fields[core::Var::T], sub, dir + "/T.bin");
-  post::write_restart_gathered_cpu(fields[core::Var::P], sub, dir + "/P.bin");  // accumulated pressure (van Kan)
-  int rank; MPI_Comm_rank(comm, &rank);
-  if (rank == 0) {
-    std::ofstream sf(dir + "/stats.txt");
-    sf << std::setprecision(17)
-       << "step "   << step         << "\n"
-       << "time "   << time         << "\n"
-       << "tc_sum " << stats.tc_sum << "\n"
-       << "tc_n "   << stats.tc_n   << "\n"
-       << "wt_sum " << stats.wt_sum << "\n";
-    std::printf("[restart] wrote to %s (step=%d tc_n=%ld)\n", dir.c_str(), step, stats.tc_n);
+// Restart I/O now lives in post::Restart (src/post/restart.hpp); this only maps
+// the generic restart payload back onto the RBC running sums.
+inline void apply_stats_from_restart(RbcStats& stats, const post::RestartState& m) {
+  for (const auto& e : m.extras) {
+    if      (e.first == "tc_sum") stats.tc_sum = e.second;
+    else if (e.first == "tc_n")   stats.tc_n   = static_cast<long>(e.second);
+    else if (e.first == "wt_sum") stats.wt_sum = e.second;
   }
-}
-
-inline RestartMeta read_restart(core::CpuFields& fields, const boundary::BoundaryCondition& bc,
-                                const parallel::mpi::Subdomain& sub,
-                                const std::string& dir, MPI_Comm comm) {
-  post::read_restart_cpu(fields[core::Var::U], sub, dir + "/U.bin");
-  post::read_restart_cpu(fields[core::Var::V], sub, dir + "/V.bin");
-  post::read_restart_cpu(fields[core::Var::W], sub, dir + "/W.bin");
-  post::read_restart_cpu(fields[core::Var::T], sub, dir + "/T.bin");
-  // P.bin (accumulated pressure, van Kan) — optional for backward compatibility
-  // with pre-Report/32 restarts; absent → P stays zero (self-starting projection).
-  // existence must be decided on ONE rank and broadcast: read_restart_cpu/
-  // sync_field_cpu below are collective (MPI_File_read_all / halo exchange), so a
-  // per-rank filesystem::exists() that disagrees across ranks (e.g. NFS attribute-
-  // cache skew) makes some ranks enter the collective while others skip it —
-  // deadlock. See Report/34 sec. "restart read hang".
-  int has_p_bin = 0;
-  {
-    int rank; MPI_Comm_rank(comm, &rank);
-    if (rank == 0) has_p_bin = std::filesystem::exists(dir + "/P.bin") ? 1 : 0;
-    MPI_Bcast(&has_p_bin, 1, MPI_INT, 0, comm);
-  }
-  if (has_p_bin) {
-    post::read_restart_cpu(fields[core::Var::P], sub, dir + "/P.bin");
-    core::sync_field_cpu(fields, core::Var::P, bc, sub);
-  }
-  core::sync_field_cpu(fields, core::Var::U, bc, sub);
-  core::sync_field_cpu(fields, core::Var::V, bc, sub);
-  core::sync_field_cpu(fields, core::Var::W, bc, sub);
-  core::sync_field_cpu(fields, core::Var::T, bc, sub);
-  RestartMeta m;
-  int rank; MPI_Comm_rank(comm, &rank);
-  if (rank == 0) {
-    std::ifstream sf(dir + "/stats.txt");
-    std::string key; double val;
-    while (sf >> key >> val) {
-      if      (key == "step")    m.step    = (int)val;
-      else if (key == "time")    m.time    = val;
-      else if (key == "tc_sum")  m.tc_sum  = val;
-      else if (key == "tc_n")    m.tc_n    = (long)val;
-      else if (key == "wt_sum")  m.wt_sum  = val;
-    }
-    std::printf("[restart] loaded step=%d t=%.3g tc_n=%ld\n", m.step, m.time, m.tc_n);
-  }
-  MPI_Bcast(&m.step,   1, MPI_INT,    0, comm);
-  MPI_Bcast(&m.time,   1, MPI_DOUBLE, 0, comm);
-  MPI_Bcast(&m.tc_sum, 1, MPI_DOUBLE, 0, comm);
-  MPI_Bcast(&m.tc_n,   1, MPI_LONG,   0, comm);
-  MPI_Bcast(&m.wt_sum, 1, MPI_DOUBLE, 0, comm);
-  return m;
-}
-
-inline void apply_stats_from_restart(RbcStats& stats, const RestartMeta& m) {
-  stats.tc_sum = m.tc_sum; stats.tc_n = m.tc_n; stats.wt_sum = m.wt_sum;
 }
 
 inline void accumulate(RbcStats& s, const core::Domain& d, const parallel::mpi::Subdomain& sub,

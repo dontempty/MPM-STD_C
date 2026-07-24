@@ -428,8 +428,9 @@ int main(int argc, char** argv) {
   MPI_Barrier(topo.cart_comm());
 
   // IC: linear T(z) + multi-mode W perturbation, or restart from file
-  rbc::RestartMeta restart_state;
-  if (restart_in.empty()) {
+  post::Restart restart(restart_in, restart_out, nrestart_write);
+  post::RestartState restart_state;
+  if (!restart.warm()) {
     const double T_lo=bc.T.face(Direction::Z,Side::Minus).value, T_hi=bc.T.face(Direction::Z,Side::Plus).value;
     const auto& xc=grid.xc(Direction::X); const auto& yc=grid.xc(Direction::Y); const auto& zc=grid.xc(Direction::Z);
     const auto nt=sub.n_total(); const int n1=nt[0], n2=nt[1], n3=nt[2];
@@ -448,7 +449,7 @@ int main(int argc, char** argv) {
     core::sync_field_cpu(cpu_fields, core::Var::W, bc, sub); core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
     core::sync_field_cpu(cpu_fields, core::Var::T, bc, sub);
   } else {
-    restart_state = rbc::read_restart(cpu_fields, bc, sub, restart_in, topo.cart_comm());
+    restart_state = restart.load(cpu_fields, bc, sub, topo.cart_comm());
     core::sync_field_cpu(cpu_fields, core::Var::P, bc, sub);
   }
 
@@ -651,16 +652,11 @@ int main(int argc, char** argv) {
     // Periodic restart checkpoint into alternating ckpt_a/ckpt_b (see the
     // nrestart_write comment at config parse). Skips the final step — the
     // end-of-run write below covers it in <dir_out> itself.
-    if (!restart_out.empty() && nrestart_write > 0
-        && step % nrestart_write == 0 && step < n_steps && time < t_end) {
-      gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
-      gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
-      gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
-      gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
-      gpu_fields[core::Var::P].to_host(cpu_fields[core::Var::P].data());   // accumulated pressure Pⁿ
-      const bool odd = ((step / nrestart_write) % 2) != 0;
-      const std::string ckpt = restart_out + (odd ? "/ckpt_b" : "/ckpt_a");
-      rbc::write_restart(cpu_fields, sub, stats, step, time, ckpt, topo.cart_comm());
+    if (restart.checkpoint_due(step) && step < n_steps && time < t_end) {
+      core::copy_all_to_host(gpu_fields, cpu_fields);   // U/V/W/T/P device→host
+      post::RestartState rs; rs.step = step; rs.time = time;
+      rs.extras = {{"tc_sum", stats.tc_sum}, {"tc_n", double(stats.tc_n)}, {"wt_sum", stats.wt_sum}};
+      restart.checkpoint_if_due(step, time, cpu_fields, sub, rs, topo.cart_comm());
     }
 
     // [10] 성능 프로파일 출력 — 첫 n_time_steps 스텝의 구간별(ms/step) 타이밍, 이후 정상상태 타이밍은 런 끝에
@@ -705,12 +701,10 @@ int main(int argc, char** argv) {
 
   // Write restart files (U/V/W/T/P + stats.txt) for continuation runs
   if (!restart_out.empty()) {
-    gpu_fields[core::Var::U].to_host(cpu_fields[core::Var::U].data());
-    gpu_fields[core::Var::V].to_host(cpu_fields[core::Var::V].data());
-    gpu_fields[core::Var::W].to_host(cpu_fields[core::Var::W].data());
-    gpu_fields[core::Var::T].to_host(cpu_fields[core::Var::T].data());
-    gpu_fields[core::Var::P].to_host(cpu_fields[core::Var::P].data());   // accumulated pressure Pⁿ
-    rbc::write_restart(cpu_fields, sub, stats, step, time, restart_out, topo.cart_comm());
+    core::copy_all_to_host(gpu_fields, cpu_fields);   // U/V/W/T/P device→host
+    post::RestartState rs; rs.step = step; rs.time = time;
+    rs.extras = {{"tc_sum", stats.tc_sum}, {"tc_n", double(stats.tc_n)}, {"wt_sum", stats.wt_sum}};
+    restart.save(cpu_fields, sub, rs, topo.cart_comm());
   }
   return 0;
 }
