@@ -6,4 +6,3 @@
 #include "boundary/domain_topology.hpp"
 #include "boundary/problem.hpp"
 #include "boundary/problem_loader.hpp"
-#include "boundary/boundary_applier.hpp"

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/bands.hpp"
 #include "core/field_cpu.hpp"
 #include "core/field_gpu.hpp"
 #include "core/mpi_topology.hpp"   // Subdomain
@@ -76,14 +75,10 @@ struct MomentumSystemT {
 using CpuMomentumSystem = MomentumSystemT<CpuField>;
 using GpuMomentumSystem = MomentumSystemT<GpuField>;
 
-// Per-axis spectral transform for the pressure Poisson (chosen from BC, §9c).
-enum class Transform { Fft, Dct, Tdma };
-
-// Pressure-Poisson system: per-axis transform tags + the heavy solver engine
-// (FFTW plans, pencil buffers, wavenumbers, distributed z-TDMA), built lazily on
-// first solve and reused. (The engine is the CPU FFTW one; a GPU engine lands at P4.)
+// Pressure-Poisson system: the heavy solver engine (FFTW plans, pencil buffers,
+// wavenumbers, distributed z-TDMA), built lazily on first solve and reused.
+// (The engine is the CPU FFTW one; a GPU engine lands at P4.)
 struct PressureSystem {
-  std::array<Transform, 3> transform{Transform::Tdma, Transform::Tdma, Transform::Tdma};
   std::shared_ptr<equation::pressure::PressureSolver> engine;   // lazy (CPU engine)
   std::unique_ptr<CpuField> dPhat;  // prev-step dP predictor for NOB correction; null = OB
   std::unique_ptr<CpuField> dP0;    // running half-average of dPhat for the 2nd-order

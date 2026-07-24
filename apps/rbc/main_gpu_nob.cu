@@ -88,30 +88,48 @@ __global__ void k_accum_tc_wt_rbc(
   if (tid==0) { atomicAdd(d_out+0, shm[0]); atomicAdd(d_out+1, shm[bsz]); }
 }
 
-// Accumulate z-profiles: d_t_sum_z[kk]+=∑_{i,j}T[i,j,kk], d_w2_sum_z[kk]+=∑W².
-// Grid: (ceil(nx*ny/256), nz) blocks, 256 threads, 512*sizeof(double) shared mem.
+// Accumulate z-profiles (per z-plane sums over i,j): ∑T,∑T², ∑U,∑U², ∑V,∑V², ∑W,∑W².
+// Later → T_mean, T_rms, U/V/W_mean, U/V/W_rms(=√(⟨·²⟩−⟨·⟩²)).
+// Grid: (ceil(nx*ny/256), nz) blocks, 256 threads, 8*256*sizeof(double) shared mem.
+// 주: U/V/W는 면-엇갈림 값을 그대로 씀 (기존 W_rms 관례와 동일; 셀중심 보간 안 함).
 __global__ void k_accum_z_profile_rbc(
-    const double* T, const double* W,
-    double* d_t_sum_z, double* d_w2_sum_z,
+    const double* T, const double* U, const double* V, const double* W,
+    double* d_t_sum_z, double* d_t2_sum_z,
+    double* d_u_sum_z, double* d_u2_sum_z,
+    double* d_v_sum_z, double* d_v2_sum_z,
+    double* d_w_sum_z, double* d_w2_sum_z,
     int nx, int ny, int nz, int n2t, int n3t, int h)
 {
   extern __shared__ double shm[];
   const int kk = blockIdx.y;
   const int flat = blockIdx.x*blockDim.x+threadIdx.x;
   const int tid = threadIdx.x, bsz = blockDim.x;
-  double tv=0.0, w2v=0.0;
+  double tv=0.0, t2v=0.0, uv=0.0, u2v=0.0, vv=0.0, v2v=0.0, wv=0.0, w2v=0.0;
   if (flat<nx*ny && kk<nz) {
     const int ii=flat/ny, jj=flat%ny, i=ii+h, j=jj+h, k=kk+h;
-    tv = T[(std::size_t)(i*n2t+j)*n3t+k];
-    const double wv = W[(std::size_t)(i*n2t+j)*n3t+k]; w2v = wv*wv;
+    const std::size_t c = (std::size_t)(i*n2t+j)*n3t+k;
+    const double tval=T[c]; tv=tval; t2v=tval*tval;
+    const double uval=U[c]; uv=uval; u2v=uval*uval;
+    const double vval=V[c]; vv=vval; v2v=vval*vval;
+    const double wval=W[c]; wv=wval; w2v=wval*wval;
   }
-  shm[tid]=tv; shm[bsz+tid]=w2v;
+  shm[tid]=tv;         shm[bsz+tid]=t2v;
+  shm[2*bsz+tid]=uv;   shm[3*bsz+tid]=u2v;
+  shm[4*bsz+tid]=vv;   shm[5*bsz+tid]=v2v;
+  shm[6*bsz+tid]=wv;   shm[7*bsz+tid]=w2v;
   __syncthreads();
   for (int s=bsz/2; s>0; s>>=1) {
-    if (tid<s) { shm[tid]+=shm[tid+s]; shm[bsz+tid]+=shm[bsz+tid+s]; }
+    if (tid<s) {
+      for (int lane=0; lane<8; ++lane) shm[lane*bsz+tid] += shm[lane*bsz+tid+s];
+    }
     __syncthreads();
   }
-  if (tid==0 && kk<nz) { atomicAdd(&d_t_sum_z[kk], shm[0]); atomicAdd(&d_w2_sum_z[kk], shm[bsz]); }
+  if (tid==0 && kk<nz) {
+    atomicAdd(&d_t_sum_z[kk],  shm[0]);       atomicAdd(&d_t2_sum_z[kk], shm[bsz]);
+    atomicAdd(&d_u_sum_z[kk],  shm[2*bsz]);   atomicAdd(&d_u2_sum_z[kk], shm[3*bsz]);
+    atomicAdd(&d_v_sum_z[kk],  shm[4*bsz]);   atomicAdd(&d_v2_sum_z[kk], shm[5*bsz]);
+    atomicAdd(&d_w_sum_z[kk],  shm[6*bsz]);   atomicAdd(&d_w2_sum_z[kk], shm[7*bsz]);
+  }
 }
 
 // Compute umax, vmax, wmax, Tmax, -Tmin  (all as max reductions).
@@ -154,8 +172,14 @@ __global__ void k_div_max_rbc(
 struct GpuRbcAccum {
   double* d_tmp2    = nullptr;   // [2]  scratch: {wt_local, tc_local}
   double* d_diag6   = nullptr;   // [6]  scratch: {umax,vmax,wmax,Tmax,-Tmin,div_max}
-  double* d_t_sum_z = nullptr;   // [nzl] z-profile of T (accumulated each step)
-  double* d_w2_sum_z= nullptr;   // [nzl] z-profile of W² (accumulated each step)
+  double* d_t_sum_z = nullptr;   // [nzl] ∑T  → T_mean
+  double* d_t2_sum_z= nullptr;   // [nzl] ∑T² → T_rms
+  double* d_u_sum_z = nullptr;   // [nzl] ∑U  → U_mean
+  double* d_u2_sum_z= nullptr;   // [nzl] ∑U² → U_rms
+  double* d_v_sum_z = nullptr;   // [nzl] ∑V  → V_mean
+  double* d_v2_sum_z= nullptr;   // [nzl] ∑V² → V_rms
+  double* d_w_sum_z = nullptr;   // [nzl] ∑W  → W_mean
+  double* d_w2_sum_z= nullptr;   // [nzl] ∑W² → W_rms
   int nzl, nx, ny, nz, n2t, n3t, h, kc_local, nxg, nyg, koff, nz_global;
   const double* d_dx1; const double* d_dx2; const double* d_dx3;
 
@@ -168,15 +192,19 @@ struct GpuRbcAccum {
     kc_local = (kc_g>=koff && kc_g<koff+nzl) ? (kc_g - koff) : -1;
     cudaMalloc(&d_tmp2,     2*sizeof(double));
     cudaMalloc(&d_diag6,    6*sizeof(double));
-    cudaMalloc(&d_t_sum_z,  nzl*sizeof(double));
-    cudaMalloc(&d_w2_sum_z, nzl*sizeof(double));
-    cudaMemset(d_t_sum_z,  0, nzl*sizeof(double));
-    cudaMemset(d_w2_sum_z, 0, nzl*sizeof(double));
+    for (double** p : {&d_t_sum_z,&d_t2_sum_z,&d_u_sum_z,&d_u2_sum_z,
+                       &d_v_sum_z,&d_v2_sum_z,&d_w_sum_z,&d_w2_sum_z}) {
+      cudaMalloc(p, nzl*sizeof(double));
+      cudaMemset(*p, 0, nzl*sizeof(double));
+    }
     d_dx1=gg.d_dx1(); d_dx2=gg.d_dx2(); d_dx3=gg.d_dx3();
   }
   ~GpuRbcAccum() {
     cudaFree(d_tmp2); cudaFree(d_diag6);
-    cudaFree(d_t_sum_z); cudaFree(d_w2_sum_z);
+    cudaFree(d_t_sum_z); cudaFree(d_t2_sum_z);
+    cudaFree(d_u_sum_z); cudaFree(d_u2_sum_z);
+    cudaFree(d_v_sum_z); cudaFree(d_v2_sum_z);
+    cudaFree(d_w_sum_z); cudaFree(d_w2_sum_z);
   }
 };
 
@@ -209,13 +237,17 @@ inline void gpu_accumulate_rbc(GpuRbcAccum& ga, rbc::RbcStats& s,
     const core::GpuFields& gf, MPI_Comm comm)
 {
   const double* T = gf[core::Var::T].data();
+  const double* U = gf[core::Var::U].data();
+  const double* V = gf[core::Var::V].data();
   const double* W = gf[core::Var::W].data();
   double wt_instant, tc_instant;
   gpu_compute_instant_tc_wt(ga, gf, comm, wt_instant, tc_instant);
-  // k_accum_z_profile: 256 threads, grid (ceil(nx*ny/256), nz)
+  // k_accum_z_profile: 256 threads, grid (ceil(nx*ny/256), nz), 8 reduction lanes
   const int flat_blocks = (ga.nx*ga.ny+255)/256;
-  k_accum_z_profile_rbc<<<dim3(flat_blocks,ga.nz),256,2*256*sizeof(double)>>>(
-      T, W, ga.d_t_sum_z, ga.d_w2_sum_z,
+  k_accum_z_profile_rbc<<<dim3(flat_blocks,ga.nz),256,8*256*sizeof(double)>>>(
+      T, U, V, W,
+      ga.d_t_sum_z, ga.d_t2_sum_z, ga.d_u_sum_z, ga.d_u2_sum_z,
+      ga.d_v_sum_z, ga.d_v2_sum_z, ga.d_w_sum_z, ga.d_w2_sum_z,
       ga.nx, ga.ny, ga.nz, ga.n2t, ga.n3t, ga.h);
   cudaDeviceSynchronize();
   s.wt_sum += wt_instant;
@@ -245,7 +277,7 @@ inline void gpu_print_step_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
   // Instant (this-step-only) Theta_c/Nu — NOT the cumulative running mean —
   // so transients/drift are visible live without hand-differencing the
   // cumulative print across monitor intervals. Computed every monitor call
-  // regardless of nstat_start, so it's meaningful pre-stats-window too.
+  // regardless of the stats window, so it's meaningful pre-stats-window too.
   double wt_instant, tc_instant;
   gpu_compute_instant_tc_wt(ga, gf, comm, wt_instant, tc_instant);
   if (!is_root) return;
@@ -272,34 +304,39 @@ inline void gpu_write_stats_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
   if (s.tc_n == 0) return;
   const int nzl = ga.nzl, nzg = ga.nz_global;
   const double inv = 1.0 / (s.tc_n * static_cast<double>(ga.nxg) * ga.nyg);
-  // D2H local z-profiles
-  std::vector<double> t_loc(nzl), w2_loc(nzl);
-  cudaMemcpy(t_loc.data(),  ga.d_t_sum_z,  nzl*sizeof(double), cudaMemcpyDeviceToHost);
-  cudaMemcpy(w2_loc.data(), ga.d_w2_sum_z, nzl*sizeof(double), cudaMemcpyDeviceToHost);
-  // Gather global profiles
-  std::vector<double> t_send(nzg,0.0), w2_send(nzg,0.0);
-  std::vector<double> t_glb(nzg,0.0),  w2_glb(nzg,0.0);
-  for (int kl=0; kl<nzl; ++kl) {
-    t_send[ga.koff+kl]  = t_loc[kl]  * inv;
-    w2_send[ga.koff+kl] = w2_loc[kl] * inv;
-  }
-  MPI_Allreduce(t_send.data(),  t_glb.data(),  nzg, MPI_DOUBLE, MPI_SUM, comm);
-  MPI_Allreduce(w2_send.data(), w2_glb.data(), nzg, MPI_DOUBLE, MPI_SUM, comm);
+  // D2H local z-profiles (∑T,∑T², ∑U,∑U², ∑V,∑V², ∑W,∑W²)
+  auto d2h = [&](const double* dev){ std::vector<double> h(nzl);
+    cudaMemcpy(h.data(), dev, nzl*sizeof(double), cudaMemcpyDeviceToHost); return h; };
+  const std::vector<double> t_loc=d2h(ga.d_t_sum_z),  t2_loc=d2h(ga.d_t2_sum_z),
+                            u_loc=d2h(ga.d_u_sum_z),  u2_loc=d2h(ga.d_u2_sum_z),
+                            v_loc=d2h(ga.d_v_sum_z),  v2_loc=d2h(ga.d_v2_sum_z),
+                            w_loc=d2h(ga.d_w_sum_z),  w2_loc=d2h(ga.d_w2_sum_z);
+  // Gather global profiles (each *inv = plane+time mean of the summed quantity)
+  auto gather = [&](const std::vector<double>& loc){
+    std::vector<double> send(nzg,0.0), glb(nzg,0.0);
+    for (int kl=0; kl<nzl; ++kl) send[ga.koff+kl] = loc[kl]*inv;
+    MPI_Allreduce(send.data(), glb.data(), nzg, MPI_DOUBLE, MPI_SUM, comm);
+    return glb;
+  };
+  const std::vector<double> t_glb=gather(t_loc),  t2_glb=gather(t2_loc),
+                            u_glb=gather(u_loc),  u2_glb=gather(u2_loc),
+                            v_glb=gather(v_loc),  v2_glb=gather(v2_loc),
+                            w_glb=gather(w_loc),  w2_glb=gather(w2_loc);
   if (!is_root) return;
   FILE* fp = std::fopen(path.c_str(), "w");
   if (!fp) { std::fprintf(stderr, "[rbc_stats] cannot open '%s'\n", path.c_str()); return; }
   std::fprintf(fp, "# RBC z-profile stats (step=%d, n=%ld, Ra=%.2e, DeltaT=%.1f)\n",
                step, s.tc_n, Ra, DeltaT);
-  std::fprintf(fp, "# Z,T_mean,W_rms\n");
-  // global offset per rank is baked into t_glb — just index by global k
+  std::fprintf(fp, "# Z,T_mean,T_rms,U_mean,U_rms,V_mean,V_rms,W_mean,W_rms\n");
+  auto rms = [](double sq, double mean){ return std::sqrt(std::max(sq - mean*mean, 0.0)); };
   for (int k=0; k<nzg; ++k) {
-    // zc is local; for rank 0 global offset=0, so zc[h+k] is valid only for k < nzl
-    // Use the gathered global offset via sub.n_global()[2] and grid cell spacing
-    // Safe: write index k and T_mean, W_rms
-    const double w_rms = std::sqrt(std::max(w2_glb[k], 0.0));
-    std::fprintf(fp, "%.8e,%.8e,%.8e\n",
-                 static_cast<double>(k+1) / static_cast<double>(nzg),  // normalized z
-                 t_glb[k], w_rms);
+    const double zc = static_cast<double>(k+1) / static_cast<double>(nzg);  // normalized z
+    std::fprintf(fp, "%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+                 zc,
+                 t_glb[k], rms(t2_glb[k], t_glb[k]),
+                 u_glb[k], rms(u2_glb[k], u_glb[k]),
+                 v_glb[k], rms(v2_glb[k], v_glb[k]),
+                 w_glb[k], rms(w2_glb[k], w_glb[k]));
   }
   std::fclose(fp);
 }
@@ -313,22 +350,60 @@ int main(int argc, char** argv) {
   const std::string input_path = (argc >= 2) ? argv[1] : "apps/rbc/input.toml";
   auto cfg = config::Config::load(input_path);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  [입력] 모든 config 값을 여기서 한 번에 읽는다. 아래 조립 단계는 이 값들만 쓴다.
+  //  cfg 는 불변 문자열 맵이라 읽는 순서는 결과에 영향 없음(필수 키는 없으면 throw).
+  // ═══════════════════════════════════════════════════════════════════════════
   auto is_per = [](const std::string& s){ return s == "periodic"; };
-  std::array<int,3>  dims     = {cfg.get<int>("mpi","np1"), cfg.get<int>("mpi","np2"), cfg.get<int>("mpi","np3")};
-  std::array<bool,3> periodic = {is_per(cfg.get_or<std::string>("topology","x","periodic")),
-                                 is_per(cfg.get_or<std::string>("topology","y","periodic")),
-                                 is_per(cfg.get_or<std::string>("topology","z","wall"))};
-  core::MpiTopology topo(mpi, dims, periodic);
-  std::array<int,3> n_global = {cfg.get<int>("mesh","n1m"), cfg.get<int>("mesh","n2m"), cfg.get<int>("mesh","n3m")};
-  core::Subdomain sub(topo, n_global);
-
+  // [mpi] / [topology] / [mesh]
+  const std::array<int,3>  dims     = {cfg.get<int>("mpi","np1"), cfg.get<int>("mpi","np2"), cfg.get<int>("mpi","np3")};
+  const std::array<bool,3> periodic = {is_per(cfg.get_or<std::string>("topology","x","periodic")),
+                                       is_per(cfg.get_or<std::string>("topology","y","periodic")),
+                                       is_per(cfg.get_or<std::string>("topology","z","wall"))};
+  const std::array<int,3>  n_global = {cfg.get<int>("mesh","n1m"), cfg.get<int>("mesh","n2m"), cfg.get<int>("mesh","n3m")};
+  // [domain] / [uniform_mesh] / [mesh_stretch] — 축별 메쉬(도메인 길이·균일여부·tanh γ)
+  const double Lx = cfg.get<double>("domain","Lx"), Ly = cfg.get<double>("domain","Ly"), Lz = cfg.get<double>("domain","Lz");
+  const double L_axis[3] = {Lx, Ly, Lz};
   std::array<grid::AxisConfig,3> axes;
   for (int a = 0; a < 3; ++a) {
     const int    is_uni = cfg.get_or<int>   ("uniform_mesh","uniform"+std::to_string(a+1), 1);
     const double gamma  = cfg.get_or<double>("mesh_stretch","gamma" +std::to_string(a+1), 0.0);
-    const double L      = cfg.get<double>   ("domain", std::string("L")+char('x'+a));
-    axes[a] = {n_global[a], L, is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
+    axes[a] = {n_global[a], L_axis[a], is_uni ? grid::StretchKind::Uniform : grid::StretchKind::Tanh, gamma};
   }
+  // [physics] — Ra/Pr에서 free-fall 무차원 nu, alpha_T 유도
+  const double Ra = cfg.get<double>("physics","Ra"), Pr = cfg.get<double>("physics","Pr");
+  const double nu = std::sqrt(Pr/Ra), alpha_T = 1.0/std::sqrt(Ra*Pr);
+  const double DeltaT       = cfg.get_or<double>("physics","DeltaT", 0.0);
+  const int    gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2);
+  // [time]
+  const double t_end   = cfg.get_or<double>("time","t_end",   400.0);
+  const real_t dt_cap  = static_cast<real_t>(cfg.get_or<double>("time","dt_start",  0.02));
+  const real_t max_cfl = static_cast<real_t>(cfg.get_or<double>("time","MaxCFL",    0.5));
+  const int    n_steps = cfg.get_or<int>   ("time","n_steps", 200000);
+  // [output] — 시간 기반 통계: 물리시간 t_stat_start부터 누적, t_stat_out 간격마다 누적평균 기록
+  //            (스텝 기반 창은 dt 의존이라 케이스 간 불공정했음)
+  const int    nmonitor     = cfg.get_or<int>("output","nmonitor",    200);
+  const double t_stat_start = cfg.get_or<double>("output","t_stat_start", 7500.0);
+  const double t_stat_out   = cfg.get_or<double>("output","t_stat_out",   2500.0);
+  const std::string dir_stats = cfg.get_or<std::string>("output","dir_stats","apps/rbc/statistics/");
+  // [init]
+  const double amp = cfg.get_or<double>("init","perturb",0.02);
+  // [restart]
+  const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in",  "");
+  const std::string restart_out = cfg.get_or<std::string>("restart","dir_out", "");
+  // nrestart_write: 주기적 체크포인트 간격(스텝; 0=끔, 최종만). ckpt_a/ckpt_b 교대 기록으로
+  //   쓰기 중 잡이 죽어도 한 벌은 온전; 재시작은 stats.txt step이 더 큰 ckpt를 dir_in으로.
+  const int  nrestart_write = cfg.get_or<int>("restart","nrestart_write", 0);
+  // stats_reset=1: 이 재시작 지점부터 러닝 평균을 완전히 새로 시작(누적 tc_sum/tc_n/wt_sum 무시)
+  //   — 옛 이력이 새 누적 창을 희석/지연시키는 문제(Report/35) 회피.
+  const bool stats_reset    = cfg.get_or<int>("restart", "stats_reset", 0) != 0;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  [조립] 위 입력값으로 객체를 만든다 (스칼라 cfg 읽기는 위에서 끝; BC만 전용
+  //  로더 load_problem_from_config 가 [topology]/[bc.*] 섹션을 직접 해석).
+  // ═══════════════════════════════════════════════════════════════════════════
+  core::MpiTopology topo(mpi, dims, periodic);
+  core::Subdomain sub(topo, n_global);
   core::Grid grid(sub, axes);
   core::BoundaryCondition bc = boundary::load_problem_from_config(cfg);
   bc.validate();
@@ -340,48 +415,26 @@ int main(int argc, char** argv) {
   fields.add(core::Var::W, sub); fields.add(core::Var::P, sub);
   fields.add(core::Var::T, sub);
 
-  const double Ra = cfg.get<double>("physics","Ra"), Pr = cfg.get<double>("physics","Pr");
-  const double nu = std::sqrt(Pr/Ra), alpha_T = 1.0/std::sqrt(Ra*Pr);
   fields.add_constant(core::Const::nu,      static_cast<real_t>(nu));
   fields.add_constant(core::Const::alpha_T, static_cast<real_t>(alpha_T));
 
   core::PressureSystem pressure;
 
-  const double DeltaT = cfg.get_or<double>("physics","DeltaT", 0.0);
   physics::CpuPropertyFields props(sub);   // CPU copy for pressure step
   const physics::PropertyModel pmodel = physics::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   physics::BuoyancyParams buoy;
-  buoy.gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2); buoy.coeff = 1; buoy.T_ref = 0;
+  buoy.gravity_axis = gravity_axis; buoy.coeff = 1; buoy.T_ref = 0;
   buoy.a12pera11 = (std::fabs(pmodel.a[2]) < real_t{1e-14}) ? real_t{0} : pmodel.a[2] / pmodel.a[1];
   buoy.delta_T   = static_cast<real_t>(DeltaT);
 
-  const double t_end    = cfg.get_or<double>("time","t_end",   400.0);
-  const real_t dt_cap   = static_cast<real_t>(cfg.get_or<double>("time","dt_start",  0.02));
-  const real_t max_cfl  = static_cast<real_t>(cfg.get_or<double>("time","MaxCFL",    0.5));
-  const int    n_steps  = cfg.get_or<int>   ("time","n_steps", 200000);
-  const int    nmonitor    = cfg.get_or<int>("output","nmonitor",    200);
-  const int    nstat_start = cfg.get_or<int>("output","nstat_start", 20000);
-  const int    nstat_write = cfg.get_or<int>("output","nstat_write", 10000);
-  const std::string dir_stats   = cfg.get_or<std::string>("output","dir_stats","apps/rbc/statistics/");
-  const std::string restart_in  = cfg.get_or<std::string>("restart","dir_in",  "");
-  const std::string restart_out = cfg.get_or<std::string>("restart","dir_out", "");
-  
-  // Periodic checkpoint interval in steps (0 = off, final-only write as before).
-  // Checkpoints alternate between <dir_out>/ckpt_a and <dir_out>/ckpt_b so a job
-  // killed mid-write (timeout, node failure) never corrupts the only copy; to
-  // resume, point [restart] dir_in at the ckpt dir whose stats.txt has the
-  // larger step. Motivated by P5/job 30282: 48 h TimeLimit < 60 h cold run,
-  // restart was final-only → the whole equilibrated field would have been lost.
-  const int nrestart_write = cfg.get_or<int>("restart","nrestart_write", 0);
+  double t_next_out = t_stat_start;   // 다음 통계 파일을 기록할 물리시간 (아래 루프에서 갱신)
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
   MPI_Barrier(topo.cart_comm());
 
   // IC: linear T(z) + multi-mode W perturbation, or restart from file
   rbc::RestartMeta rmeta;
   if (restart_in.empty()) {
-    const double Lx=cfg.get<double>("domain","Lx"), Ly=cfg.get<double>("domain","Ly"), Lz=cfg.get<double>("domain","Lz");
     const double T_lo=bc.T.face(Direction::Z,Side::Minus).value, T_hi=bc.T.face(Direction::Z,Side::Plus).value;
-    const double amp=cfg.get_or<double>("init","perturb",0.02);
     const auto& xc=grid.xc(Direction::X); const auto& yc=grid.xc(Direction::Y); const auto& zc=grid.xc(Direction::Z);
     const auto nt=sub.n_total(); const int n1=nt[0], n2=nt[1], n3=nt[2];
     real_t* W=fields[core::Var::W].data(); real_t* T=fields[core::Var::T].data();
@@ -439,11 +492,6 @@ int main(int argc, char** argv) {
   // ── time loop ─────────────────────────────────────────────────────────────
   double time = rmeta.time; int step = rmeta.step;
   rbc::RbcStats stats(sub.n_global()[2]);
-  // stats_reset=1: start the running mean completely fresh from this restart
-  // point (ignore the carried-over tc_sum/tc_n/wt_sum) instead of diluting a new
-  // accumulation window with old history — see Report/35's "cumulative mean
-  // dilutes/lags the true trend" finding.
-  const bool stats_reset = cfg.get_or<int>("restart", "stats_reset", 0) != 0;
   if (!stats_reset) rbc::apply_stats_from_restart(stats, rmeta);
   else if (mpi.is_root())
     std::printf("[restart] stats_reset=1 — starting Theta_c/Nu accumulation fresh from step=%d\n", step);
@@ -571,10 +619,10 @@ int main(int argc, char** argv) {
 
     time += double(dt); ++step;   // 시간 전진 — 여기까지가 물리 스텝, 이후는 통계/출력
 
-    // [9a] 통계 누적 (nstat_start 스텝 이후) — θ_c, Nu, z-프로파일 등을 디바이스 리덕션으로
+    // [9a] 통계 누적 (물리시간 t >= t_stat_start 이후) — θ_c, Nu, z-프로파일 디바이스 리덕션
     // GPU statistics: device reductions only — no field D2H (≤48 bytes per step)
     auto t_d0 = hrc::now();
-    if (step >= nstat_start)
+    if (time >= t_stat_start)
       gpu_accumulate_rbc(gpu_accum, stats, gpu_fields, topo.cart_comm());
     t_diag += ms_since(t_d0);
 
@@ -593,11 +641,14 @@ int main(int argc, char** argv) {
     }
     t_accum += ms_since(t_a0);
 
-    // [9c] 통계 파일 저장 (nstat_write 스텝마다) — stats_<step>.dat
-    if (step >= nstat_start && nstat_write > 0 && step % nstat_write == 0) {
-      const std::string sp = dir_stats + "stats_" + std::to_string(step) + ".dat";
+    // [9c] 통계 파일 저장 (물리시간 t_stat_out 간격마다) — stats_t<time>.dat
+    //      각 파일 = t_stat_start부터의 누적평균 (창이 커지는 cumulative average)
+    if (time >= t_next_out && stats.tc_n > 0) {
+      const std::string sp = dir_stats + "stats_t"
+                           + std::to_string((long)std::llround(time)) + ".dat";
       gpu_write_stats_rbc(gpu_accum, stats, sp, step, Ra, DeltaT,
                           mpi.is_root(), topo.cart_comm(), grid, sub);
+      t_next_out += t_stat_out;
     }
 
     // [9d] 주기적 재시작 체크포인트 — 필드를 D2H 복사 후 ckpt_a/ckpt_b 교대로 기록
