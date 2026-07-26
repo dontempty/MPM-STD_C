@@ -89,7 +89,7 @@ Per-axis coordinates: `xc` (center), `xf` (face), `dx` (cell width), `dmx` (face
 - **Host vs device locals carry a prefix** when both live in one translation unit: `cpu_fields` / `gpu_fields`, `cpu_properties` / `gpu_properties`.
 - **Restarts are decomposition-independent** — one global C-order `.bin` per field; restart with a different GPU count or mesh (§10).
 - **Adaptive dt is `min(dt_cfl, dt_cap)`** — never `max(...)` (that pins dt and blows up explicit convection).
-- **Config files use a `.toml` extension but the parser is INI-style** (`config/config.hpp`, "Minimal INI-style"): flat `[section]` headers + `key = value`. `[bc.z.minus]` works because it is treated as one flat section name; genuine TOML arrays / inline tables are **not** parsed. Unknown/mistyped keys fall through to the accessor's default **silently** — check keys against §7.
+- **Config files use a `.toml` extension but the parser is INI-style** (`config/config.hpp`, "Minimal INI-style"): flat `[section]` headers + `key = value`. `[bc.z.minus]` works because it is treated as one flat section name; genuine TOML arrays / inline tables are **not** parsed. Unknown/mistyped optional keys fall through to a default, but each binary **echoes its parsed config and warns about keys it never read** at startup (`Config::echo` / `warn_unused_keys`) so typos surface. Full key table: [docs/config_reference.md](docs/config_reference.md).
 
 ---
 
@@ -226,7 +226,7 @@ Namespaces `equation::{momentum,scalar,pressure}`. The API verb is the numerical
 | **cavity** | `main.cpp` | Lid-driven cavity (all-Neumann pressure). |
 | **validate** | `main.cpp` | Fixed-IC, fixed-dt serial harness — dumps fields for byte-level regression comparison. |
 
-**Config sections** (INI-style; keys read by the mains — mistyped keys silently take defaults):
+**Config sections** (INI-style; full table with types, defaults, and which binary reads each key in [docs/config_reference.md](docs/config_reference.md)):
 ```
 [mpi]           np1 np2 np3                         # GPU: 1 1 N
 [topology]      x  y  z                             # "periodic" | "wall"
@@ -309,7 +309,7 @@ Both cases stage device→host with `core::copy_all_to_host` before the gathered
 - **`tests/`** (built by `make BACKEND=cpu tests`) — unit + integration + regression checks; the `validate` app dumps fields for byte-level comparison against a PaScaL_TCS ground truth.
 - **`test/`** — an older orphan set of unit tests, not yet wired into the Makefile (a stage-4 cleanup item).
 - **`Report/`** — chronological design + status reports (architecture, momentum-fidelity audits vs PaScaL_TCS, GPU/CPU bottleneck analyses, OB-vs-NOB and incremental-pressure audits). `Report/convenience/` holds the de-abstraction / main-cleanup plans (`01`–`03`).
-- **`docs/`** — `NOB_RBC_SPEC.md`, `namespace_convention.md` (the namespace=location rule + `make lint`), `PROGRESS.md`, `REFACTOR_PLAN.md`, `STRUCTURE_REDESIGN.md`.
+- **`docs/`** — [`config_reference.md`](docs/config_reference.md) (every input key: type, default, which binary reads it), [`output_formats.md`](docs/output_formats.md) (monitor.csv / stats / restart file layouts), `NOB_RBC_SPEC.md`, `namespace_convention.md` (the namespace=location rule + `make lint`), `PROGRESS.md`, `REFACTOR_PLAN.md`, `STRUCTURE_REDESIGN.md`.
 - **`OPTIMIZATIONS.md`** — perf backlog. Known wall: explicit convection → CFL dt collapse at high Ra; the durable fix is fully-implicit convection.
 
 ---
