@@ -98,6 +98,8 @@ int main(int argc, char** argv) {
   // self-starting — the first solve returns the full pressure. Matches the
   // rbc_gpu_nob path (Report/32); CPU was left non-incremental until now.
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop ─────────────────────────────────────────────────────────────
   double time=0.0; int step=0;
   rbc::RbcStats stats(sub.n_global()[2]);

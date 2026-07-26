@@ -202,6 +202,8 @@ int main(int argc, char** argv) {
                 faithful ? "FAITHFUL(var)" : "CURRENT(const)", Ra, Pr, nu,
                 n_global[0], n_global[1], n_global[2], double(dt_fixed), n_steps);
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop (CASE_SPEC order: energy → momentum(+buoyancy U) → project) ────
   double time = 0.0; int step = 0;
   while (step < n_steps) {

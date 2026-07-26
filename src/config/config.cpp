@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cerrno>
+#include <cstdio>
 
 namespace mpmstd::config {
 
@@ -72,7 +73,9 @@ void Config::set(std::string_view section, std::string_view key, std::string_vie
 bool Config::has(std::string_view section, std::string_view key) const {
   auto it = data_.find(std::string(section));
   if (it == data_.end()) return false;
-  return it->second.find(std::string(key)) != it->second.end();
+  if (it->second.find(std::string(key)) == it->second.end()) return false;
+  accessed_.emplace(std::string(section), std::string(key));
+  return true;
 }
 
 std::string Config::get_raw(std::string_view section, std::string_view key) const {
@@ -85,6 +88,7 @@ std::string Config::get_raw(std::string_view section, std::string_view key) cons
     throw std::runtime_error("Config: missing key '" + std::string(key) +
                               "' in section '" + std::string(section) + "'");
   }
+  accessed_.emplace(std::string(section), std::string(key));
   return kit->second;
 }
 
@@ -94,6 +98,7 @@ Config::try_get_raw(std::string_view section, std::string_view key) const {
   if (it == data_.end()) return std::nullopt;
   auto kit = it->second.find(std::string(key));
   if (kit == it->second.end()) return std::nullopt;
+  accessed_.emplace(std::string(section), std::string(key));
   return kit->second;
 }
 
@@ -103,6 +108,43 @@ std::vector<std::string> Config::sections() const {
   for (auto& kv : data_) out.push_back(kv.first);
   std::sort(out.begin(), out.end());
   return out;
+}
+
+// Sorted keys of one section (stable, deterministic dumps).
+static std::vector<std::string> sorted_keys_(
+    const std::unordered_map<std::string, std::string>& kv) {
+  std::vector<std::string> keys;
+  keys.reserve(kv.size());
+  for (const auto& p : kv) keys.push_back(p.first);
+  std::sort(keys.begin(), keys.end());
+  return keys;
+}
+
+void Config::echo(bool is_root) const {
+  if (!is_root) return;
+  std::printf("[config] loaded %s\n", source_path_.c_str());
+  for (const auto& sec : sections()) {
+    const auto& kv = data_.at(sec);
+    for (const auto& k : sorted_keys_(kv))
+      std::printf("  [%s] %s = %s\n", sec.c_str(), k.c_str(), kv.at(k).c_str());
+  }
+}
+
+void Config::warn_unused_keys(bool is_root) const {
+  if (!is_root) return;
+  std::vector<std::string> unused;
+  for (const auto& sec : sections()) {
+    const auto& kv = data_.at(sec);
+    for (const auto& k : sorted_keys_(kv))
+      if (accessed_.find({sec, k}) == accessed_.end())
+        unused.push_back(sec + "." + k);
+  }
+  if (unused.empty()) return;
+  std::fprintf(stderr,
+               "[config] WARNING: %zu key(s) in '%s' were never read "
+               "(typo, or not used by this binary?):\n",
+               unused.size(), source_path_.c_str());
+  for (const auto& u : unused) std::fprintf(stderr, "    %s\n", u.c_str());
 }
 
 // ===== detail::parse_* =====

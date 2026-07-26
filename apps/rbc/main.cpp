@@ -252,6 +252,8 @@ int main(int argc, char** argv) {
   gpu_fields[core::Var::T].to_device(cpu_fields[core::Var::T].data());
 #endif
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop ──────────────────────────────────────────────────────────────
   double tc_sum = 0.0; long tc_n = 0;   // running mean of central temperature
   double time = 0.0; int step = 0;

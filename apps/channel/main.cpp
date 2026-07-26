@@ -203,6 +203,8 @@ int main(int argc, char** argv) {
     std::printf("[channel] start step=%d time=%.4g  nu=%.4e  mode=%s  np=%dx%dx%d  n=%dx%dx%d\n",
                 step, time, nu, fmode.c_str(), dims[0], dims[1], dims[2], n_global[0], n_global[1], n_global[2]);
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop (rev.2 §7 recipe) ────────────────────────────────────────────
   const int step0 = step;
   while (time < t_end && (step - step0) < n_steps) {

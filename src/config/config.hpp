@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 #include <optional>
+#include <set>
+#include <utility>
 #include <stdexcept>
 
 namespace mpmstd::config {
@@ -55,10 +57,22 @@ public:
   // For tests / programmatic config.
   void set(std::string_view section, std::string_view key, std::string_view value);
 
+  // ----- diagnostics (config honesty) -----
+  // Echo every parsed [section] key = value (root only) so the run log records
+  // exactly what the INI-style loader read from the file.
+  void echo(bool is_root) const;
+  // Warn about keys present in the file but never read — catches typos in
+  // optional keys / section names that would otherwise fall through to a code
+  // default silently. Call once after all config reads (root only).
+  void warn_unused_keys(bool is_root) const;
+
 private:
   using KV = std::unordered_map<std::string, std::string>;
   std::unordered_map<std::string, KV> data_;   // section -> key -> value
   std::string                          source_path_;
+  // (section,key) pairs actually read — recorded by the raw accessors so
+  // warn_unused_keys() can flag the rest. Mutable: reads are logically const.
+  mutable std::set<std::pair<std::string, std::string>> accessed_;
 
   static std::string trim_(std::string_view s);
 };

@@ -192,6 +192,8 @@ int main(int argc, char** argv) {
     std::printf("[rbc_gpu_nob] Ra=%.2e Pr=%.4g DeltaT=%.1f nu=%.4e alpha=%.4e  n=%dx%dx%d  (GPU hybrid)\n",
                 Ra, Pr, DeltaT, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop ─────────────────────────────────────────────────────────────
   double time = restart_state.time; int step = restart_state.step;
   post::RbcStatisticsConfig stat_cfg;

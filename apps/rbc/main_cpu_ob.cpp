@@ -86,6 +86,8 @@ int main(int argc, char** argv) {
     std::printf("[rbc_cpu_ob] Ra=%.2e Pr=%.4g nu=%.4e alpha=%.4e  n=%dx%dx%d\n",
                 Ra, Pr, nu, alpha_T, n_global[0], n_global[1], n_global[2]);
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop ─────────────────────────────────────────────────────────────
   double time=0.0; int step=0;
   rbc::RbcStats stats(sub.n_global()[2]);

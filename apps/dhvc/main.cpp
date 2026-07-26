@@ -206,6 +206,8 @@ int main(int argc, char** argv) {
   // and swamp the antisymmetric shear jet. Enforce <U>=0 each step.
   const double total_vol = physics::forcing::channel_total_volume_cpu(domain);
 
+  cfg.echo(mpi.is_root());
+  cfg.warn_unused_keys(mpi.is_root());   // config honesty (stage 4): flag unread (typo?) keys
   // ── time loop ──────────────────────────────────────────────────────────────
   double time = 0.0; int step = 0;
   while (time < t_end && step < n_steps) {
