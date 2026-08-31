@@ -205,6 +205,14 @@ int main(int argc, char** argv) {
   // and swamp the antisymmetric shear jet. Enforce <U>=0 each step.
   const double total_vol = physics::channel_total_volume_cpu(domain);
 
+  // Monitor CSV (root only): instantaneous + running-average Re_δ*. The
+  // Ng-correlation target is a constant, not a signal — console only, not CSV.
+  FILE* mon_fp = nullptr;
+  if (mpi.is_root()) {
+    mon_fp = std::fopen((dir_stats + "monitor.csv").c_str(), "w");
+    if (mon_fp) std::fprintf(mon_fp, "step,t,dt,div,Re_inst,Re_avg\n");
+  }
+
   // ── time loop ──────────────────────────────────────────────────────────────
   double time = 0.0; int step = 0;
   while (time < t_end && step < n_steps) {
@@ -242,14 +250,25 @@ int main(int argc, char** argv) {
     if (step >= nstat_start && (step % nstat_int == 0))
       post::accumulate_statistics_cpu(stats, domain, fields);
     if (step % nmonitor == 0) {
-      const double dv  = div_max(domain, fields);
-      const double red = post::compute_re_delta_star_cpu(stats, nu, domain);
-      if (mpi.is_root())
-        std::printf("step=%d t=%.3g dt=%.3g div=%.2e Re_dstar=%.3f (target~%.3f)\n",
-                    step, time, double(dt), dv, red, 0.23 * std::pow(Ra, 0.28));
+      const double dv      = div_max(domain, fields);
+      // Monitor the CURRENT Re_δ* (this step's profile), not the since-
+      // nstat_start time average — that one is 0 during the transient and
+      // lags the flow afterwards. Keep the running average for reference.
+      const double re_inst = post::compute_re_delta_star_inst_cpu(stats, domain, fields, nu);
+      const double re_avg  = post::compute_re_delta_star_cpu(stats, nu, domain);
+      if (mpi.is_root()) {
+        std::printf("step=%d t=%.3g dt=%.3g div=%.2e Re_dstar=%.3f (avg=%.3f target~%.3f)\n",
+                    step, time, double(dt), dv, re_inst, re_avg, 0.23 * std::pow(Ra, 0.28));
+        if (mon_fp) {
+          std::fprintf(mon_fp, "%d,%.6g,%.6g,%.6e,%.6f,%.6f\n",
+                       step, time, double(dt), dv, re_inst, re_avg);
+          std::fflush(mon_fp);
+        }
+      }
     }
   }
 
+  if (mon_fp) std::fclose(mon_fp);
   const double re_dstar = post::compute_re_delta_star_cpu(stats, nu, domain);
   post::write_statistics_cpu(stats, dir_stats + "stats_final.dat", step, nu, domain);
   if (mpi.is_root())

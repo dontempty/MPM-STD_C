@@ -1,0 +1,53 @@
+[domain]
+Lx = 6.0
+Ly = 6.0
+Lz = 1.0
+[mesh]
+n1m = 128
+n2m = 128
+n3m = 128
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 1
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e6
+Pr = 2547.0
+nob = 1
+DeltaT = 20.0
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[bc.z.plus]
+T = -0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[time]
+t_start  = 0.0
+t_end    = 15000.0
+dt_start = 0.001
+MaxCFL   = 0.3
+n_steps  = 8000000
+[init]
+perturb = 0.05
+[output]
+dir_stats   = "apps/rbc/reorder_cold_dt20/"
+nmonitor    = 100
+t_stat_start = 7500.0
+t_stat_out   = 2500.0
+[restart]
+dir_out = "apps/rbc/restart_reorder_cold_dt20/"
+nrestart_write = 100000

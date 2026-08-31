@@ -26,7 +26,10 @@ INC    := -I"$(ROOT_DIR)/src"     # library lives under src/ (core/, equation/, 
 ifeq ($(BACKEND),cuda)
   EXT_LIBS += -L$(FFTW3_LIB) -lfftw3
 endif
-BUILD  := $(ROOT_DIR)/build/$(BACKEND)
+# BUILD_TAG lets one BACKEND coexist in several output trees (e.g. x86 cc80
+# in build/cuda vs GH200 aarch64 cc90 in build/cuda_gh200).
+BUILD_TAG ?= $(BACKEND)
+BUILD  := $(ROOT_DIR)/build/$(BUILD_TAG)
 OBJ    := $(BUILD)/obj
 LIB    := $(BUILD)/lib/libmpmstd.a
 BINDIR := $(BUILD)/bin

@@ -29,4 +29,11 @@ void accumulate_statistics_gpu(Stats& s, const core::Domain& domain, const core:
 // MPI; returns the value on every rank. (streamwise = x, wall-normal = z.)
 double compute_re_delta_star_cpu(const Stats& s, double nu, const core::Domain& domain);
 
+// Instantaneous Re_δ* from THIS step's plane-averaged U(z) (single sample, no
+// time average). The Stats-based version above is 0 before nstat_start and
+// lags behind afterwards; the monitor wants the current state. Uses Stats only
+// for the z-geometry (zc_global/kstart) filled by init_statistics_cpu.
+double compute_re_delta_star_inst_cpu(const Stats& s, const core::Domain& domain,
+                                      const core::CpuFields& fields, double nu);
+
 } // namespace mpmstd::post

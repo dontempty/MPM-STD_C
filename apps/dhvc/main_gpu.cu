@@ -567,7 +567,9 @@ int main(int argc, char** argv) {
     FILE* mon_fp = nullptr;
     if (mpi.is_root()) {
         mon_fp = std::fopen((dir_stats + "monitor.csv").c_str(), "w");
-        if (mon_fp) std::fprintf(mon_fp, "step,t,dt,div,Re_dstar,Re_inst,KE,Nu,theta_rms\n");
+        // Header must match the 11 columns actually written in gpu_monitor_dhvc
+        // (Re_avg = since-nstat_start running average, Re_inst = this step).
+        if (mon_fp) std::fprintf(mon_fp, "step,t,dt,div,Re_avg,Re_inst,KE,Nu,theta_rms,wall_s,ms_per_step\n");
     }
 
     physics::BuoyancyParams buoy;

@@ -285,21 +285,31 @@ inline void gpu_write_stats_rbc(GpuRbcAccum& ga, const rbc::RbcStats& s,
   }
   MPI_Allreduce(t_send.data(),  t_glb.data(),  nzg, MPI_DOUBLE, MPI_SUM, comm);
   MPI_Allreduce(w2_send.data(), w2_glb.data(), nzg, MPI_DOUBLE, MPI_SUM, comm);
+  // Gather the ACTUAL stretched z coordinates (was uniform (k+1)/nzg — on the
+  // gamma=2.6 grid that misplaced near-wall rows by up to 2.5x). MAX-reduce so
+  // x/y-decomposed ranks sharing a z band don't double-count.
+  std::vector<double> zc_send(nzg,0.0), zc_glb(nzg,0.0), zf_send(nzg,0.0), zf_glb(nzg,0.0);
+  { const auto& zc = grid.xc(Direction::Z); const auto& zf = grid.xf(Direction::Z);
+    for (int kl=0; kl<nzl; ++kl) {
+      zc_send[ga.koff+kl] = static_cast<double>(zc[kHaloWidth+kl]);   // cell center (T_mean)
+      zf_send[ga.koff+kl] = static_cast<double>(zf[kHaloWidth+kl]);   // W face at index k (W_rms)
+    } }
+  MPI_Allreduce(zc_send.data(), zc_glb.data(), nzg, MPI_DOUBLE, MPI_MAX, comm);
+  MPI_Allreduce(zf_send.data(), zf_glb.data(), nzg, MPI_DOUBLE, MPI_MAX, comm);
   if (!is_root) return;
   FILE* fp = std::fopen(path.c_str(), "w");
   if (!fp) { std::fprintf(stderr, "[rbc_stats] cannot open '%s'\n", path.c_str()); return; }
   std::fprintf(fp, "# RBC z-profile stats (step=%d, n=%ld, Ra=%.2e, DeltaT=%.1f)\n",
                step, s.tc_n, Ra, DeltaT);
-  std::fprintf(fp, "# Z,T_mean,W_rms\n");
+  // Z = stretched cell-center z (T_mean location); Z_face = W face below that
+  // cell (W_rms location; row 0 is the bottom wall face, the top wall face is
+  // not part of this nzg-row profile).
+  std::fprintf(fp, "# Z,T_mean,W_rms,Z_face\n");
   // global offset per rank is baked into t_glb — just index by global k
   for (int k=0; k<nzg; ++k) {
-    // zc is local; for rank 0 global offset=0, so zc[h+k] is valid only for k < nzl
-    // Use the gathered global offset via sub.n_global()[2] and grid cell spacing
-    // Safe: write index k and T_mean, W_rms
     const double w_rms = std::sqrt(std::max(w2_glb[k], 0.0));
-    std::fprintf(fp, "%.8e,%.8e,%.8e\n",
-                 static_cast<double>(k+1) / static_cast<double>(nzg),  // normalized z
-                 t_glb[k], w_rms);
+    std::fprintf(fp, "%.8e,%.8e,%.8e,%.8e\n",
+                 zc_glb[k], t_glb[k], w_rms, zf_glb[k]);
   }
   std::fclose(fp);
 }

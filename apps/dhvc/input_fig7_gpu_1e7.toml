@@ -12,7 +12,7 @@ n3m = 192
 [mpi]
 np1 = 1
 np2 = 1
-np3 = 4
+np3 = 2
 [uniform_mesh]
 uniform1 = 1
 uniform2 = 1
@@ -36,16 +36,16 @@ T = -0.5
 t_start  = 0.0
 t_end    = 240.0
 dt_start = 0.005
-MaxCFL   = 0.4
-n_steps  = 2000000
+MaxCFL   = 1.0
+n_steps  = 250000
 [init]
 perturb = 0.05
 [output]
 dir_stats   = "apps/dhvc/out_1e7/"
-nmonitor    = 100
-t_stat_start = 60.0
+nmonitor    = 50
+t_stat_start = 40.0
 nstat        = 10
-t_stat_out   = 30.0
+t_stat_out   = 20.0
 [restart]
-dir_in  = "apps/dhvc/restart_1e6_t240"
-dir_out = "apps/dhvc/restart_1e7_t240"
+dir_in  = "apps/dhvc/restart_1e6/"
+dir_out = "apps/dhvc/restart_1e7/"
