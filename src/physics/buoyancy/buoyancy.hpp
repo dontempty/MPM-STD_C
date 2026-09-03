@@ -16,6 +16,13 @@ struct BuoyancyParams {
   int    gravity_axis = 2;   // wall/gravity axis is case-dependent (channel z, DHVC streamwise, RBC vertical)
   real_t coeff        = 0;   // Ra/Pr-derived scaling (set per case)
   real_t T_ref        = 0;
+  // Sign of gravity along gravity_axis. +1 (default) = the validated setup
+  // (buoyancy force = +F on the +axis component ⇒ hot fluid rises for the
+  // conventional bottom-hot RBC). -1 flips gravity, giving the exact z-mirror
+  // image (top-hot convecting run) used to test top/bottom-wall symmetry.
+  // The force is multiplied by this AFTER the (byte-identical) F expression, so
+  // gravity_sign=1 is a provable no-op (IEEE 1.0*x == x).
+  real_t gravity_sign = 1;
   // NOB density-nonlinearity (RBC glycerol, NOB_RBC_SPEC.md §5):
   //   F = invRho · (θ + a12pera11·θ²·DeltaT),  Cmt=1, no T_ref (θ already centred).
   // a12pera11 = a12/a11 of the density polynomial; 0 ⇒ OB (then F = invRho·θ).
@@ -27,9 +34,10 @@ struct BuoyancyParams {
   // coeff=1, T_ref=0. OB cases (channel/DHVC) set `coeff` per-case by hand and
   // do not use this. Body moved verbatim from the RBC mains.
   static BuoyancyParams from_property_model(const properties::PropertyModel& model,
-                                            int gravity_axis) {
+                                            int gravity_axis, real_t gravity_sign = 1) {
     BuoyancyParams p;
     p.gravity_axis = gravity_axis;
+    p.gravity_sign = gravity_sign;
     p.coeff        = 1;
     p.T_ref        = 0;
     p.a12pera11    = (std::fabs(model.a[2]) < real_t{1e-14}) ? real_t{0}

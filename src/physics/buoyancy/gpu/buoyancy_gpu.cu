@@ -68,8 +68,10 @@ void add_buoyancy_force_constant_property_gpu(const core::Domain& domain, equati
   const dim3 blk(8, 8, 8);
   const dim3 grd((ni + 7) / 8, (nj + 7) / 8, (nk + 7) / 8);
   // Note: GPU rhs is in dU/dV/dW device fields (different from CPU rhs_u/v/w vectors)
+  // Fold gravity_sign into dt (== dt bit-for-bit at the +1 default) so the kernel
+  // — and thus its PTX — stays byte-identical to the pre-flag build.
   k_add_buoyancy<<<grd, blk>>>(rhs, T.data(), dxg, dmxg, n1t, n2t, n3t, h, p.gravity_axis,
-                               p.coeff, p.T_ref, dt);
+                               p.coeff, p.T_ref, static_cast<real_t>(dt * p.gravity_sign));
 }
 
 void add_buoyancy_force_variable_property_gpu(const core::Domain& domain, equation::momentum::GpuLinearSystem& mom,
@@ -87,7 +89,7 @@ void add_buoyancy_force_variable_property_gpu(const core::Domain& domain, equati
   const dim3 grd((ni + 7) / 8, (nj + 7) / 8, (nk + 7) / 8);
   k_add_buoyancy_nob<<<grd, blk>>>(rhs, T.data(), inv_rho.data(), dxg, dmxg,
                                    n1t, n2t, n3t, h, p.gravity_axis,
-                                   p.a12pera11, p.delta_T, dt);
+                                   p.a12pera11, p.delta_T, static_cast<real_t>(dt * p.gravity_sign));
 }
 
 } // namespace mpmstd::physics::buoyancy

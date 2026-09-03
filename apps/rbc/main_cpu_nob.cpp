@@ -52,6 +52,7 @@ int main(int argc, char** argv) {
   const physics::properties::PropertyModel property_model = physics::properties::PropertyModel::glycerol(static_cast<real_t>(DeltaT));
   physics::buoyancy::BuoyancyParams buoyancy_params;
   buoyancy_params.gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2); buoyancy_params.coeff = 1; buoyancy_params.T_ref = 0;
+  buoyancy_params.gravity_sign = static_cast<real_t>(cfg.get_or<double>("physics","gravity_sign", 1.0));
   buoyancy_params.a12pera11 = (std::fabs(property_model.a[2]) < real_t{1e-14}) ? real_t{0} : property_model.a[2] / property_model.a[1];
   buoyancy_params.delta_T   = static_cast<real_t>(DeltaT);
 

@@ -84,6 +84,9 @@ int main(int argc, char** argv) {
   const double nu = std::sqrt(Pr/Ra), alpha_T = 1.0/std::sqrt(Ra*Pr);
   const double DeltaT       = cfg.get_or<double>("physics","DeltaT", 0.0);
   const int    gravity_axis = cfg.get_or<int>("physics","gravity_axis", 2);
+  // gravity_sign: +1 (default) = validated bottom-hot RBC; -1 flips gravity for
+  // the exact z-mirror (top-hot) symmetry test. No-op at the default.
+  const double gravity_sign = cfg.get_or<double>("physics","gravity_sign", 1.0);
   // [time]
   const double t_end   = cfg.get_or<double>("time","t_end",   400.0);
   const real_t dt_cap  = static_cast<real_t>(cfg.get_or<double>("time","dt_start",  0.02));
@@ -129,7 +132,7 @@ int main(int argc, char** argv) {
 
   physics::properties::CpuPropertyFields cpu_properties(sub);   // CPU copy for pressure step
   const auto property_model  = physics::properties::glycerol(static_cast<real_t>(DeltaT));
-  const auto buoyancy_params = physics::buoyancy::BuoyancyParams::from_property_model(property_model, gravity_axis);
+  const auto buoyancy_params = physics::buoyancy::BuoyancyParams::from_property_model(property_model, gravity_axis, static_cast<real_t>(gravity_sign));
 
   if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(dir_stats, ec); }
   MPI_Barrier(topo.cart_comm());

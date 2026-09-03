@@ -19,6 +19,10 @@ void add_buoyancy_force_constant_property_cpu(const core::Domain& domain, equati
                                : (p.gravity_axis == 1) ? mom.rhs_v : mom.rhs_w;
   real_t* rhs = rhs_vec.data();
   const real_t coeff = p.coeff, t_ref = p.T_ref;
+  // Fold the gravity sign into dt so the force expression keeps its exact
+  // original structure (incl. FMA contraction): gdt == dt bit-for-bit at the
+  // gravity_sign=+1 default (IEEE 1.0*dt == dt), so this is a provable no-op.
+  const real_t gdt = p.gravity_sign * dt;
   // PaScaL_TCS f90:348 — interpolate T onto the gravity-axis component face:
   //   Tc = 0.5*(dxg[ig-1]*T[c] + dxg[ig]*T[c-gstride])/dmxg[ig]
   const Direction gd = static_cast<Direction>(p.gravity_axis);
@@ -31,7 +35,7 @@ void add_buoyancy_force_constant_property_cpu(const core::Domain& domain, equati
         const int c = (i * n2 + j) * n3 + k;
         const int ig = (p.gravity_axis == 0) ? i : (p.gravity_axis == 1) ? j : k;
         const real_t Tc = real_t{0.5}*(dxg[ig-1]*t[c] + dxg[ig]*t[c - gstride])/dmxg[ig];
-        rhs[c] += dt * coeff * (Tc - t_ref);
+        rhs[c] += gdt * coeff * (Tc - t_ref);
       }
 }
 
@@ -51,6 +55,7 @@ void add_buoyancy_force_variable_property_cpu(const core::Domain& domain, equati
                                : (p.gravity_axis == 1) ? mom.rhs_v : mom.rhs_w;
   real_t* rhs = rhs_vec.data();
   const real_t a12pera11 = p.a12pera11, dT = p.delta_T;
+  const real_t gdt = p.gravity_sign * dt;   // gravity-signed dt (==dt exactly at +1); see constant-property variant
   const Direction gd = static_cast<Direction>(p.gravity_axis);
   const real_t* dxg  = domain.grid.dx_ptr(gd);
   const real_t* dmxg = domain.grid.dmx_ptr(gd);
@@ -62,7 +67,7 @@ void add_buoyancy_force_variable_property_cpu(const core::Domain& domain, equati
         const int ig = (p.gravity_axis == 0) ? i : (p.gravity_axis == 1) ? j : k;
         const real_t Tc  = real_t{0.5}*(dxg[ig-1]*t[c]  + dxg[ig]*t[c - gstride])/dmxg[ig];
         const real_t irc = real_t{0.5}*(dxg[ig-1]*ir[c] + dxg[ig]*ir[c - gstride])/dmxg[ig];
-        rhs[c] += dt * irc * (Tc + a12pera11 * Tc * Tc * dT);
+        rhs[c] += gdt * irc * (Tc + a12pera11 * Tc * Tc * dT);
       }
 }
 
