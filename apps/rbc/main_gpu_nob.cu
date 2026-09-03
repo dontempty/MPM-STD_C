@@ -6,6 +6,9 @@
 using namespace mpmstd;
 #include "core/gpu/gpu_grid.hpp"
 #include "post/statistics_rbc.hpp"
+#include "post/timing.hpp"
+#include <memory>
+#include <vector>
 #include <chrono>
 #include <cuda_runtime.h>
 
@@ -206,9 +209,48 @@ int main(int argc, char** argv) {
   post::RbcStatistics statistics(sub, gpu_grid_arrays, grid, stat_cfg, topo.cart_comm(), mpi.is_root());
   statistics.import_extras(restart_state, stats_reset);   // running sums from restart (unless stats_reset)
 
-  // Per-section timing accumulators (only rank 0 prints)
-  double t_scalar=0, t_mom=0, t_zero_w=0, t_pressure=0, t_clip=0, t_diag=0, t_accum=0;
-  const int n_time_steps = 10; // profile first N steps
+  // ── scaling-run timing (apps/rbc/timing_plan.md + timing_solve_plan.md) ──
+  // Measurement window = loop iterations [warmup, warmup+measure) counted from
+  // THIS launch (restart-independent). timing measure=0 (default) → fully off.
+  const int  timing_warmup   = cfg.get_or<int>("timing","warmup", 20);
+  const int  timing_measure  = cfg.get_or<int>("timing","measure", 0);
+  const bool timing_detailed = cfg.get_or<int>("timing","detailed", 0) != 0;
+  const std::string timing_dir = cfg.get_or<std::string>("timing","dir", "apps/rbc/timing/");
+
+  // Top-level events marked here in main; the four instrumented library calls
+  // append their own blocks (names exported from their public headers).
+  enum MainTimingEvent {
+    kMainTimingCflDt = 0, kMainTimingProperties, kMainTimingScalarHalo,
+    kMainTimingBuoyancy, kMainTimingPressureGradient, kMainTimingVelocityUpdate,
+    kMainTimingVelocityBoundary, kMainTimingPressureUpdate,
+    kMainTimingTemperatureClip, kMainTimingStatistics, kMainTimingEventCount
+  };
+  std::vector<std::string> timing_event_names = {
+    "cfl_dt", "properties", "scalar_halo", "momentum_buoyancy",
+    "momentum_pressure_gradient", "momentum_velocity_update",
+    "velocity_boundary", "pressure_update", "temperature_clip", "statistics" };
+  const int timing_scalar_base = (int)timing_event_names.size();
+  for (auto* name : equation::scalar::kGpuTimingEventNames) timing_event_names.push_back(name);
+  const int timing_assemble_base = (int)timing_event_names.size();
+  for (auto* name : equation::momentum::kGpuAssembleTimingEventNames) timing_event_names.push_back(name);
+  const int timing_momentum_base = (int)timing_event_names.size();
+  for (auto* name : equation::momentum::kGpuSolveTimingEventNames) timing_event_names.push_back(name);
+  const int timing_pressure_base = (int)timing_event_names.size();
+  for (auto* name : equation::pressure::kGpuPressureTimingEventNames) timing_event_names.push_back(name);
+  const int timing_marks_per_step = 12
+      + equation::scalar::kGpuTimingMarksPerCall            // 11
+      + equation::momentum::kGpuAssembleTimingMarksPerCall  // 3
+      + equation::momentum::kGpuSolveTimingMarksPerCall     // 41
+      + equation::pressure::kGpuPressureTimingMarksPerCall; // 13  → 80 total
+  std::unique_ptr<post::TimingRecorder> timing_recorder;
+  if (timing_measure > 0)
+    timing_recorder = std::make_unique<post::TimingRecorder>(
+        timing_measure, timing_marks_per_step, timing_event_names,
+        topo.cart_comm(), timing_detailed);
+  post::TimingRecorder* rec = nullptr;        // non-null only inside the window
+  auto main_mark = [&](int event) { if (rec) rec->mark(event); };
+  int  timing_iteration = 0;
+  bool timing_window_done = false;
 
   // ── 한 스텝의 흐름 ──────────────────────────────────────────────────────────
   //  [1] CFL → dt   [2] 물성 갱신(Tⁿ)   [3] 에너지 방정식 → Tⁿ⁺¹
@@ -216,25 +258,32 @@ int main(int argc, char** argv) {
   //  [7] 압력 Poisson + 투영 → 발산 제거, Pⁿ⁺¹=Pⁿ+δp   [8] T 클리핑(NOB)
   //  [9] 통계 누적 / 모니터 출력 / 주기적 체크포인트
   while (time < t_end && step < n_steps) {
-    auto t00 = hrc::now();
+    if (timing_recorder) {
+      if (timing_iteration == timing_warmup) timing_recorder->start_window();
+      const int measured = timing_iteration - timing_warmup;
+      rec = (measured >= 0 && measured < timing_measure) ? timing_recorder.get() : nullptr;
+      if (rec) rec->begin_iteration(measured);
+    }
 
     // [1] 적응 시간간격: 현재 속도장의 CFL 조건으로 dt = min(MaxCFL/속도, dt_cap)
     const real_t dt = driver::compute_cfl_dt_gpu(domain, gpu_fields, max_cfl, dt_cap);
+    main_mark(kMainTimingCflDt);
     // [2] NOB 변물성 갱신: 현재 온도 Tⁿ으로 μ, 1/ρ, κ, 1/(ρcp) 등을 다항식(글리세롤 모델)으로 재계산
     //     — 아래 에너지 방정식이 이 Tⁿ 물성을 사용
     physics::properties::update_properties_gpu(gpu_properties, gpu_fields[core::Var::T], property_model);
+    main_mark(kMainTimingProperties);
 
     // [3] 에너지(온도) 방정식 — 대류 + 변수-κ 확산, 준음해 델타-폼:
     //     solve 안에서 sweep마다 A 밴드와 RHS를 동시에 조립(k_build_A_rhs_nob, 융합 build_A_RHS;
     //     stage-1이 명시 잔차 R을 인라인 계산) 후 3-sweep ADI(x,y,z 삼중대각 TDMA)로 δT를 풀어 T += δT
     //     sync_field = MPI 할로 교환 + 경계조건 재적용 (Tⁿ⁺¹ 완성)
     cudaDeviceSynchronize();
-    auto t_s0 = hrc::now();
     equation::scalar::solve_scalar_variable_property_gpu(domain, bc, gpu_fields, gpu_properties.KPP, gpu_properties.dKPP,
-                                   gpu_properties.invRhoCp, gpu_properties.dinvRhoCp, gpu_scalar, dt);
+                                   gpu_properties.invRhoCp, gpu_properties.dinvRhoCp, gpu_scalar, dt,
+                                   rec, timing_scalar_base);
     core::sync_field_gpu(gpu_fields, core::Var::T, bc, sub);
     cudaDeviceSynchronize();
-    t_scalar += ms_since(t_s0);
+    main_mark(kMainTimingScalarHalo);
 
     // [4] 물성 재갱신 — 방금 푼 Tⁿ⁺¹로 μ, 1/ρ를 다시 계산해 운동량/부력이 Tⁿ⁺¹ 물성을 쓰게 함
     // Re-evaluate properties from the just-solved T^{n+1} so momentum viscosity/density
@@ -242,6 +291,7 @@ int main(int argc, char** argv) {
     // momentum_coeffi(T) called AFTER thermal_solver (MPM-STD staggered-time scheme).
     // Energy above already used the T^n properties from line 408.
     physics::properties::update_properties_gpu(gpu_properties, gpu_fields[core::Var::T], property_model);
+    main_mark(kMainTimingProperties);
 
     // [5] 운동량 예측자(predictor) — 중간 속도 U*,V*,W* 계산:
     //     assemble  : 대류 + 변수-μ 확산의 명시 RHS 조립
@@ -249,17 +299,20 @@ int main(int argc, char** argv) {
     //     pressure_gradient : 증분투영 예측자 항 −dt·(1/ρ̂)∇Pⁿ 추가 (누적압력 P_acc 사용)
     //     solve     : 3-sweep ADI(TDMA) + 블록 하삼각 속도 커플링으로 증분 δU,δV,δW 계산
     //     update    : U += δU 등으로 중간 속도 완성 (아직 발산 ≠ 0)
-    auto t_m0 = hrc::now();
-    equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields, gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt);
+    equation::momentum::assemble_momentum_variable_property_gpu(domain, gpu_fields, gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt,
+                                   rec, timing_assemble_base);
     physics::buoyancy::add_buoyancy_force_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::T], gpu_properties.invRho, buoyancy_params, dt);
+    main_mark(kMainTimingBuoyancy);
     equation::pressure::add_pressure_gradient_variable_property_gpu(domain, gpu_momentum, gpu_fields[core::Var::P], gpu_properties.invRho, dt);
-    equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields, gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt);
+    main_mark(kMainTimingPressureGradient);
+    equation::momentum::solve_momentum_variable_property_gpu(domain, bc, gpu_fields, gpu_properties.Mu, gpu_properties.invRho, gpu_momentum, dt,
+                                   rec, timing_momentum_base);
     equation::momentum::update_velocity_gpu(gpu_fields, gpu_momentum);
+    main_mark(kMainTimingVelocityUpdate);
     core::sync_field_gpu(gpu_fields, core::Var::U, bc, sub);   // 할로 교환 + BC 재적용 (U,V,W)
     core::sync_field_gpu(gpu_fields, core::Var::V, bc, sub);
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
     cudaDeviceSynchronize();
-    t_mom += ms_since(t_m0);
     // 디버그: 운동량 직후 상단 슬랩 |U|,|W| 최대값 (환경변수 MPMSTD_MOMDBG≥1일 때만 출력, 평소 no-op)
     equation::momentum::debug_slabmax_gpu("U.postmom", gpu_fields[core::Var::U], domain, 'U');
     equation::momentum::debug_slabmax_gpu("W.postmom", gpu_fields[core::Var::W], domain, 'W');
@@ -268,7 +321,6 @@ int main(int argc, char** argv) {
     //     솔브 후 명시적으로 0으로 눌러줘야 함
     // zero_w_wall: GPU kernel — no D2H/H2D
     cudaDeviceSynchronize();
-    auto t_zw0 = hrc::now();
     {
       const auto nt = sub.n_total();
       const int n1t = nt[0], n2t = nt[1], n3t = nt[2], h = kHaloWidth;
@@ -280,7 +332,7 @@ int main(int argc, char** argv) {
     }
     core::sync_field_gpu(gpu_fields, core::Var::W, bc, sub);
     cudaDeviceSynchronize();
-    t_zero_w += ms_since(t_zw0);
+    main_mark(kMainTimingVelocityBoundary);
 
     // [7] 압력 투영(incremental van Kan) — ∇·U*를 RHS로 Poisson을 풀어(δp)
     //     펜슬 FFT(x,y) + 분산 TDMA(z), 속도를 발산-제로로 투영, P_acc += δp
@@ -288,18 +340,17 @@ int main(int argc, char** argv) {
     // Report/25: faithful NOB pressure restored. ExtraTerm (Poisson) and the
     // (invRhoc-1)*∇dPhat velocity term are a cancelling PAIR (div=0 exact), not
     // double-counting; the 2026-07-02 OB swap was a misdiagnosis (θ_c unchanged).
-    auto t_p0 = hrc::now();
-    equation::pressure::solve_pressure_variable_property_gpu(domain, bc, gpu_fields, pressure, dt, gpu_properties.invRho);
+    equation::pressure::solve_pressure_variable_property_gpu(domain, bc, gpu_fields, pressure, dt, gpu_properties.invRho,
+                                   rec, timing_pressure_base);
     equation::pressure::accumulate_pressure_gpu(gpu_fields, pressure);  // Pⁿ⁺¹ = Pⁿ + δp
     cudaDeviceSynchronize();
-    t_pressure += ms_since(t_p0);
+    main_mark(kMainTimingPressureUpdate);
     equation::momentum::debug_slabmax_gpu("U.postproj", gpu_fields[core::Var::U], domain);
     equation::momentum::debug_slabmax_gpu("W.postproj", gpu_fields[core::Var::W], domain);
 
     // [8] 온도 클리핑(NOB 전용, DeltaT>0일 때만) — 물성 다항식의 유효 범위를 벗어나는
     //     오버슛 T를 잘라냄; 몇 셀이 잘렸는지 d_clip_count에 기록해 모니터 때 보고
     // T clipping: GPU kernel — no D2H/H2D (interior only; ghosts hold the BC mirror)
-    auto t_c0 = hrc::now();
     if (DeltaT > 0.0) {
       const auto nic = sub.n_interior();
       const auto ntc = sub.n_total();
@@ -310,20 +361,27 @@ int main(int argc, char** argv) {
                                    statistics.clip_counter());
     }
     cudaDeviceSynchronize();
-    t_clip += ms_since(t_c0);
+    main_mark(kMainTimingTemperatureClip);
 
     time += double(dt); ++step;   // 시간 전진 — 여기까지가 물리 스텝, 이후는 통계/출력
 
     // [9a] 통계 누적 (물리시간 t >= t_stat_start 이후) — θ_c, Nu, z-프로파일 디바이스 리덕션
     // GPU statistics: device reductions only — no field D2H (≤48 bytes per step)
-    auto t_d0 = hrc::now();
     statistics.accumulate_if_due(time, gpu_fields);
-    t_diag += ms_since(t_d0);
+    main_mark(kMainTimingStatistics);
 
     // [9b] 모니터 출력 (nmonitor 스텝마다) — step/t/dt/div/θ_c/Nu 한 줄 + monitor.csv + clip 보고
-    auto t_a0 = hrc::now();
     statistics.monitor_if_due(step, time, dt, gpu_fields);
-    t_accum += ms_since(t_a0);
+    main_mark(kMainTimingStatistics);
+    if (rec) {
+      rec->end_iteration();
+      if (timing_iteration - timing_warmup == timing_measure - 1) {
+        timing_recorder->stop_window();
+        timing_window_done = true;
+      }
+      rec = nullptr;
+    }
+    ++timing_iteration;
 
     // [9c] 통계 파일 저장 (물리시간 t_stat_out 간격마다) — stats_t<time>.dat
     //      각 파일 = t_stat_start부터의 누적평균 (창이 커지는 cumulative average)
@@ -341,25 +399,57 @@ int main(int argc, char** argv) {
       restart.checkpoint_if_due(step, time, cpu_fields, sub, rs, topo.cart_comm());
     }
 
-    // [10] 성능 프로파일 출력 — 첫 n_time_steps 스텝의 구간별(ms/step) 타이밍, 이후 정상상태 타이밍은 런 끝에
-    if (step == n_time_steps && mpi.is_root()) {
-      const double total = t_scalar+t_mom+t_zero_w+t_pressure+t_clip+t_diag+t_accum;
-      std::printf("[TIMING] %d steps  total=%.1f ms/step\n", n_time_steps, total/n_time_steps);
-      std::printf("  scalar=%.1f  momentum=%.1f  zero_w=%.1f  pressure=%.1f  clip=%.1f  diag_D2H=%.1f  accum=%.1f\n",
-                  t_scalar/n_time_steps, t_mom/n_time_steps, t_zero_w/n_time_steps,
-                  t_pressure/n_time_steps, t_clip/n_time_steps, t_diag/n_time_steps, t_accum/n_time_steps);
-      // Reset accumulators to measure steady-state timing separately
-      t_scalar=0; t_mom=0; t_zero_w=0; t_pressure=0; t_clip=0; t_diag=0; t_accum=0;
+  }
+
+  // ── scaling-run timing epilogue: reduce + summary + one CSV (spec 8/10/11) ──
+  if (timing_recorder && timing_window_done) {
+    timing_recorder->reduce();
+    std::vector<std::pair<std::string, std::vector<int>>> timing_groups;
+    { std::vector<int> members{kMainTimingScalarHalo};
+      for (int e = 0; e < equation::scalar::kGpuTimingEventCount; ++e) members.push_back(timing_scalar_base + e);
+      timing_groups.emplace_back("scalar_total", members); }
+    { std::vector<int> members{kMainTimingBuoyancy, kMainTimingPressureGradient,
+                               kMainTimingVelocityUpdate, kMainTimingVelocityBoundary};
+      for (int e = 0; e < equation::momentum::kGpuAssembleTimingEventCount; ++e) members.push_back(timing_assemble_base + e);
+      for (int e = 0; e < equation::momentum::kGpuSolveTimingEventCount; ++e) members.push_back(timing_momentum_base + e);
+      timing_groups.emplace_back("momentum_total", members); }
+    { std::vector<int> members{kMainTimingPressureUpdate};
+      for (int e = 0; e < equation::pressure::kGpuPressureTimingEventCount; ++e) members.push_back(timing_pressure_base + e);
+      timing_groups.emplace_back("pressure_total", members); }
+    timing_groups.emplace_back("tdma_z_all", std::vector<int>{
+        timing_scalar_base   + equation::scalar::kTimingTdmaZ,
+        timing_momentum_base + equation::momentum::kSolveTimingTdmaZ,
+        timing_pressure_base + equation::pressure::kPressureTimingTdmaZ});
+    timing_groups.emplace_back("halo_all", std::vector<int>{
+        kMainTimingScalarHalo, kMainTimingVelocityBoundary,
+        timing_momentum_base + equation::momentum::kSolveTimingHalo,
+        timing_pressure_base + equation::pressure::kPressureTimingHalo});
+    timing_recorder->print_summary(timing_groups);
+
+    if (timing_dir != "none") {
+      if (mpi.is_root()) { std::error_code ec; std::filesystem::create_directories(timing_dir, ec); }
+      MPI_Barrier(topo.cart_comm());
+      int timing_world = 1; MPI_Comm_size(topo.cart_comm(), &timing_world);
+      const char* job_id = std::getenv("SLURM_JOB_ID");
+      const std::string grid_tag = std::to_string(n_global[0]) + "x" +
+          std::to_string(n_global[1]) + "x" + std::to_string(n_global[2]);
+      const std::string csv_path = timing_dir + "/timing_rbc_" + grid_tag + "_" +
+          std::to_string(timing_world) + "gpu_run" + (job_id ? job_id : "local") + ".csv";
+      std::vector<std::pair<std::string, std::string>> timing_metadata = {
+        {"case", "rbc_gpu_nob"},
+        {"global_grid", grid_tag},
+        {"process_grid", std::to_string(dims[0]) + "x" + std::to_string(dims[1]) + "x" + std::to_string(dims[2])},
+        {"ngpu", std::to_string(timing_world)},
+        {"Ra", std::to_string(Ra)}, {"Pr", std::to_string(Pr)}, {"DeltaT", std::to_string(DeltaT)},
+        {"MaxCFL", std::to_string(double(max_cfl))}, {"dt_cap", std::to_string(double(dt_cap))},
+        {"n_warmup_iteration", std::to_string(timing_warmup)},
+        {"n_measured_iteration", std::to_string(timing_measure)},
+        {"event_semantics", "partition events tile each step; total derived per rank (apps/rbc/timing_solve_plan.md)"},
+      };
+      timing_recorder->write_csv(csv_path, timing_metadata);
     }
-    // Print steady-state timing snapshot (steps 11–n_steps) at end
-    if (step == n_steps && mpi.is_root() && n_steps > n_time_steps) {
-      const int ss_steps = n_steps - n_time_steps;
-      const double total = t_scalar+t_mom+t_zero_w+t_pressure+t_clip+t_diag+t_accum;
-      std::printf("[TIMING_SS] %d steps (steady-state)  total=%.1f ms/step\n", ss_steps, total/ss_steps);
-      std::printf("  scalar=%.1f  momentum=%.1f  zero_w=%.1f  pressure=%.1f  clip=%.1f  diag_D2H=%.1f  accum=%.1f\n",
-                  t_scalar/ss_steps, t_mom/ss_steps, t_zero_w/ss_steps,
-                  t_pressure/ss_steps, t_clip/ss_steps, t_diag/ss_steps, t_accum/ss_steps);
-    }
+  } else if (timing_recorder && mpi.is_root()) {
+    std::printf("[timing] run ended before the measurement window completed - no timing output\n");
   }
 
   // Final stats file (stats_final.dat), end-of-run z-profile D2H + summary print.

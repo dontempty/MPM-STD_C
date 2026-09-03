@@ -1,0 +1,56 @@
+[domain]
+Lx = 6.0
+Ly = 6.0
+Lz = 1.0
+[mesh]
+n1m = 32
+n2m = 32
+n3m = 64
+[mpi]
+np1 = 1
+np2 = 1
+np3 = 2
+[uniform_mesh]
+uniform1 = 1
+uniform2 = 1
+uniform3 = 0
+[mesh_stretch]
+gamma1 = 0.0
+gamma2 = 0.0
+gamma3 = 2.6
+[physics]
+Ra = 1.0e6
+Pr = 2547.0
+DeltaT = 20.0
+[topology]
+x = "periodic"
+y = "periodic"
+z = "wall"
+[bc.z.minus]
+T = 0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[bc.z.plus]
+T = -0.5
+ghost = "antisymmetric"
+ghost_uv = "zero"
+[time]
+t_start = 0.0
+t_end = 1.0e9
+dt_start = 0.05
+MaxCFL = 0.3
+n_steps = 20
+[init]
+perturb = 0.05
+[output]
+dir_stats = "apps/rbc/_fft_verify/stats/"
+nmonitor = 5
+t_stat_start = 1.0e9
+t_stat_out = 1.0e9
+[timing]
+warmup = 5
+measure = 10
+dir = "apps/rbc/_fft_verify/timing/"
+[restart]
+dir_out = "apps/rbc/_fft_verify/tmp/"
+nrestart_write = 0

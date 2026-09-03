@@ -12,6 +12,7 @@
 
 #include "equation/momentum/assemble.hpp"
 #include "equation/momentum/solve.hpp"
+#include "post/timing.hpp"
 #include "equation/momentum/kernels.hpp"
 #include "core/boundary_ops.hpp"
 #include "linear_solver/tdma/pascal_tdma_cuda_backend.hpp"
@@ -1424,9 +1425,17 @@ static void adi_component_var(
         const mpmstd::core::GpuGridArrays* dg,
         int n1i, int n2i, int n3i,
         int n1t, int n2t, int n3t,
-        const char* dbg_tag = nullptr)
+        const char* dbg_tag = nullptr,
+        mpmstd::post::TimingRecorder* recorder = nullptr, int timing_event_base = 0)
 {
     using mpmstd::Direction;
+    using namespace mpmstd::equation::momentum;   // GpuSolveTimingEvent
+    auto timing_mark = [&](int event) {
+        if (recorder) recorder->mark(timing_event_base + event);
+    };
+    auto direction_offset = [](Direction d) {
+        return (d == Direction::X) ? 0 : (d == Direction::Y) ? 1 : 2;
+    };
 
     const double* dxo  = (own_dir == Direction::X) ? dg->d_dx1()
                        : (own_dir == Direction::Y) ? dg->d_dx2() : dg->d_dx3();
@@ -1461,6 +1470,7 @@ static void adi_component_var(
                 dxa, dmxa, dxo, dmxo,
                 n1i, n2i, n3i, n1t, n2t, n3t,
                 Cmu, dt, zs);
+        timing_mark(kSolveTimingBuildX + direction_offset(dir));
 
         if (!bc.topology.is_periodic(dir)) {
             const auto& axis_dir = domain.sub.topology().axis(dir);
@@ -1477,13 +1487,16 @@ static void adi_component_var(
                     k_w_wallface_identity_row<<<grd1d, blk1d>>>(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys);
                 }
             }
+            timing_mark(kSolveTimingWallRows);
             cuda_tdma_mom(domain.tdma, dir).solve_many_device(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys, n_row);
         } else {
             cuda_tdma_mom(domain.tdma, dir).solve_many_cyclic_device(d_m_A_, d_m_B_, d_m_C_, d_m_D_, n_sys, n_row);
         }
+        timing_mark(kSolveTimingTdmaX + direction_offset(dir));
 
         k_m_scatter<<<grd, blk>>>(dir, outb, d_m_D_,
                                    n1i, n2i, n3i, n1t, n2t, n3t);
+        timing_mark(kSolveTimingScatterX + direction_offset(dir));
         std::swap(in, outb);
 
         if (dbg_tag && mom_dbg_on()) {
@@ -1499,6 +1512,7 @@ static void adi_component_var(
     const int grd1 = (int)((nf + blk1 - 1) / blk1);
     k_m_copy_field<<<grd1, blk1>>>(out_device, in, (int)nf);
     CUDA_CHK(cudaDeviceSynchronize());  // sync before returning — caller reads out_device
+    timing_mark(kSolveTimingCopyOut);
 }
 
 #endif // MPMSTD_BACKEND_CUDA
@@ -1562,9 +1576,13 @@ void assemble_momentum_constant_property_gpu(const core::Domain& domain, core::G
 // ---------------------------------------------------------------------------
 void assemble_momentum_variable_property_gpu(const core::Domain& domain, core::GpuFields& fields,
                                      const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
-                                     equation::momentum::GpuLinearSystem& mom, real_t dt)
+                                     equation::momentum::GpuLinearSystem& mom, real_t dt,
+                                     post::TimingRecorder* recorder, int timing_event_base)
 {
 #ifdef MPMSTD_BACKEND_CUDA
+    auto timing_mark = [&](GpuAssembleTimingEvent event) {
+        if (recorder) recorder->mark(timing_event_base + event);
+    };
     const auto nt = domain.sub.n_total();
     const int n1t = nt[0], n2t = nt[1], n3t = nt[2];
     const auto ni = domain.sub.n_interior();
@@ -1592,6 +1610,7 @@ void assemble_momentum_variable_property_gpu(const core::Domain& domain, core::G
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt),
             Direction::X);
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kAssembleTimingRhsU);
 
     k_mom_rhs_var<<<grd, blk>>>(
             mom.dV.data(), d_V, d_U, d_V, d_W, d_mu, d_irho,
@@ -1599,6 +1618,7 @@ void assemble_momentum_variable_property_gpu(const core::Domain& domain, core::G
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt),
             Direction::Y);
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kAssembleTimingRhsV);
 
     k_mom_rhs_var<<<grd, blk>>>(
             mom.dW.data(), d_W, d_U, d_V, d_W, d_mu, d_irho,
@@ -1606,6 +1626,7 @@ void assemble_momentum_variable_property_gpu(const core::Domain& domain, core::G
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt),
             Direction::Z);
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kAssembleTimingRhsW);
 #endif
 }
 
@@ -1705,9 +1726,13 @@ void solve_momentum_constant_property_gpu(const core::Domain& domain, const boun
 void solve_momentum_variable_property_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                               core::GpuFields& fields,
                               const core::GpuField& mu_field, const core::GpuField& inv_rho_field,
-                              equation::momentum::GpuLinearSystem& mom, real_t dt)
+                              equation::momentum::GpuLinearSystem& mom, real_t dt,
+                              post::TimingRecorder* recorder, int timing_event_base)
 {
 #ifdef MPMSTD_BACKEND_CUDA
+    auto timing_mark = [&](GpuSolveTimingEvent event) {
+        if (recorder) recorder->mark(timing_event_base + event);
+    };
     const auto nt = domain.sub.n_total();
     const int n1t = nt[0], n2t = nt[1], n3t = nt[2];
     const auto ni = domain.sub.n_interior();
@@ -1737,8 +1762,10 @@ void solve_momentum_variable_property_gpu(const core::Domain& domain, const boun
     adi_component_var(mom, mom.dU.data(), d_U, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::X, false, bc.U, domain, bc,
                       Cmu, static_cast<double>(dt),
-                      mom.dU.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiU");
+                      mom.dU.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiU",
+                      recorder, timing_event_base);
     core::sync_field_gpu(mom.dU, bc.U, domain.sub);
+    timing_mark(kSolveTimingHalo);
     mom_dbg_slabcorr("g.adiU", mom.dU.data(), d_U, domain, n1i, n2i, n3i, n2t, n3t);
 
     // (2) dd* M21: rhs_v (in mom.dV) += coupling(dU); then ADI → dV
@@ -1747,13 +1774,16 @@ void solve_momentum_variable_property_gpu(const core::Domain& domain, const boun
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kSolveTimingCrossCouple);
     mom_dbg_slabmax("rhsV+ddU", mom.dV.data(), domain, n1i, n2i, n3i, n2t, n3t);
 
     adi_component_var(mom, mom.dV.data(), d_V, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::Y, false, bc.V, domain, bc,
                       Cmu, static_cast<double>(dt),
-                      mom.dV.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiV");
+                      mom.dV.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiV",
+                      recorder, timing_event_base);
     core::sync_field_gpu(mom.dV, bc.V, domain.sub);
+    timing_mark(kSolveTimingHalo);
     mom_dbg_slabcorr("g.adiV", mom.dV.data(), d_V, domain, n1i, n2i, n3i, n2t, n3t);
 
     // (3) dd* M31+M32: rhs_w (in mom.dW) += coupling(dU,dV); then ADI → dW.
@@ -1764,13 +1794,16 @@ void solve_momentum_variable_property_gpu(const core::Domain& domain, const boun
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kSolveTimingCrossCouple);
     mom_dbg_slabmax("rhsW+dd", mom.dW.data(), domain, n1i, n2i, n3i, n2t, n3t);
 
     adi_component_var(mom, mom.dW.data(), d_W, d_U, d_V, d_W, d_mu, d_irho,
                       Direction::Z, true, bc.W, domain, bc,
                       Cmu, static_cast<double>(dt),
-                      mom.dW.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiW");
+                      mom.dW.data(), dg, n1i, n2i, n3i, n1t, n2t, n3t, "adiW",
+                      recorder, timing_event_base);
     core::sync_field_gpu(mom.dW, bc.W, domain.sub);
+    timing_mark(kSolveTimingHalo);
     mom_dbg_slabcorr("g.adiW", mom.dW.data(), d_W, domain, n1i, n2i, n3i, n2t, n3t);
 
     const bool z_wall_lower = !bc.topology.is_periodic(Direction::Z)
@@ -1806,7 +1839,9 @@ void solve_momentum_variable_property_gpu(const core::Domain& domain, const boun
             dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kSolveTimingBlockCouple);
     core::sync_field_gpu(mom.dV, bc.V, domain.sub);
+    timing_mark(kSolveTimingHalo);
     if (blk_theta < 1.0) {
         k_dbg_blend_full<<<grd1f, 256>>>(mom.dV.data(), d_m_stage_, blk_theta, (int)nf_full);
         CUDA_CHK(cudaDeviceSynchronize());
@@ -1829,6 +1864,7 @@ void solve_momentum_variable_property_gpu(const core::Domain& domain, const boun
             dg->d_dx1(), dg->d_dmx1(), dg->d_dx2(), dg->d_dmx2(), dg->d_dx3(), dg->d_dmx3(),
             n1i, n2i, n3i, n1t, n2t, n3t, Cmu, static_cast<double>(dt));
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kSolveTimingBlockCouple);
     if (blk_theta < 1.0) {
         k_dbg_blend_full<<<grd1f, 256>>>(mom.dU.data(), d_m_stage_, blk_theta, (int)nf_full);
         CUDA_CHK(cudaDeviceSynchronize());

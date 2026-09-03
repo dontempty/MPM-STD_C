@@ -147,7 +147,8 @@ void solve_pressure_variable_property_gpu(const core::Domain&             domain
                              core::GpuFields&                gpu_fields,
                              equation::pressure::LinearSystem&           poi,
                              real_t                          dt,
-                             const core::GpuField&           inv_rho)
+                             const core::GpuField&           inv_rho,
+                                          post::TimingRecorder* recorder, int timing_event_base)
 {
   using Eng = pressure::PressureSolverGpu;
 
@@ -173,7 +174,7 @@ void solve_pressure_variable_property_gpu(const core::Domain&             domain
   auto& dPhat = *static_cast<core::GpuField*>(poi.dPhat_gpu_field.get());
   auto& dP0   = *static_cast<core::GpuField*>(poi.dP0_gpu_field.get());
   core::GpuField& dP = ensure_dP_gpu(poi, domain.sub);
-  eng.solve_nob(dt, gpu_fields, bc, domain.sub, inv_rho, dPhat, dP0, dP);
+  eng.solve_nob(dt, gpu_fields, bc, domain.sub, inv_rho, dPhat, dP0, dP, recorder, timing_event_base);
 }
 
 } // namespace mpmstd::equation::pressure

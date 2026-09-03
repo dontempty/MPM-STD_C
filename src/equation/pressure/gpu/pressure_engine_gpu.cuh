@@ -22,6 +22,7 @@
 #include "linear_solver/tdma/pascal_tdma_cuda_backend.hpp"
 
 #include <cufft.h>
+#include "post/timing.hpp"
 #include <cuda_runtime.h>
 #include <mpi.h>
 
@@ -287,9 +288,17 @@ public:
                  const parallel::mpi::Subdomain& sub,
                  const core::GpuField& inv_rho,
                  core::GpuField& dPhat, core::GpuField& dP0,
-                 core::GpuField& dP);   // δp output (owned by pressure LinearSystem)
+                 core::GpuField& dP,    // δp output (owned by pressure LinearSystem)
+                 post::TimingRecorder* recorder = nullptr, int timing_event_base = 0);
 
 private:
+  // scaling-run timing (apps/rbc/timing_solve_plan.md §4) — set per solve_nob
+  // call; nullptr (default) = no instrumentation, identical execution.
+  post::TimingRecorder* timing_recorder_ = nullptr;
+  int timing_event_base_ = 0;
+  void timing_mark_(int event) {
+    if (timing_recorder_) timing_recorder_->mark(timing_event_base_ + event);
+  }
   void transpose_C_to_I_();
   void transpose_I_to_C_();
   void transpose_I_to_Y_();
@@ -991,8 +1000,19 @@ void PressureSolverGpu::solve_tdma_z_()
 
 void PressureSolverGpu::solve_tdma_z_gpu_()
 {
-  if (!gpu_tdma_enabled_) { solve_tdma_z_(); return; }
-  if (n_sys_Y_ == 0 || n3_I_ == 0) return;
+  if (!gpu_tdma_enabled_) {
+    timing_mark_(kPressureTimingTdmaSplit);
+    solve_tdma_z_();
+    timing_mark_(kPressureTimingTdmaZ);
+    timing_mark_(kPressureTimingTdmaMerge);
+    return;
+  }
+  if (n_sys_Y_ == 0 || n3_I_ == 0) {
+    timing_mark_(kPressureTimingTdmaSplit);
+    timing_mark_(kPressureTimingTdmaZ);
+    timing_mark_(kPressureTimingTdmaMerge);
+    return;
+  }
 
   const std::size_t tsz = (std::size_t)n_sys_Y_ * n3_I_;
   const int blk = 256;
@@ -1001,6 +1021,7 @@ void PressureSolverGpu::solve_tdma_z_gpu_()
   // Split d_hat_Y_ (double2) → d_tdma_Dr_, d_tdma_Dc_ (double each)
   k_tdma_split_hat_Y<<<grd, blk>>>(d_hat_Y_, d_tdma_Dr_, d_tdma_Dc_, tsz);
   CUDA_CHK(cudaGetLastError());
+  timing_mark_(kPressureTimingTdmaSplit);
 
   // Real solve: restore A/B/C (Thomas modifies in-place), then solve
   CUDA_CHK(cudaMemcpy(d_tdma_Aw_, d_tdma_A0_, tsz*sizeof(double), cudaMemcpyDeviceToDevice));
@@ -1013,10 +1034,12 @@ void PressureSolverGpu::solve_tdma_z_gpu_()
   CUDA_CHK(cudaMemcpy(d_tdma_Bw_, d_tdma_B0_, tsz*sizeof(double), cudaMemcpyDeviceToDevice));
   CUDA_CHK(cudaMemcpy(d_tdma_Cw_, d_tdma_C0_, tsz*sizeof(double), cudaMemcpyDeviceToDevice));
   tdma_z_cuda_->solve_many_device(d_tdma_Aw_, d_tdma_Bw_, d_tdma_Cw_, d_tdma_Dc_, n_sys_Y_, n3_I_);
+  timing_mark_(kPressureTimingTdmaZ);
 
   // Merge results back into d_hat_Y_
   k_tdma_merge_hat_Y<<<grd, blk>>>(d_tdma_Dr_, d_tdma_Dc_, d_hat_Y_, tsz);
   CUDA_CHK(cudaGetLastError());
+  timing_mark_(kPressureTimingTdmaMerge);
 }
 
 
@@ -1039,6 +1062,7 @@ void PressureSolverGpu::run_forward_pipeline_()
     // Entire pipeline stays on device — no H↔D transfers.
     const std::size_t slab = (std::size_t)h1p_Y_me_ * N2g;
     CUFFT_CHK(cufftExecD2Z(plan_fwd_x_, d_rhs_C_dev_, d_hat_I_));
+    timing_mark_(kPressureTimingFftXForward);
     if (h1p_Y_me_ > 0) {
       for (int k = 0; k < n3_I_; ++k)
         CUFFT_CHK(cufftExecZ2Z(plan_y_,
@@ -1047,6 +1071,7 @@ void PressureSolverGpu::run_forward_pipeline_()
                                CUFFT_FORWARD));
     }
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark_(kPressureTimingFftYForward);
     return;
   }
 
@@ -1062,6 +1087,7 @@ void PressureSolverGpu::run_forward_pipeline_()
   auto F2 = hrc::now();
   CUFFT_CHK(cufftExecD2Z(plan_fwd_x_, d_rhs_I_, d_hat_I_));
   CUDA_CHK(cudaDeviceSynchronize());
+  timing_mark_(kPressureTimingFftXForward);
   auto F3 = hrc::now();
   CUDA_CHK(cudaMemcpy(hat_I_, d_hat_I_,
                       (std::size_t)Nxh_ * ny_loc_ * n3_I_ * sizeof(double2),
@@ -1088,6 +1114,7 @@ void PressureSolverGpu::run_forward_pipeline_()
                                CUFFT_FORWARD));
     }
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark_(kPressureTimingFftYForward);
     auto F7 = hrc::now();
     if (!gpu_tdma_enabled_)
       CUDA_CHK(cudaMemcpy(hat_Y_, d_hat_Y_,
@@ -1119,11 +1146,13 @@ void PressureSolverGpu::run_backward_pipeline_()
                                d_hat_I_ + k * slab,
                                CUFFT_INVERSE));
     }
+    timing_mark_(kPressureTimingFftYBackward);
     // c2r directly from d_hat_I_ (np2=1: hat_I_ layout == hat_Y_ layout)
     CUFFT_CHK(cufftExecZ2D(plan_bwd_x_, d_hat_I_, d_dp_I_));
     const double scale = 1.0 / (double(N1g) * double(sub_.n_global()[1]));
     k_gpu_scale<<<(int)((sz+255)/256), 256>>>(d_dp_I_, scale, sz);
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark_(kPressureTimingFftXBackward);
     // d_dp_I_ now holds the scaled pressure increment in I-layout (=C-layout for np1=1)
     // Caller must call unpack_P_fast_() instead of unpack_P_to_gpu_()
     return;
@@ -1145,6 +1174,7 @@ void PressureSolverGpu::run_backward_pipeline_()
                              CUFFT_INVERSE));
   }
   CUDA_CHK(cudaDeviceSynchronize());
+  timing_mark_(kPressureTimingFftYBackward);
 
   if (gpu_tdma_enabled_) {
     // GPU path: D2D hat_Y→hat_I (same layout for np2=1), skip CPU transposes.
@@ -1181,6 +1211,7 @@ void PressureSolverGpu::run_backward_pipeline_()
 
   // I→C
   transpose_I_to_C_();
+  timing_mark_(kPressureTimingFftXBackward);
 }
 
 
@@ -1324,8 +1355,11 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
                                    const parallel::mpi::Subdomain& sub,
                                    const core::GpuField& inv_rho,
                                    core::GpuField& dPhat, core::GpuField& dP0,
-                                   core::GpuField& dP)
+                                   core::GpuField& dP,
+                                   post::TimingRecorder* recorder, int timing_event_base)
 {
+  timing_recorder_ = recorder;
+  timing_event_base_ = timing_event_base;
   using hrc = std::chrono::high_resolution_clock;
   auto ms_ = [](hrc::time_point t0){
     return std::chrono::duration<double,std::milli>(hrc::now()-t0).count(); };
@@ -1346,9 +1380,11 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
   auto T0 = hrc::now();
   // 1. GPU divergence → d_rhs_C_dev_
   divergence_rhs_gpu_(d_U, d_V, d_W, static_cast<double>(dt));
+  timing_mark_(kPressureTimingDivergence);
   // 2. GPU NOB extra term → d_rhs_C_dev_ +=
   extra_term_nob_gpu_(d_ir, d_ph);
   CUDA_CHK(cudaDeviceSynchronize());
+  timing_mark_(kPressureTimingExtraTerm);
   auto T1 = hrc::now();
   // 3. D2H only needed for non-fast-path
   if (!gpu_fast_path_)
@@ -1364,11 +1400,13 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
   // 7. Unpack P, sync P
   if (gpu_fast_path_) unpack_P_fast_(dP, sub);
   else                unpack_P_to_gpu_(dP, sub);
-  core::sync_field_gpu(dP, problem.P, sub);
+  core::sync_field_gpu(dP, problem.P, sub);   // dP halo — included in the unpack interval
+  timing_mark_(kPressureTimingUnpack);
   auto T6 = hrc::now();
   // 8. GPU NOB projection
   project_nob_gpu_(d_U, d_V, d_W, dP.data(), d_ph, d_ir,
                    static_cast<double>(dt));
+  timing_mark_(kPressureTimingProject);
   auto T7 = hrc::now();
   // 9. Extrapolate predictor for next step (PaScaL_TCS §820-821):
   //    dP0 = (dPhat + dP0)/2 ;  dPhat = 2*dP - dP0   (dP = just-solved P)
@@ -1378,6 +1416,7 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
     k_dphat_extrapolate<<<grd, blk>>>(dPhat.data(), dP0.data(),
                                       dP.data(), nf);
   }
+  timing_mark_(kPressureTimingDphatExtrapolate);
   // dPhat halo exchange — REQUIRED for the next step's extra-term/projection to
   // cancel across MPI boundaries (PaScaL_TCS main.f90:199 ghostcell_update(dPhat)).
   // The old dPhat:=P got this for free since P was already synced; the 2*dP-dP0
@@ -1387,6 +1426,7 @@ void PressureSolverGpu::solve_nob(real_t dt, core::GpuFields& gpu_fields,
   core::sync_field_gpu(gpu_fields[core::Var::V], problem.V, sub);
   core::sync_field_gpu(gpu_fields[core::Var::W], problem.W, sub);
   cudaDeviceSynchronize();
+  timing_mark_(kPressureTimingHalo);   // dPhat + U/V/W halos + final sync
   auto T8 = hrc::now();
 
   if (_pr) {

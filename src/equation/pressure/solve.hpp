@@ -6,6 +6,8 @@
 #include "equation/momentum/linear_system.hpp"
 #include "equation/pressure/linear_system.hpp"
 
+namespace mpmstd::post { class TimingRecorder; }   // scaling-run timing (post/timing.hpp)
+
 namespace mpmstd::equation::pressure {
 
 // Pressure step (rev.2 §7), bundled: div(U*) → pencil-FFT/transpose/z-TDMA
@@ -21,10 +23,43 @@ void solve_pressure_cpu(const core::Domain& domain, const boundary::BoundaryCond
 void solve_pressure_constant_property_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                         core::GpuFields& fields, equation::pressure::LinearSystem& poi, real_t dt);
 
+// Kernel-level timing sub-events of solve_pressure_variable_property_gpu
+// (apps/rbc/timing_plan.md §6), in execution order of PressureSolverGpu::solve_nob
+// on the production fast path (np1==np2==1, GPU-resident z-TDMA).  On other
+// paths the extra transposes/H<->D copies land in the neighbouring intervals.
+enum GpuPressureTimingEvent {
+    kPressureTimingDivergence = 0,   // k_divergence_rhs_pres
+    kPressureTimingExtraTerm,        // k_extra_term_nob_pres (NOB)
+    kPressureTimingFftXForward,      // cuFFT D2Z
+    kPressureTimingFftYForward,      // cuFFT Z2Z forward
+    kPressureTimingTdmaSplit,        // k_tdma_split_hat_Y (complex -> two real bands)
+    kPressureTimingTdmaZ,            // distributed z-TDMA (MPI)
+    kPressureTimingTdmaMerge,        // k_tdma_merge_hat_Y
+    kPressureTimingFftYBackward,     // cuFFT Z2Z inverse
+    kPressureTimingFftXBackward,     // cuFFT Z2D + k_gpu_scale
+    kPressureTimingUnpack,           // k_unpack_dp_C_to_P
+    kPressureTimingProject,          // k_project_nob_pres
+    kPressureTimingDphatExtrapolate, // k_dphat_extrapolate
+    kPressureTimingHalo,             // dPhat + dU/dV/dW halo exchanges (MPI) + final sync
+    kGpuPressureTimingEventCount
+};
+inline const char* const kGpuPressureTimingEventNames[kGpuPressureTimingEventCount] = {
+    "pressure_divergence", "pressure_extra_term",
+    "pressure_fft_x_forward", "pressure_fft_y_forward",
+    "pressure_tdma_split", "pressure_tdma_z", "pressure_tdma_merge",
+    "pressure_fft_y_backward", "pressure_fft_x_backward",
+    "pressure_unpack", "pressure_project",
+    "pressure_dphat_extrapolate", "pressure_halo",
+};
+constexpr int kGpuPressureTimingMarksPerCall = kGpuPressureTimingEventCount;   // each once
+
 // NOB GPU pressure solve: adds ExtraTerm + NOB projection, updates internal dPhat.
+// `recorder` (nullptr = no instrumentation, identical execution) records the
+// sub-events above at `timing_event_base + GpuPressureTimingEvent`.
 void solve_pressure_variable_property_gpu(const core::Domain& domain, const boundary::BoundaryCondition& bc,
                              core::GpuFields& fields, equation::pressure::LinearSystem& poi, real_t dt,
-                             const core::GpuField& inv_rho);
+                             const core::GpuField& inv_rho,
+                             post::TimingRecorder* recorder = nullptr, int timing_event_base = 0);
 
 // ── Incremental pressure-correction (van Kan) ───────────────────────────────────
 // Predictor coupling: subtract dt·∇P_acc (the accumulated pressure Pⁿ) from the

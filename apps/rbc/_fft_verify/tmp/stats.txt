@@ -1,0 +1,5 @@
+step 20
+time 1.0000000000000002
+tc_sum 0
+tc_n 0
+wt_sum 0

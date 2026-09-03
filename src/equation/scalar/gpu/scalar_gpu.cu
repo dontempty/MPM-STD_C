@@ -4,6 +4,7 @@
 #include "linear_solver/tdma/pascal_tdma_cuda_backend.hpp"
 #include "linear_solver/tdma/tdma_registry.hpp"
 #include "core/gpu/gpu_grid.hpp"
+#include "post/timing.hpp"
 
 #ifdef MPMSTD_BACKEND_CUDA
 #include <cuda_runtime.h>
@@ -367,7 +368,8 @@ void solve_scalar_variable_property_gpu(
     core::GpuFields& fields,
     const core::GpuField& KPP,   const core::GpuField& dKPP,
     const core::GpuField& invRhoCp, const core::GpuField& dinvRhoCp,
-    equation::scalar::GpuLinearSystem& sys, real_t dt) {
+    equation::scalar::GpuLinearSystem& sys, real_t dt,
+    post::TimingRecorder* recorder, int timing_event_base) {
 #ifdef MPMSTD_BACKEND_CUDA
   // 로컬 배열 크기: n?t = 할로 포함 전체(total), n?i = 내부(interior)만
   const auto nt = domain.sub.n_total();
@@ -388,12 +390,14 @@ void solve_scalar_variable_property_gpu(
   const double* d_KPP = KPP.data(), *d_dKPP = dKPP.data();      // κ̂, dκ̂/dΔθ
   const double* d_invRhoCp = invRhoCp.data(), *d_dinvRhoCp = dinvRhoCp.data();  // 1/(ρ̂Ĉp), 그 도함수
 
-  // sweep별 구간 타이밍(처음 20스텝만 출력): [0]=X [1]=Y [2]=Z
-  using hrc = std::chrono::high_resolution_clock;
-  using ms_t = std::chrono::duration<double, std::milli>;
-  static int s_sca_n = 0;
-  ++s_sca_n;
-  double tBld[3]={}, tTdma[3]={}, tSct[3]={};
+  // 커널 단위 타이밍: recorder가 있으면 스테이지 경계마다 mark(비동기 CUDA event)
+  // — timing_plan.md §6. (기존 hrc+sync [SCA #] 계측은 이것으로 대체.)
+  auto timing_mark = [&](GpuTimingEvent event) {
+    if (recorder) recorder->mark(timing_event_base + event);
+  };
+  auto direction_offset = [](Direction d) {
+    return (d == Direction::X) ? 0 : (d == Direction::Y) ? 1 : 2;
+  };
 
   // z-벽 dkPP 마스크(jem/jep)는 물리적 벽을 소유한 랭크에서만 발동해야 함 —
   // np3>1일 때 내부 랭크 경계(seam)에서 발동하면 안 됨 (audit D5).
@@ -407,7 +411,6 @@ void solve_scalar_variable_property_gpu(
   double* in   = d_rhs_;
   double* outb = d_stage_;
   bool    first_sweep = true;
-  int     sw = 0;
 
   // ── 3-sweep ADI 루프: (I+dt·M_x)(I+dt·M_y)(I+dt·M_z)·δθ = dt·RHS ──────────
   // sweep_order()는 주기 방향(x,y) 먼저, 벽 방향(z)을 마지막에 배치.
@@ -425,7 +428,6 @@ void solve_scalar_variable_property_gpu(
 
     // [1] A 밴드 + RHS 동시 조립 (융합 build_A_RHS): 스레드 (sys,row) 하나가
     //     셀 하나의 (A,B,C,D)[row·n_sys+sys]를 씀 (sys가 x-스레드 → 코얼레스드)
-    auto Ta = hrc::now();
     const dim3 blk(32, 16);
     const dim3 grd((n_sys + blk.x-1)/blk.x, (n_row + blk.y-1)/blk.y);
     k_build_A_rhs_nob<<<grd, blk>>>(
@@ -436,7 +438,7 @@ void solve_scalar_variable_property_gpu(
         static_cast<double>(Ct), static_cast<double>(dt), is_stage1,
         z_wall_owns_lower, z_wall_owns_upper);
     CUDA_CHK(cudaDeviceSynchronize());
-    tBld[sw] = ms_t(hrc::now()-Ta).count();
+    timing_mark(static_cast<GpuTimingEvent>(kTimingBuildX + direction_offset(dir)));
 
     if (!bc.topology.is_periodic(dir)) {
       // [2a] 벽 방향(z): 벽 BC를 행렬에 접고(fold) 일반 TDMA로 풀이.
@@ -447,43 +449,33 @@ void solve_scalar_variable_property_gpu(
       const bool owns_upper = (axis_dir.east_rank == MPI_PROC_NULL);
       const int lkind = modify_ghost_kind(bc.T.face(dir, mpmstd::Side::Minus));  // 고스트 정책 → fold 방식
       const int ukind = modify_ghost_kind(bc.T.face(dir, mpmstd::Side::Plus));
-      auto Tt0 = hrc::now();
       {
         const int blk1d = 256;
         const int grd1d = (n_sys + blk1d - 1) / blk1d;
         k_modify_tdma_row_gpu<<<grd1d, blk1d>>>(d_A_, d_B_, d_C_, n_sys, n_row,
                                                   owns_lower, owns_upper, lkind, ukind);
       }
+      timing_mark(kTimingWallRows);
       // 분산 PaScaL_TDMA (디바이스 상주, CUDA-aware MPI) — 여기가 Ax=b 풀이
       cuda_tdma(domain.tdma, dir).solve_many_device(d_A_, d_B_, d_C_, d_D_, n_sys, n_row);   // → pascal_tdma_cuda_backend.hpp
       CUDA_CHK(cudaDeviceSynchronize());
-      tTdma[sw] = ms_t(hrc::now()-Tt0).count();
+      timing_mark(static_cast<GpuTimingEvent>(kTimingTdmaX + direction_offset(dir)));
     } else {
       // [2b] 주기 방향(x,y): 순환(cyclic) TDMA
-      auto Tt0 = hrc::now();
       cuda_tdma(domain.tdma, dir).solve_many_cyclic_device(d_A_, d_B_, d_C_, d_D_, n_sys, n_row);   // → pascal_tdma_cuda_backend.hpp
       CUDA_CHK(cudaDeviceSynchronize());
-      tTdma[sw] = ms_t(hrc::now()-Tt0).count();
+      timing_mark(static_cast<GpuTimingEvent>(kTimingTdmaX + direction_offset(dir)));
     }
 
     // [3] 해(밴드 레이아웃의 D)를 3D 필드 배열로 산란(scatter) → 다음 sweep 입력
-    auto Ts0 = hrc::now();
     const dim3 blk2(32, 16);
     const dim3 grd2((n_sys + blk2.x-1)/blk2.x, (n_row + blk2.y-1)/blk2.y);
     k_scatter_from_tdma<<<grd2, blk2>>>(dir, outb, d_D_,
                                          n1i, n2i, n3i, n1t, n2t, n3t);
     CUDA_CHK(cudaDeviceSynchronize());
-    tSct[sw] = ms_t(hrc::now()-Ts0).count();
+    timing_mark(static_cast<GpuTimingEvent>(kTimingScatterX + direction_offset(dir)));
     std::swap(in, outb);   // 이번 출력이 다음 sweep의 입력이 되도록 핑퐁 교대
-    ++sw;
-  }
-
-  if (s_sca_n <= 20) {
-    std::printf("[SCA #%d] X(bld=%.2f tdma=%.2f sct=%.2f) Y(bld=%.2f tdma=%.2f sct=%.2f) Z(bld=%.2f tdma=%.2f sct=%.2f) ms\n",
-                s_sca_n,
-                tBld[0], tTdma[0], tSct[0],
-                tBld[1], tTdma[1], tSct[1],
-                tBld[2], tTdma[2], tSct[2]);
+    (void)0;
   }
 
   // [4] 3 sweep을 통과한 `in` = 최종 증분 δθ → Tⁿ⁺¹ = Tⁿ + δθ
@@ -494,6 +486,7 @@ void solve_scalar_variable_property_gpu(
     k_add_increment<<<grd, blk>>>(fields[core::Var::T].data(), in,
                                    n1i, n2i, n3i, n2t, n3t);
     CUDA_CHK(cudaDeviceSynchronize());
+    timing_mark(kTimingUpdate);
   }
 #endif
 }
