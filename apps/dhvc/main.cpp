@@ -210,7 +210,8 @@ int main(int argc, char** argv) {
            std::make_tuple(std::string("P"), &P, Stagger::Center)},
           {{"mean_dPdx", &mean_dPdx}}, grid, sub, s.domain.lx, s.domain.ly,
           s.domain.lz, s.stretch.uniform_z, s.stretch.gamma_z);
-      restart_step = 0;     // 새 격자에서 스텝/통계는 새로 시작 (시간만 이어감)
+      restart_step = 0;     // 새 Ra 케이스 — 스텝·시간·통계 전부 0 부터 (참조 t_start=0;
+      restart_time = 0;     // 보간장은 초기조건일 뿐, 시간 적분은 새로 시작)
       if (mpi.is_root())
         std::printf("# warm-start(격자보간): %s (t=%.4f)\n",
                     s.initial.warmstart_from.c_str(), restart_time);

@@ -19,8 +19,8 @@ unset PMIX_INSTALL_PREFIX
 export OMPI_MCA_opal_warn_on_missing_libcuda=0
 cd "$ROOT"
 # 1e7 의 최신 체크포인트를 절대경로로 해석해 run-deck 생성
-LATEST=$(ls -t "$ROOT/apps/dhvc/restart_1e7"/dhvc_ck_*.bin 2>/dev/null | head -1)
-[ -z "$LATEST" ] && { echo "ERROR: restart_1e7 체크포인트 없음"; exit 1; }
+LATEST=$(ls -t "$ROOT/apps/dhvc/restart_1e6"/dhvc_ck_*.bin 2>/dev/null | head -1)
+[ -z "$LATEST" ] && { echo "ERROR: restart_1e6 체크포인트 없음"; exit 1; }
 echo "# warm-start 소스: $LATEST"
 sed "s|WARMSTART_BIN|$LATEST|" apps/dhvc/input_dhvc_1e8.ini > apps/dhvc/input_dhvc_1e8_run.ini
 echo "# host=$(hostname) gpus=$(nvidia-smi -L | wc -l)"
