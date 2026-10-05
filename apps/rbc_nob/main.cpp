@@ -27,6 +27,7 @@
 #include "equation/momentum/rhs/rhs.hpp"
 #include "equation/momentum/solve.hpp"
 #include "equation/pressure/rhs/rhs.hpp"
+#include "equation/pressure/correction.hpp"
 #include "equation/pressure/solve.hpp"
 #include "equation/scalar/solve.hpp"
 #include "equation/sweep_kernels.hpp"

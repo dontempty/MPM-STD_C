@@ -28,6 +28,7 @@
 #include "equation/momentum/legacy_ob/rhs.hpp"
 #include "equation/momentum/solve.hpp"
 #include "equation/pressure/rhs/rhs.hpp"
+#include "equation/pressure/correction.hpp"
 #include "equation/pressure/solve.hpp"
 #include "equation/scalar/legacy_ob/rhs.hpp"
 #include "equation/scalar/solve.hpp"
