@@ -1,0 +1,31 @@
+# MPM-STD — 코드만 올린다. 런 산출물(통계·로그·체크포인트·그림)과 빌드는
+# 전부 로컬 전용 (결과 파일은 커서 GitHub 에 올리지 않는다, 2026-10-05).
+#
+# apps/ 에서 올라가는 것: main.cpp, settings.{hpp,cpp}, 입력 덱(*.ini),
+# sbatch 스크립트, plot/ 의 노트북과 참조 데이터(ref_*.txt, *.csv).
+# 무시되는 것: 각 앱의 stats_*/, log/, checkpoints*/, plot 의 생성 그림.
+
+# ── 빌드 산출물 ──────────────────────────────────────────────────────────────
+# BUILD=<이름> 변형까지 전부 (build, build_gpu, build_gpu_m11, build_gpu_fix, …)
+/build*/
+*.o
+*.cu.o
+*.d
+
+# ── 런 산출물 (앱 폴더 소유 — plan §8-15 출력 소유 규약) ─────────────────────
+apps/*/stats_*/
+apps/*/log/
+apps/*/checkpoints*/
+apps/*/plot/*.png
+
+# 혹시 리포 루트에 생기는 구형 경로도 차단 (출력 소유 규약 이전의 흔적 방지)
+/stats_*/
+/log/
+
+# ── 노트북·파이썬·에디터 잡동사니 ────────────────────────────────────────────
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+*.swp
+*~
+.DS_Store
