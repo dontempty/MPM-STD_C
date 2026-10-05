@@ -24,6 +24,18 @@ __global__ void buoyancy_kernel(const field::View rhs_w, const field::ConstView 
   rhs_w(i, j, k) += dt * stencil::temperature_at_z_face(T, i, j, k, dz, dmz);
 }
 
+__global__ void buoyancy_x_kernel(const field::View rhs_u, const field::ConstView T,
+                                  const real_t* dx, const real_t* dmx, const int h,
+                                  const int i1, const int i2, const int i3,
+                                  const real_t dt) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(i1) * i2 * i3) return;
+  const int k = h + static_cast<int>(idx % i3);
+  const int j = h + static_cast<int>((idx / i3) % i2);
+  const int i = h + static_cast<int>(idx / (static_cast<long long>(i3) * i2));
+  rhs_u(i, j, k) += dt * stencil::temperature_at_x_face(T, i, j, k, dx, dmx);
+}
+
 __global__ void buoyancy_variable_kernel(
     const field::View rhs_w, const field::ConstView T, const field::ConstView ir,
     const real_t* dz, const real_t* dmz, const int h, const int i1, const int i2,
@@ -73,6 +85,20 @@ void add_buoyancy_z_variable_property(field::Field& rhs_w, const field::Field& T
       grid.z.device_center_distance.data(), halo_width, sub.x().n_local,
       sub.y().n_local, sub.z().n_local, density_quadratic_ratio, delta_temperature,
       dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void add_buoyancy_x_constant_property(field::Field& rhs_u, const field::Field& T,
+                    const grid::Grid& grid, const parallel::Subdomain& sub,
+                    const real_t dt) {
+  check_field_matches("add_buoyancy_x_constant_property", rhs_u, sub);
+  check_field_matches("add_buoyancy_x_constant_property", T, sub);
+  const long long n = static_cast<long long>(sub.x().n_local) * sub.y().n_local
+                      * sub.z().n_local;
+  buoyancy_x_kernel<<<static_cast<int>((n + kThreads - 1) / kThreads), kThreads>>>(
+      rhs_u.view(), T.view(), grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), halo_width, sub.x().n_local,
+      sub.y().n_local, sub.z().n_local, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 

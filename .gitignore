@@ -29,3 +29,7 @@ __pycache__/
 *.swp
 *~
 .DS_Store
+apps/dhvc/out_*/
+apps/dhvc/stats_smoke/
+apps/dhvc/restart_*/
+apps/dhvc/logs/

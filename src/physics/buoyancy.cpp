@@ -23,6 +23,22 @@ void add_buoyancy_z_constant_property(field::Field& rhs_w_field, const field::Fi
         rhs_w(i, j, k) += dt * stencil::temperature_at_z_face(T, i, j, k, dz, dmz);
 }
 
+void add_buoyancy_x_constant_property(field::Field& rhs_u_field, const field::Field& T_field,
+                    const grid::Grid& grid, const parallel::Subdomain& sub,
+                    const real_t dt) {
+  check_field_matches("add_buoyancy_x_constant_property", rhs_u_field, sub);
+  check_field_matches("add_buoyancy_x_constant_property", T_field, sub);
+  const int h = halo_width;
+  const field::View rhs_u = rhs_u_field.view();
+  const field::ConstView T = T_field.view();
+  const real_t* dx = grid.x.cell_width.data();
+  const real_t* dmx = grid.x.center_distance.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        rhs_u(i, j, k) += dt * stencil::temperature_at_x_face(T, i, j, k, dx, dmx);
+}
+
 void add_buoyancy_z_variable_property(field::Field& rhs_w, const field::Field& T_field,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub,

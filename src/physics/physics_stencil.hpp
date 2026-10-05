@@ -14,4 +14,11 @@ MPMSTD_HD inline real_t temperature_at_z_face(const field::ConstView T, const in
   return real_t(0.5) * (dz[k - 1] * T(i, j, k) + dz[k] * T(i, j, k - 1)) / dmz[k];
 }
 
+// x-면(U 위치) 온도 — DHVC 는 중력이 x(연직)라 부력이 U 에 실린다.
+MPMSTD_HD inline real_t temperature_at_x_face(const field::ConstView T, const int i,
+                                              const int j, const int k,
+                                              const real_t* dx, const real_t* dmx) {
+  return real_t(0.5) * (dx[i - 1] * T(i, j, k) + dx[i] * T(i - 1, j, k)) / dmx[i];
+}
+
 }  // namespace mpmstd::physics::stencil

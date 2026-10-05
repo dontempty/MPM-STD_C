@@ -20,6 +20,12 @@ namespace mpmstd::physics {
 void add_buoyancy_z_constant_property(field::Field& rhs_w, const field::Field& T, const grid::Grid& grid,
                     const parallel::Subdomain& sub, real_t dt);
 
+// 중력이 x(연직)인 경우(DHVC): rhs_u += dt · T_x면. 상수물성(OB) — ν=√(Pr/Ra),
+// 부력계수 1. T 는 hot/cold z벽의 mirror BC 로 평균 z-구배를 갖는다.
+void add_buoyancy_x_constant_property(field::Field& rhs_u, const field::Field& T,
+                                      const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, real_t dt);
+
 // ── 가변 밀도(NOB) 판 — PaScaL_TCS mom.f90:711/731 1:1 ──────────────────────
 //   rhs_w += dt · (1/ρ̂)_면 · (T_면 + (a₂/a₁)·T_면²·ΔT)
 // T 와 1/ρ̂ 둘 다 같은 z-면 체적가중 보간 (셀중심 함정 동일). 2차항은 ρ(T) 의
