@@ -44,10 +44,10 @@ __global__ void buoyancy_variable_kernel(
 
 }  // namespace
 
-void add_buoyancy_z(field::Field& rhs_w, const field::Field& T, const grid::Grid& grid,
+void add_buoyancy_z_constant_property(field::Field& rhs_w, const field::Field& T, const grid::Grid& grid,
                     const parallel::Subdomain& sub, const real_t dt) {
-  check_field_matches("add_buoyancy_z", rhs_w, sub);
-  check_field_matches("add_buoyancy_z", T, sub);
+  check_field_matches("add_buoyancy_z_constant_property", rhs_w, sub);
+  check_field_matches("add_buoyancy_z_constant_property", T, sub);
   const long long n = static_cast<long long>(sub.x().n_local) * sub.y().n_local
                       * sub.z().n_local;
   buoyancy_kernel<<<static_cast<int>((n + kThreads - 1) / kThreads), kThreads>>>(

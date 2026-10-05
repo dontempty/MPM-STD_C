@@ -216,7 +216,7 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
                     global_sum / (static_cast<real_t>(n_x) * n_y * sub.z().n_global));
 
   // ⑤ ghost 완성: 이음새·주기 랩 → z 벽 Neumann (조립 시 접은 벽과 같은 정책의
-  //    ghost 짝 — conventions.md §6). 이 상태로 correct_velocity 에 바로 쓴다.
+  //    ghost 짝 — conventions.md §6). 이 상태로 correct_velocity_constant_property 에 바로 쓴다.
   sub.exchange_halo(phi.data());
   boundary::fill_z_wall_zero_gradient(phi, sub);
 }

@@ -225,13 +225,13 @@ void subtract_constant(field::Field& phi, const parallel::Subdomain& sub,
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void correct_velocity(field::Field& U, field::Field& V, field::Field& W,
+void correct_velocity_constant_property(field::Field& U, field::Field& V, field::Field& W,
                       const field::Field& phi, const grid::Grid& grid,
                       const parallel::Subdomain& sub, const real_t dt) {
-  check_field_matches("correct_velocity", U, sub);
-  check_field_matches("correct_velocity", V, sub);
-  check_field_matches("correct_velocity", W, sub);
-  check_field_matches("correct_velocity", phi, sub);
+  check_field_matches("correct_velocity_constant_property", U, sub);
+  check_field_matches("correct_velocity_constant_property", V, sub);
+  check_field_matches("correct_velocity_constant_property", W, sub);
+  check_field_matches("correct_velocity_constant_property", phi, sub);
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const long long n = static_cast<long long>(i1) * i2 * i3;
   correct_kernel<<<blocks_for(n), kThreads>>>(

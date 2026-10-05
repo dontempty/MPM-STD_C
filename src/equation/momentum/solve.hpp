@@ -15,7 +15,7 @@
 //   재층류화한다 (MPM-STD_C kernels.hpp:133-135; 블록 결합 부재가 과거
 //   재층류화의 원인이었음). 벽수직 δW 는 사후 보정을 받지 않는다.
 // * rhs_u/v/w 는 호출자가 조립해 const 로 (운동량 명시항 → 압력 구배
-//   pressure::add_gradient → 채널 강제 physics::channel_forcing 순).
+//   pressure::add_gradient_constant_property → 채널 강제 physics::channel_forcing 순).
 // * 경계 가정: x·y 주기(순환 TDMA), z 벽 — U·V 는 fold_z_wall_value,
 //   W 는 상단 fold + 하단 벽면 항등행 (system/system.hpp 의 ⚠ 참조).
 // * 수식 출처: MPM-STD_C momentum OB 경로 1:1 (ref_03 §1.5).
@@ -25,7 +25,7 @@
 //   momentum::add_advection_diffusion_cell(rhs_U, U, U,V,W, grid, sub, nu, dt);
 //   momentum::add_advection_diffusion_cell(rhs_V, V, U,V,W, grid, sub, nu, dt);
 //   momentum::add_advection_diffusion_z_face(rhs_W, W, U,V,W, grid, sub, nu, dt);
-//   pressure::add_gradient(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+//   pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
 //   (+ 케이스 강제항)
 //   momentum::solve(solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W, nu, dt);
 //   (U, V, W 교환 + 벽 처리 → 투영)

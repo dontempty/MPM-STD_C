@@ -17,7 +17,7 @@
 
 namespace mpmstd::physics {
 
-void add_buoyancy_z(field::Field& rhs_w, const field::Field& T, const grid::Grid& grid,
+void add_buoyancy_z_constant_property(field::Field& rhs_w, const field::Field& T, const grid::Grid& grid,
                     const parallel::Subdomain& sub, real_t dt);
 
 // ── 가변 밀도(NOB) 판 — PaScaL_TCS mom.f90:711/731 1:1 ──────────────────────

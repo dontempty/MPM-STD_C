@@ -20,7 +20,7 @@
 //   rhs_p.fill(0);
 //   equation::pressure::add_divergence(rhs_p, U, V, W, grid, sub, dt);
 //   equation::pressure::solve(pressure_solver, grid, sub, rhs_p, dP);
-//   equation::pressure::correct_velocity(U, V, W, dP, grid, sub, dt);
+//   equation::pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, dt);
 //   equation::pressure::accumulate(P, dP);
 //   (U, V, W 는 이후 교환 + 벽 처리로 ghost 를 새로 맞춘다)
 
@@ -70,7 +70,7 @@ struct Solver {
 };
 
 // δp 를 구한다. 반환 시 phi 는 내부 + ghost(이음새·주기 랩·z Neumann)까지 완성 —
-// 바로 correct_velocity 에 쓸 수 있다. rhs 는 건드리지 않는다 (계획 §5.5).
+// 바로 correct_velocity_constant_property 에 쓸 수 있다. rhs 는 건드리지 않는다 (계획 §5.5).
 void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
            const field::Field& rhs, field::Field& phi);
 
@@ -78,7 +78,7 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
 // 하단 벽면 W 는 Neumann ghost 덕에 기울기가 정확히 0 — 자동으로 보존된다.
 // 호출 뒤 U, V, W 의 ghost 는 낡는다 — 다음 사용 전 교환 + 벽 처리는 호출자 몫.
 // (구현은 solve_kernels.{cpp,cu} — 백엔드별)
-void correct_velocity(field::Field& U, field::Field& V, field::Field& W,
+void correct_velocity_constant_property(field::Field& U, field::Field& V, field::Field& W,
                       const field::Field& phi, const grid::Grid& grid,
                       const parallel::Subdomain& sub, real_t dt);
 

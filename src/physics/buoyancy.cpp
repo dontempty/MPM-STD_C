@@ -7,11 +7,11 @@
 
 namespace mpmstd::physics {
 
-void add_buoyancy_z(field::Field& rhs_w_field, const field::Field& T_field,
+void add_buoyancy_z_constant_property(field::Field& rhs_w_field, const field::Field& T_field,
                     const grid::Grid& grid, const parallel::Subdomain& sub,
                     const real_t dt) {
-  check_field_matches("add_buoyancy_z", rhs_w_field, sub);
-  check_field_matches("add_buoyancy_z", T_field, sub);
+  check_field_matches("add_buoyancy_z_constant_property", rhs_w_field, sub);
+  check_field_matches("add_buoyancy_z_constant_property", T_field, sub);
   const int h = halo_width;
   const field::View rhs_w = rhs_w_field.view();
   const field::ConstView T = T_field.view();

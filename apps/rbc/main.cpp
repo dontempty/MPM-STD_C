@@ -249,7 +249,7 @@ int main(int argc, char** argv) {
       momentum::add_advection_diffusion_cell(rhs_U, U, U, V, W, grid, sub, nu, dt);
       momentum::add_advection_diffusion_cell(rhs_V, V, U, V, W, grid, sub, nu, dt);
       momentum::add_advection_diffusion_z_face(rhs_W, W, U, V, W, grid, sub, nu, dt);
-      mpmstd::physics::add_buoyancy_z(rhs_W, T, grid, sub, dt);
+      mpmstd::physics::add_buoyancy_z_constant_property(rhs_W, T, grid, sub, dt);
       momentum::solve(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W, nu, dt);
       sync_velocity(U, V, W, sub);
 
@@ -257,7 +257,7 @@ int main(int argc, char** argv) {
       rhs_dP.fill(0);
       pressure::add_divergence(rhs_dP, U, V, W, grid, sub, dt);
       pressure::solve(pressure_solver, grid, sub, rhs_dP, dP);
-      pressure::correct_velocity(U, V, W, dP, grid, sub, dt);
+      pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, dt);
       sync_velocity(U, V, W, sub);
 
       t += dt;

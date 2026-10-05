@@ -340,7 +340,7 @@ int main(int argc, char** argv) {
                                                              sub, nu, dt);
       momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid,
                                                              sub, nu, dt);
-      pressure::add_gradient(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+      pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
       mpmstd::physics::add_mean_pressure_gradient(rhs_U, sub, mean_dPdx, dt);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V,
                                         rhs_W, U, V, W, nu, dt);
@@ -364,7 +364,7 @@ int main(int argc, char** argv) {
       rhs_P.fill(0);
       pressure::add_divergence(rhs_P, U, V, W, grid, sub, dt);
       pressure::solve(pressure_solver, grid, sub, rhs_P, dP);
-      pressure::correct_velocity(U, V, W, dP, grid, sub, dt);
+      pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, dt);
       pressure::accumulate(P, dP);
       sync_velocity(U, V, W, sub);  // P 는 accumulate 가 ghost 포함이라 재교환 불요
 

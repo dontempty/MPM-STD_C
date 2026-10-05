@@ -21,7 +21,7 @@ void add_divergence(field::Field& rhs, const field::Field& U, const field::Field
 // 증분 투영의 "예측자 반쪽": 운동량 명시 RHS 에서 누적 압력의 구배를 뺀다.
 //   rhs_u −= dt·(P_c − P_{i−1})/dmx_i   (면 위치의 staggered 구배; v, w 동형)
 // P 의 ghost 가 최신이어야 한다. 호출 순서: 운동량 rhs 조립 뒤, solve 전.
-void add_gradient(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+void add_gradient_constant_property(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
                   const field::Field& P, const grid::Grid& grid,
                   const parallel::Subdomain& sub, real_t dt);
 

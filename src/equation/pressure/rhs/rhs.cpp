@@ -31,13 +31,13 @@ void add_divergence(field::Field& rhs, const field::Field& U, const field::Field
                                                    grid.z.cell_width[k]);
 }
 
-void add_gradient(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+void add_gradient_constant_property(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
                   const field::Field& P, const grid::Grid& grid,
                   const parallel::Subdomain& sub, const real_t dt) {
-  check_field_matches("add_gradient", rhs_u, sub);
-  check_field_matches("add_gradient", rhs_v, sub);
-  check_field_matches("add_gradient", rhs_w, sub);
-  check_field_matches("add_gradient", P, sub);
+  check_field_matches("add_gradient_constant_property", rhs_u, sub);
+  check_field_matches("add_gradient_constant_property", rhs_v, sub);
+  check_field_matches("add_gradient_constant_property", rhs_w, sub);
+  check_field_matches("add_gradient_constant_property", P, sub);
 
   const int h = halo_width;
   const field::View ru = rhs_u.view();

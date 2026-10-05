@@ -118,13 +118,13 @@ void subtract_constant(field::Field& phi, const parallel::Subdomain& sub,
 
 // ── 공개: 속도 보정·압력 누적 (solve.hpp 선언) ──
 
-void correct_velocity(field::Field& U, field::Field& V, field::Field& W,
+void correct_velocity_constant_property(field::Field& U, field::Field& V, field::Field& W,
                       const field::Field& phi, const grid::Grid& grid,
                       const parallel::Subdomain& sub, const real_t dt) {
-  check_field_matches("correct_velocity", U, sub);
-  check_field_matches("correct_velocity", V, sub);
-  check_field_matches("correct_velocity", W, sub);
-  check_field_matches("correct_velocity", phi, sub);
+  check_field_matches("correct_velocity_constant_property", U, sub);
+  check_field_matches("correct_velocity_constant_property", V, sub);
+  check_field_matches("correct_velocity_constant_property", W, sub);
+  check_field_matches("correct_velocity_constant_property", phi, sub);
 
   const int h = halo_width;
   const field::View u = U.view();

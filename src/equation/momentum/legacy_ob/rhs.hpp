@@ -5,7 +5,7 @@
 // *_variable_property / *_constant_property 를 쓴다. rbc(OB) 앱 하위호환으로만
 // 남아 있고, rbc 전환(Nu 회귀 재검증) 후 디렉터리째 삭제 예정.
 // 운동량 방정식의 명시(explicit) RHS — 전부 += (계획 §5.5). 성분마다 rhs 필드를
-// 호출자가 선언하고 fill(0) 후 쌓는다. 압력 구배는 pressure::add_gradient 가,
+// 호출자가 선언하고 fill(0) 후 쌓는다. 압력 구배는 pressure::add_gradient_constant_property 가,
 // 채널 평균 구배 강제는 physics::channel_forcing 이 **그 뒤에** 더한다.
 //
 //   rhs_q += dt·ν·∇²qⁿ − dt·∇·(u qⁿ)
