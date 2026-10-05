@@ -15,7 +15,7 @@
 //
 // ⚠ 이 보존형 RHS + 이류형 음해 밴드/블록 커플링 조합은 증분 짝이 없어
 //   운동량이 dt 에 비례해 샌다 (CFR 과구동; 2026-10-04 조사). 원본 충실
-//   M-form 은 **가변물성 경로(rhs_variable + solve_variable, μ̂≡1)** 가 담당
+//   M-form 은 **가변물성 경로(rhs_variable + solve_variable_property, μ̂≡1)** 가 담당
 //   한다 — 채널은 그쪽을 쓴다. 이 OB 경로는 rbc(OB) 하위호환용.
 //
 // 호출 전 q 와 U, V, W 의 ghost 가 최신이어야 한다 (교환 + 벽 처리).

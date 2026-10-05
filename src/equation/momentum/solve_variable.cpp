@@ -24,7 +24,7 @@ namespace mpmstd::equation::momentum {
 
 namespace {
 
-void adi_sweeps_variable(Solver& solver, const grid::Grid& grid,
+void adi_sweeps_variable_property(Solver& solver, const grid::Grid& grid,
                          const parallel::Subdomain& sub, const real_t* rhs_data,
                          const field::Field& q, const field::Field& U,
                          const field::Field& V, const field::Field& W,
@@ -41,20 +41,20 @@ void adi_sweeps_variable(Solver& solver, const grid::Grid& grid,
   real_t* D = solver.band_d.data();
 
   // x 스윕 (주기, 이송 = U)
-  build_x_sweep_variable(A, B, C, D, rhs_data, q.data(), U.data(), viscosity.data(),
+  build_x_sweep_variable_property(A, B, C, D, rhs_data, q.data(), U.data(), viscosity.data(),
                          inverse_density.data(), grid, sub, own_axis, Cmu, dt);
   linear_solver::solve_cyclic_many(solver.plan_x, A, B, C, D, i2 * i3, i1);
   equation::scatter_x(solver.stage_first.data(), D, sub);
 
   // y 스윕 (주기, 이송 = V)
-  build_y_sweep_variable(A, B, C, D, solver.stage_first.data(), q.data(), V.data(),
+  build_y_sweep_variable_property(A, B, C, D, solver.stage_first.data(), q.data(), V.data(),
                          viscosity.data(), inverse_density.data(), grid, sub,
                          own_axis, Cmu, dt);
   linear_solver::solve_cyclic_many(solver.plan_y, A, B, C, D, i1 * i3, i2);
   equation::scatter_y(solver.stage_second.data(), D, sub);
 
   // z 스윕 (벽, 이송 = W) — 벽 닫기는 OB 와 동일 (system.hpp ⚠)
-  build_z_sweep_variable(A, B, C, D, solver.stage_second.data(), q.data(), W.data(),
+  build_z_sweep_variable_property(A, B, C, D, solver.stage_second.data(), q.data(), W.data(),
                          viscosity.data(), inverse_density.data(), grid, sub,
                          own_axis, Cmu, dt);
   fold_z_wall_value(A, B, C, sub, i1 * i2, i3);
@@ -111,7 +111,7 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
         "momentum::solve_constant_property: Solver was created for a different "
         "subdomain");
 
-  // 전진 대입 dU → dV → dW (solve_variable 1:1 — 물성 자리만 상수)
+  // 전진 대입 dU → dV → dW (solve_variable_property 1:1 — 물성 자리만 상수)
   adi_sweeps_constant(solver, grid, sub, rhs_u.data(), U, U, V, W, /*own_axis=*/0,
                       /*w_is_z_face=*/false, viscosity, dt, solver.delta_u.data());
   sub.exchange_halo(solver.delta_u.data());
@@ -143,42 +143,42 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
   equation::add_increment(W, solver.delta_w.data(), sub);
 }
 
-void solve_variable(Solver& solver, const grid::Grid& grid,
+void solve_variable_property(Solver& solver, const grid::Grid& grid,
                     const parallel::Subdomain& sub, field::Field& rhs_u,
                     field::Field& rhs_v, field::Field& rhs_w, field::Field& U,
                     field::Field& V, field::Field& W, const field::Field& viscosity,
                     const field::Field& inverse_density, const real_t Cmu,
                     const real_t dt) {
-  check_field_matches("momentum::solve_variable", rhs_u, sub);
-  check_field_matches("momentum::solve_variable", rhs_v, sub);
-  check_field_matches("momentum::solve_variable", rhs_w, sub);
-  check_field_matches("momentum::solve_variable", viscosity, sub);
-  check_field_matches("momentum::solve_variable", inverse_density, sub);
+  check_field_matches("momentum::solve_variable_property", rhs_u, sub);
+  check_field_matches("momentum::solve_variable_property", rhs_v, sub);
+  check_field_matches("momentum::solve_variable_property", rhs_w, sub);
+  check_field_matches("momentum::solve_variable_property", viscosity, sub);
+  check_field_matches("momentum::solve_variable_property", inverse_density, sub);
   if (solver.delta_u.size() != rhs_u.size())
     throw std::invalid_argument(
-        "momentum::solve_variable: Solver was created for a different subdomain");
+        "momentum::solve_variable_property: Solver was created for a different subdomain");
 
   // ── 전진 대입 dU → dV → dW ──
   // ① dU (own x) — 커플링 없음
-  adi_sweeps_variable(solver, grid, sub, rhs_u.data(), U, U, V, W, viscosity,
+  adi_sweeps_variable_property(solver, grid, sub, rhs_u.data(), U, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/0, /*w_is_z_face=*/false, Cmu, dt,
                       solver.delta_u.data());
   sub.exchange_halo(solver.delta_u.data());
   boundary::fill_z_wall_value(solver.delta_u, sub, 0.0, 0.0);
 
   // ② dV (own y) — M21(δU) 주입 후 풀이
-  couple_rhs_v_from_delta_u_variable(rhs_v, solver.delta_u, V, viscosity,
+  couple_rhs_v_from_delta_u_variable_property(rhs_v, solver.delta_u, V, viscosity,
                                      inverse_density, grid, sub, Cmu, dt);
-  adi_sweeps_variable(solver, grid, sub, rhs_v.data(), V, U, V, W, viscosity,
+  adi_sweeps_variable_property(solver, grid, sub, rhs_v.data(), V, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/1, /*w_is_z_face=*/false, Cmu, dt,
                       solver.delta_v.data());
   sub.exchange_halo(solver.delta_v.data());
   boundary::fill_z_wall_value(solver.delta_v, sub, 0.0, 0.0);
 
   // ③ dW (own z, 벽) — M31(δU) + M32(δV) 주입 후 풀이
-  couple_rhs_w_from_delta_uv_variable(rhs_w, solver.delta_u, solver.delta_v, W,
+  couple_rhs_w_from_delta_uv_variable_property(rhs_w, solver.delta_u, solver.delta_v, W,
                                       viscosity, inverse_density, grid, sub, Cmu, dt);
-  adi_sweeps_variable(solver, grid, sub, rhs_w.data(), W, U, V, W, viscosity,
+  adi_sweeps_variable_property(solver, grid, sub, rhs_w.data(), W, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/2, /*w_is_z_face=*/true, Cmu, dt,
                       solver.delta_w.data());
   sub.exchange_halo(solver.delta_w.data());
@@ -187,11 +187,11 @@ void solve_variable(Solver& solver, const grid::Grid& grid,
   boundary::zero_z_wall_faces(solver.delta_w, sub);
 
   // ── 사후 상삼각: δV ← δW, 동기화, δU ← (보정된 δV) + δW. δW 는 무보정 ──
-  block_couple_delta_v_variable(solver.delta_v, solver.delta_w, V, viscosity,
+  block_couple_delta_v_variable_property(solver.delta_v, solver.delta_w, V, viscosity,
                                 inverse_density, grid, sub, Cmu, dt);
   sub.exchange_halo(solver.delta_v.data());
   boundary::fill_z_wall_value(solver.delta_v, sub, 0.0, 0.0);
-  block_couple_delta_u_variable(solver.delta_u, solver.delta_v, solver.delta_w, U,
+  block_couple_delta_u_variable_property(solver.delta_u, solver.delta_v, solver.delta_w, U,
                                 viscosity, inverse_density, grid, sub, Cmu, dt);
 
   // 속도 갱신 (내부만) — ghost 재동기화는 호출자의 다음 sync 몫

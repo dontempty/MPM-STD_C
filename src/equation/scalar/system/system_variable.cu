@@ -125,7 +125,7 @@ LaunchShape launch_shape(const parallel::Subdomain& sub) {
       sub.topology().z().minus_neighbor == MPI_PROC_NULL,                              \
       sub.topology().z().plus_neighbor == MPI_PROC_NULL
 
-void build_x_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* T, const real_t* U, const real_t* V,
                              const real_t* W,
                              const physics::PropertyFields& properties,
@@ -137,7 +137,7 @@ void build_x_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void build_y_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* source, const real_t* T, const real_t* U,
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
@@ -149,7 +149,7 @@ void build_y_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void build_z_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* source, const real_t* T, const real_t* U,
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,

@@ -107,7 +107,7 @@ void launch(const int sweep_axis, real_t* A, real_t* B, real_t* C, real_t* D,
 
 }  // namespace
 
-void build_x_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_x_sweep_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t* source, const real_t* q,
                             const real_t* advecting_velocity, const real_t* viscosity,
                             const real_t* inverse_density, const grid::Grid& grid,
@@ -117,7 +117,7 @@ void build_x_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
          grid, sub, own_axis, Cmu, dt);
 }
 
-void build_y_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_y_sweep_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t* source, const real_t* q,
                             const real_t* advecting_velocity, const real_t* viscosity,
                             const real_t* inverse_density, const grid::Grid& grid,
@@ -127,7 +127,7 @@ void build_y_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
          grid, sub, own_axis, Cmu, dt);
 }
 
-void build_z_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_z_sweep_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t* source, const real_t* q,
                             const real_t* advecting_velocity, const real_t* viscosity,
                             const real_t* inverse_density, const grid::Grid& grid,

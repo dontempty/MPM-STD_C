@@ -6,7 +6,7 @@
 // D 로 통과시키며 자기 축 밴드만 만든다 (PaScaL_TCS 융합 구조 1:1).
 //
 // z 벽 닫기는 OB 의 fold_z_wall_mirror 가 아니라 **조립 안의 마스크**가 맡는다
-// (scalar_variable_stencil.hpp 머리말) — build_z_system_variable 뒤에 별도
+// (scalar_variable_stencil.hpp 머리말) — build_z_system_variable_property 뒤에 별도
 // fold 호출이 없어야 한다.
 //
 // 레이아웃·순서는 OB system.hpp 와 동일: [sys + row·nsys], 루프 i→j→k.
@@ -19,7 +19,7 @@
 namespace mpmstd::equation::scalar {
 
 // 첫 스윕 (x, 주기): 밴드 + 우변 팩 (R 은 세 축 전부에서 계산)
-void build_x_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* T, const real_t* U, const real_t* V,
                              const real_t* W,
                              const physics::PropertyFields& properties,
@@ -27,14 +27,14 @@ void build_x_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
                              real_t Ct, real_t dt);
 
 // 나중 스윕 (y 주기 / z 벽): 자기 축 밴드만, D = 이전 스윕 증분(source)
-void build_y_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* source, const real_t* T, const real_t* U,
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              real_t Ct, real_t dt);
 
-void build_z_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* source, const real_t* T, const real_t* U,
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,

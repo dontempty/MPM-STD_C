@@ -60,8 +60,8 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
 // OB 와 달리 ① 전진 대입 dU→dV→dW (M21/M31/M32 를 직전 증분으로 우변에 주입 —
 // 그래서 rhs_* 가 비-const 다; 매 스텝 재조립 전제) ② 사후 커플링은 가변
 // μ̂·1/ρ̂ 판. 상수물성 앱(OB·DHVC)은 이 함수와 물성 필드를 쓰지 않는다.
-// Cmu = √(Pr/Ra). 사용 순서는 solve_variable.cpp 머리말 참조.
-// ── 상수물성 충실 경로 (plan §18-1) — solve_variable 과 같은 구조(전진 대입 +
+// Cmu = √(Pr/Ra). 사용 순서는 solve_variable_property.cpp 머리말 참조.
+// ── 상수물성 충실 경로 (plan §18-1) — solve_variable_property 과 같은 구조(전진 대입 +
 // 사후 블록 커플링, 참조 1:1)를 물성 배열 없이 돈다. viscosity = 스칼라 ν.
 // "가변 + μ̂≡1 배열" 과 비트 일치가 검증 게이트. DHVC·channel 이 쓴다.
 void solve_constant_property(Solver& solver, const grid::Grid& grid,
@@ -70,7 +70,7 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
                              field::Field& U, field::Field& V, field::Field& W,
                              real_t viscosity, real_t dt);
 
-void solve_variable(Solver& solver, const grid::Grid& grid,
+void solve_variable_property(Solver& solver, const grid::Grid& grid,
                     const parallel::Subdomain& sub, field::Field& rhs_u,
                     field::Field& rhs_v, field::Field& rhs_w, field::Field& U,
                     field::Field& V, field::Field& W, const field::Field& viscosity,

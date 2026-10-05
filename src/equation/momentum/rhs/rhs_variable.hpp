@@ -16,7 +16,7 @@
 
 namespace mpmstd::equation::momentum {
 
-void add_advection_diffusion_u_variable(field::Field& rhs, const field::Field& U,
+void add_advection_diffusion_u_variable_property(field::Field& rhs, const field::Field& U,
                                         const field::Field& V, const field::Field& W,
                                         const field::Field& viscosity,
                                         const field::Field& inverse_density,
@@ -24,7 +24,7 @@ void add_advection_diffusion_u_variable(field::Field& rhs, const field::Field& U
                                         const parallel::Subdomain& sub, real_t Cmu,
                                         real_t dt);
 
-void add_advection_diffusion_v_variable(field::Field& rhs, const field::Field& U,
+void add_advection_diffusion_v_variable_property(field::Field& rhs, const field::Field& U,
                                         const field::Field& V, const field::Field& W,
                                         const field::Field& viscosity,
                                         const field::Field& inverse_density,
@@ -32,7 +32,7 @@ void add_advection_diffusion_v_variable(field::Field& rhs, const field::Field& U
                                         const parallel::Subdomain& sub, real_t Cmu,
                                         real_t dt);
 
-void add_advection_diffusion_w_variable(field::Field& rhs, const field::Field& U,
+void add_advection_diffusion_w_variable_property(field::Field& rhs, const field::Field& U,
                                         const field::Field& V, const field::Field& W,
                                         const field::Field& viscosity,
                                         const field::Field& inverse_density,

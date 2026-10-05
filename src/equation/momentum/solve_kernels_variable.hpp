@@ -17,7 +17,7 @@
 
 namespace mpmstd::equation::momentum {
 
-void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
+void couple_rhs_v_from_delta_u_variable_property(field::Field& rhs_v,
                                         const field::Field& delta_u,
                                         const field::Field& V,
                                         const field::Field& viscosity,
@@ -26,7 +26,7 @@ void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
                                         const parallel::Subdomain& sub, real_t Cmu,
                                         real_t dt);
 
-void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
+void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
                                          const field::Field& delta_u,
                                          const field::Field& delta_v,
                                          const field::Field& W,
@@ -36,7 +36,7 @@ void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
                                          const parallel::Subdomain& sub, real_t Cmu,
                                          real_t dt);
 
-void block_couple_delta_v_variable(field::Field& delta_v, const field::Field& delta_w,
+void block_couple_delta_v_variable_property(field::Field& delta_v, const field::Field& delta_w,
                                    const field::Field& V,
                                    const field::Field& viscosity,
                                    const field::Field& inverse_density,
@@ -44,7 +44,7 @@ void block_couple_delta_v_variable(field::Field& delta_v, const field::Field& de
                                    const parallel::Subdomain& sub, real_t Cmu,
                                    real_t dt);
 
-void block_couple_delta_u_variable(field::Field& delta_u, const field::Field& delta_v,
+void block_couple_delta_u_variable_property(field::Field& delta_u, const field::Field& delta_v,
                                    const field::Field& delta_w, const field::Field& U,
                                    const field::Field& viscosity,
                                    const field::Field& inverse_density,

@@ -8,7 +8,7 @@
 
 namespace mpmstd::equation::momentum {
 
-void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
+void couple_rhs_v_from_delta_u_variable_property(field::Field& rhs_v,
                                         const field::Field& delta_u,
                                         const field::Field& V,
                                         const field::Field& viscosity,
@@ -16,8 +16,8 @@ void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
                                         const grid::Grid& grid,
                                         const parallel::Subdomain& sub,
                                         const real_t Cmu, const real_t dt) {
-  check_field_matches("couple_rhs_v_from_delta_u_variable", rhs_v, sub);
-  check_field_matches("couple_rhs_v_from_delta_u_variable", delta_u, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_variable_property", rhs_v, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_variable_property", delta_u, sub);
   const int h = halo_width;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
   real_t* rhs = rhs_v.data();
@@ -32,7 +32,7 @@ void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
                 grid.y.center_distance.data(), Cmu, dt);
 }
 
-void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
+void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
                                          const field::Field& delta_u,
                                          const field::Field& delta_v,
                                          const field::Field& W,
@@ -41,9 +41,9 @@ void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
                                          const grid::Grid& grid,
                                          const parallel::Subdomain& sub,
                                          const real_t Cmu, const real_t dt) {
-  check_field_matches("couple_rhs_w_from_delta_uv_variable", rhs_w, sub);
-  check_field_matches("couple_rhs_w_from_delta_uv_variable", delta_u, sub);
-  check_field_matches("couple_rhs_w_from_delta_uv_variable", delta_v, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", rhs_w, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", delta_u, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", delta_v, sub);
   const int h = halo_width;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
   real_t* rhs = rhs_w.data();
@@ -59,15 +59,15 @@ void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
                 grid.z.center_distance.data(), Cmu, dt);
 }
 
-void block_couple_delta_v_variable(field::Field& delta_v, const field::Field& delta_w,
+void block_couple_delta_v_variable_property(field::Field& delta_v, const field::Field& delta_w,
                                    const field::Field& V,
                                    const field::Field& viscosity,
                                    const field::Field& inverse_density,
                                    const grid::Grid& grid,
                                    const parallel::Subdomain& sub, const real_t Cmu,
                                    const real_t dt) {
-  check_field_matches("block_couple_delta_v_variable", delta_v, sub);
-  check_field_matches("block_couple_delta_v_variable", delta_w, sub);
+  check_field_matches("block_couple_delta_v_variable_property", delta_v, sub);
+  check_field_matches("block_couple_delta_v_variable_property", delta_w, sub);
   const int h = halo_width;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
   real_t* dv = delta_v.data();
@@ -82,16 +82,16 @@ void block_couple_delta_v_variable(field::Field& delta_v, const field::Field& de
                 grid.z.center_distance.data(), Cmu, dt);
 }
 
-void block_couple_delta_u_variable(field::Field& delta_u, const field::Field& delta_v,
+void block_couple_delta_u_variable_property(field::Field& delta_u, const field::Field& delta_v,
                                    const field::Field& delta_w, const field::Field& U,
                                    const field::Field& viscosity,
                                    const field::Field& inverse_density,
                                    const grid::Grid& grid,
                                    const parallel::Subdomain& sub, const real_t Cmu,
                                    const real_t dt) {
-  check_field_matches("block_couple_delta_u_variable", delta_u, sub);
-  check_field_matches("block_couple_delta_u_variable", delta_v, sub);
-  check_field_matches("block_couple_delta_u_variable", delta_w, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_u, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_v, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_w, sub);
   const int h = halo_width;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
   real_t* du = delta_u.data();

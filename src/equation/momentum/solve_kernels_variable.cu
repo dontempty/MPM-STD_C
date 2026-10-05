@@ -102,7 +102,7 @@ __global__ void couple_delta_u_kernel(const Shape shape, real_t* delta_u,
 
 }  // namespace
 
-void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
+void couple_rhs_v_from_delta_u_variable_property(field::Field& rhs_v,
                                         const field::Field& delta_u,
                                         const field::Field& V,
                                         const field::Field& viscosity,
@@ -110,8 +110,8 @@ void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
                                         const grid::Grid& grid,
                                         const parallel::Subdomain& sub,
                                         const real_t Cmu, const real_t dt) {
-  check_field_matches("couple_rhs_v_from_delta_u_variable", rhs_v, sub);
-  check_field_matches("couple_rhs_v_from_delta_u_variable", delta_u, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_variable_property", rhs_v, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_variable_property", delta_u, sub);
   const Shape shape = make_shape(sub);
   couple_rhs_v_kernel<<<shape.blocks, shape.threads>>>(
       shape, rhs_v.data(), delta_u.data(), V.data(), viscosity.data(),
@@ -121,7 +121,7 @@ void couple_rhs_v_from_delta_u_variable(field::Field& rhs_v,
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
+void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
                                          const field::Field& delta_u,
                                          const field::Field& delta_v,
                                          const field::Field& W,
@@ -130,9 +130,9 @@ void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
                                          const grid::Grid& grid,
                                          const parallel::Subdomain& sub,
                                          const real_t Cmu, const real_t dt) {
-  check_field_matches("couple_rhs_w_from_delta_uv_variable", rhs_w, sub);
-  check_field_matches("couple_rhs_w_from_delta_uv_variable", delta_u, sub);
-  check_field_matches("couple_rhs_w_from_delta_uv_variable", delta_v, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", rhs_w, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", delta_u, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", delta_v, sub);
   const Shape shape = make_shape(sub);
   couple_rhs_w_kernel<<<shape.blocks, shape.threads>>>(
       shape, rhs_w.data(), delta_u.data(), delta_v.data(), W.data(),
@@ -143,15 +143,15 @@ void couple_rhs_w_from_delta_uv_variable(field::Field& rhs_w,
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void block_couple_delta_v_variable(field::Field& delta_v, const field::Field& delta_w,
+void block_couple_delta_v_variable_property(field::Field& delta_v, const field::Field& delta_w,
                                    const field::Field& V,
                                    const field::Field& viscosity,
                                    const field::Field& inverse_density,
                                    const grid::Grid& grid,
                                    const parallel::Subdomain& sub, const real_t Cmu,
                                    const real_t dt) {
-  check_field_matches("block_couple_delta_v_variable", delta_v, sub);
-  check_field_matches("block_couple_delta_v_variable", delta_w, sub);
+  check_field_matches("block_couple_delta_v_variable_property", delta_v, sub);
+  check_field_matches("block_couple_delta_v_variable_property", delta_w, sub);
   const Shape shape = make_shape(sub);
   couple_delta_v_kernel<<<shape.blocks, shape.threads>>>(
       shape, delta_v.data(), delta_w.data(), V.data(), viscosity.data(),
@@ -161,16 +161,16 @@ void block_couple_delta_v_variable(field::Field& delta_v, const field::Field& de
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void block_couple_delta_u_variable(field::Field& delta_u, const field::Field& delta_v,
+void block_couple_delta_u_variable_property(field::Field& delta_u, const field::Field& delta_v,
                                    const field::Field& delta_w, const field::Field& U,
                                    const field::Field& viscosity,
                                    const field::Field& inverse_density,
                                    const grid::Grid& grid,
                                    const parallel::Subdomain& sub, const real_t Cmu,
                                    const real_t dt) {
-  check_field_matches("block_couple_delta_u_variable", delta_u, sub);
-  check_field_matches("block_couple_delta_u_variable", delta_v, sub);
-  check_field_matches("block_couple_delta_u_variable", delta_w, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_u, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_v, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_w, sub);
   const Shape shape = make_shape(sub);
   couple_delta_u_kernel<<<shape.blocks, shape.threads>>>(
       shape, delta_u.data(), delta_v.data(), delta_w.data(), U.data(),

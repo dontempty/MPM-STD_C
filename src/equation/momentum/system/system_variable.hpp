@@ -8,7 +8,7 @@
 //   * cross 스윕: ×1 확산(이중 체적가중 면 μ) + ¼ 대류 (dmx 메트릭, 이송
 //     속도는 own 축 체적가중 면 값)
 // D 는 source(이전 단계의 증분 또는 stage-1 rhs)를 그대로 팩한다.
-// 벽 닫기(fold/핀)는 호출자(solve_variable)가 OB 와 동일하게 적용한다.
+// 벽 닫기(fold/핀)는 호출자(solve_variable_property)가 OB 와 동일하게 적용한다.
 
 #include "common/types.hpp"
 #include "grid/grid.hpp"
@@ -16,21 +16,21 @@
 
 namespace mpmstd::equation::momentum {
 
-void build_x_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_x_sweep_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t* source, const real_t* q,
                             const real_t* advecting_velocity, const real_t* viscosity,
                             const real_t* inverse_density, const grid::Grid& grid,
                             const parallel::Subdomain& sub, int own_axis, real_t Cmu,
                             real_t dt);
 
-void build_y_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_y_sweep_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t* source, const real_t* q,
                             const real_t* advecting_velocity, const real_t* viscosity,
                             const real_t* inverse_density, const grid::Grid& grid,
                             const parallel::Subdomain& sub, int own_axis, real_t Cmu,
                             real_t dt);
 
-void build_z_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
+void build_z_sweep_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t* source, const real_t* q,
                             const real_t* advecting_velocity, const real_t* viscosity,
                             const real_t* inverse_density, const grid::Grid& grid,

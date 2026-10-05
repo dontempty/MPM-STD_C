@@ -90,36 +90,36 @@ void add_impl_constant(const char* who, field::Field& rhs, const field::Field& U
 
 }  // namespace
 
-void add_advection_diffusion_u_variable(field::Field& rhs, const field::Field& U,
+void add_advection_diffusion_u_variable_property(field::Field& rhs, const field::Field& U,
                                         const field::Field& V, const field::Field& W,
                                         const field::Field& viscosity,
                                         const field::Field& inverse_density,
                                         const grid::Grid& grid,
                                         const parallel::Subdomain& sub,
                                         const real_t Cmu, const real_t dt) {
-  add_impl("add_advection_diffusion_u_variable", rhs, U, V, W, viscosity,
+  add_impl("add_advection_diffusion_u_variable_property", rhs, U, V, W, viscosity,
            inverse_density, grid, sub, Cmu, dt, 0);
 }
 
-void add_advection_diffusion_v_variable(field::Field& rhs, const field::Field& U,
+void add_advection_diffusion_v_variable_property(field::Field& rhs, const field::Field& U,
                                         const field::Field& V, const field::Field& W,
                                         const field::Field& viscosity,
                                         const field::Field& inverse_density,
                                         const grid::Grid& grid,
                                         const parallel::Subdomain& sub,
                                         const real_t Cmu, const real_t dt) {
-  add_impl("add_advection_diffusion_v_variable", rhs, U, V, W, viscosity,
+  add_impl("add_advection_diffusion_v_variable_property", rhs, U, V, W, viscosity,
            inverse_density, grid, sub, Cmu, dt, 1);
 }
 
-void add_advection_diffusion_w_variable(field::Field& rhs, const field::Field& U,
+void add_advection_diffusion_w_variable_property(field::Field& rhs, const field::Field& U,
                                         const field::Field& V, const field::Field& W,
                                         const field::Field& viscosity,
                                         const field::Field& inverse_density,
                                         const grid::Grid& grid,
                                         const parallel::Subdomain& sub,
                                         const real_t Cmu, const real_t dt) {
-  add_impl("add_advection_diffusion_w_variable", rhs, U, V, W, viscosity,
+  add_impl("add_advection_diffusion_w_variable_property", rhs, U, V, W, viscosity,
            inverse_density, grid, sub, Cmu, dt, 2);
 }
 

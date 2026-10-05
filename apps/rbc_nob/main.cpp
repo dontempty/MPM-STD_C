@@ -290,22 +290,22 @@ int main(int argc, char** argv) {
       physics::update_properties(properties, T, model, sub);
 
       // ── 에너지 (uⁿ, 가변-κ̂ 융합 ADI) → Tⁿ⁺¹ ──
-      scalar::solve_variable(scalar_solver, grid, sub, T, U, V, W, properties, Ct, dt);
+      scalar::solve_variable_property(scalar_solver, grid, sub, T, U, V, W, properties, Ct, dt);
       sync_temperature(T, sub);
 
       // ── 운동량 예측자 (가변 μ̂; 부력은 Tⁿ⁺¹, 예측자는 −(1/ρ̂)∇Pⁿ) ──
       rhs_U.fill(0);
       rhs_V.fill(0);
       rhs_W.fill(0);
-      momentum::add_advection_diffusion_u_variable(rhs_U, U, V, W,
+      momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W,
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
-      momentum::add_advection_diffusion_v_variable(rhs_V, U, V, W,
+      momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W,
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
-      momentum::add_advection_diffusion_w_variable(rhs_W, U, V, W,
+      momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W,
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
@@ -314,7 +314,7 @@ int main(int argc, char** argv) {
                                        s.physics.delta_temperature, dt);
       pressure::add_gradient_variable(rhs_U, rhs_V, rhs_W, P,
                                       properties.inverse_density, grid, sub, dt);
-      momentum::solve_variable(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,
+      momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,
                                W, properties.viscosity, properties.inverse_density,
                                Cmu, dt);
       sync_velocity(U, V, W, sub);

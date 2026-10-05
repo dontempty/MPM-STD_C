@@ -125,7 +125,7 @@ void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
 }  // namespace
 
 #define MPMSTD_DEFINE_SWEEP_WRAPPERS(AXIS)                                            \
-  void build_##AXIS##_sweep_variable(                                                 \
+  void build_##AXIS##_sweep_variable_property(                                                 \
       real_t* A, real_t* B, real_t* C, real_t* D, const real_t* source,               \
       const real_t* q, const real_t* advecting_velocity, const real_t* viscosity,     \
       const real_t* inverse_density, const grid::Grid& grid,                          \
