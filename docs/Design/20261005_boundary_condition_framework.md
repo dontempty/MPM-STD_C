@@ -122,3 +122,34 @@ make_boundary_condition(axis_kind_text[3], override_text[5][3][2])  // 기본값
 | GPU 빌드 (`build_gpu_bc/`, rbc·rbc_nob·dhvc·channel) | 성공 (경고 3건은 기존) |
 
 x 벽 자체의 물리 검증은 압력 DCT(단계 3) 없이는 불가 → 단계 4 cavity 에서 함께.
+
+### 단계 3 — 압력 Poisson x 벽(Neumann) = DCT 경로 ✅ (2026-10-05)
+
+**바꾼 것** (`src/equation/pressure/`)
+- `Solver`: `x_neumann = !topology.x().periodic` 로 경로 선택. x 모드 수
+  `n_mode_x` = Nx/2+1 (주기 r2c) / Nx (벽 DCT) — 이름을 `n_half_x`→`n_mode_x` 로
+  바꿨고 하류(reorder·bands·TDMA·unpack)는 전부 "x 모드 수"로만 보므로 무수정.
+- **DCT 는 거울 확장 2N 실수 FFT + 트위들**로 구현 — cuFFT 에 DCT 가 없어서
+  CPU(FFTW)/GPU(cuFFT) 가 **같은 알고리즘**을 쓴다(식은 `solve_kernels.hpp` 머리말):
+  forward `y=[x, rev x]` → r2c₂ₙ → `X[k]=Re(Y[k]e^{−iπk/2N})` (= REDFT10);
+  backward `Y[k]=X[k]e^{+iπk/2N}, Y[N]=0` → c2r₂ₙ → 앞 N 개 (= REDFT01); 왕복 배율
+  2N → scale 1/(2Nx·Ny). 커널 4종(`pack_rhs_to_mirrored_lines`, `dct_twiddle_forward/
+  backward`, `scatter_mirrored_lines_to_field`) CPU+GPU 쌍둥이. DCT 실수 모드는 복소
+  버퍼 실수부에 두고 허수부 시스템(0)은 그냥 푼다 — 단순함 우선.
+- 고유값 `make_lambda_x_neumann`: λ_m = (1−cos(πm/Nx))·2/dx² (CaNS 'NN' 표와 동일),
+  (0,0) 모드 핀·평균 제거는 그대로. 끝의 ghost 는 비주기 축 전부 zero_gradient.
+- y 벽은 미구현(생성자 throw) — cavity 는 ny=1 주기로 2D.
+- 검증 앱 `apps/test_pressure_wall` 신설 (x벽·z벽·ny=1, φ=cos(πx/Lx)cos(πz/Lz)).
+
+**검증 (cpu04 `gate_bc3.sh`)**
+| 항목 | 결과 |
+|---|---|
+| 채널 md5 / rbc / rbc_nob 스모크 | 전부 **불변** (주기 경로 비트 일치) |
+| ① 이산 일관성 (rhs = ∇²_h φ, n=32) | max\|φ_h−φ\| = **6.3e-15** (기계 정밀도) |
+| ② 해석 rhs EOC (n=16→32→64) | 3.19e-3 → 8.02e-4 → 2.01e-4, **EOC 1.992 / 1.998** |
+| np=1 vs np=2 (z 분할) | 동일 (6.1e-15 / 같은 EOC) |
+| GPU | 5앱 컴파일 성공 (`build_gpu_bc/`); **실행 검증은 보류** — gpu01/02 GPU 전부 DHVC 1e7/1e8 캠페인이 gres 로 점유 |
+
+**교훈** — 수정 직후 다른 노드(gpu02)에서 make 하면 NFS 속성 캐시 때문에 옛 mtime
+을 봐서 `.cu.o` 를 재컴파일하지 않을 수 있다(undefined reference 로 드러남). 원격
+빌드 전엔 바뀐 TU 의 .o 를 지우거나 1분쯤 기다릴 것.

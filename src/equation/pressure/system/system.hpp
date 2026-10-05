@@ -8,7 +8,8 @@
 //   a_k = 1/(dz_k·dmz_k),  c_k = 1/(dz_k·dmz_{k+1}),  b_k = −(a_k + c_k) − λ
 //
 // λ 는 연속 파수 k² 가 아니라 **2차 중심차분의 고유값** (modified wavenumber):
-//   λ_x[m] = (1 − cos(2π·m/Nx)) · 2/dx²     (균일격자 전제 — Solver 가 검사)
+//   λ_x[m] = (1 − cos(2π·m/Nx)) · 2/dx²     (주기, FFT;  균일격자 전제 — Solver 가 검사)
+//   λ_x[m] = (1 − cos(π·m/Nx)) · 2/dx²      (x 벽 Neumann, DCT-II — 2026-10-05)
 // 이것을 써야 "FFT 로 푼 해"가 "차분 라플라시안의 해"와 정확히 일치해
 // 투영 후 ∇·u 가 기계 0 으로 떨어진다.
 //
@@ -35,6 +36,10 @@ namespace mpmstd::equation::pressure {
 
 // 2차 중심차분 고유값 표. 크기 Nx/2+1 (r2c 절반 스펙트럼) / Ny.
 std::vector<real_t> make_lambda_x(const grid::Grid& grid, const parallel::Subdomain& sub);
+// x Neumann(벽, DCT-II) 판: 크기 Nx, λ_x[m] = (1 − cos(π·m/Nx)) · 2/dx²
+// (CaNS eigenvalues 'NN' = 2(cos(πm/N) − 1) 과 부호만 다른 같은 표; 셀중심 Neumann)
+std::vector<real_t> make_lambda_x_neumann(const grid::Grid& grid,
+                                          const parallel::Subdomain& sub);
 std::vector<real_t> make_lambda_y(const grid::Grid& grid, const parallel::Subdomain& sub);
 
 // 모든 (kx, ky) 모드의 z 밴드를 채운다 (위 주석의 식·레이아웃·벽 접기·핀).

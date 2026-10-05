@@ -10,8 +10,13 @@
 //   x/y 분할이 필요해지면 C→I→Y 펜슬 전치(alltoall)를 이 앞단에 추가한다
 //   (MPM-STD_C pressure_engine_cpu.cpp 의 transpose_* 가 참조 구현).
 //   생성자가 검사해서 어기면 즉시 throw — 조용한 오답은 없다.
-// ★ x, y 는 주기 + 균일 격자 전제 (FFT + modified wavenumber) — 생성자가 검사.
-//   x/y 벽(cavity)은 그 방향 FFT→DCT 교체가 본체다 (M5 주석과 같은 확장 지점).
+// ★ x, y 는 균일 격자 전제 (스펙트럴 + modified wavenumber) — 생성자가 검사.
+//   x 는 주기(FFT) **또는 벽(Neumann → DCT-II/III, 2026-10-05 BC 프레임워크 단계 3)**:
+//   Topology 의 x periodic 플래그로 고른다. DCT 는 cuFFT 에 없어 **거울 확장 2N
+//   실수 FFT + 트위들**로 양 백엔드가 같은 알고리즘을 쓴다 (solve_kernels.hpp 식).
+//   x 모드 수 n_mode_x = Nx/2+1 (FFT) / Nx (DCT, 실수 모드를 복소 버퍼 실수부에 둠 —
+//   허수부 시스템은 0 을 푸는 낭비지만 하류 코드가 전부 그대로다). y 벽은 미구현
+//   (생성자 throw; cavity 는 y 주기 ny=1 로 2D).
 // ★ 백엔드: FFT = FFTW(CPU) / cuFFT(GPU), 팩·산포·평균 = solve_kernels.{cpp,cu}
 //   쌍둥이, 버퍼 = field::Buffer (CPU=호스트, GPU=디바이스 상주). 이 파일과
 //   solve.cpp(오케스트레이션)는 양쪽 빌드 공용이다.
@@ -48,8 +53,9 @@ struct Solver {
 
   int n_x = 0;        // = 전역 nx (npx = 1 이므로 로컬과 같다)
   int n_y = 0;
-  int n_half_x = 0;   // = n_x/2 + 1 (r2c 절반 스펙트럼)
+  int n_mode_x = 0;   // x 모드 수: n_x/2 + 1 (주기 r2c) / n_x (벽 DCT)
   int nz_local = 0;
+  bool x_neumann = false;  // x 벽(DCT 경로) 인가
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
   linear_solver::TdmaPlan plan_z;
@@ -57,9 +63,10 @@ struct Solver {
 
   // 스펙트럼 작업 버퍼 — FFT 플랜이 이 주소에 묶이므로 재할당 금지.
   // 복소 버퍼는 (실, 허) double 쌍의 평탄 배열로 둔다 (커널에서 std::complex 회피).
-  field::Buffer real_lines;   // [(jy·nz + k)·Nx + i]
-  field::Buffer spectrum_x;   // 2 × [(jy·nz + k)·Nxh + mx]
-  field::Buffer spectrum_xy;  // 2 × [(k·Nxh + mx)·Ny + jy]
+  field::Buffer real_lines;   // [(jy·nz + k)·Nx + i]        (DCT: 라인 길이 2Nx 거울)
+  field::Buffer spectrum_x;   // 2 × [(jy·nz + k)·Nxm + mx]   Nxm = n_mode_x
+  field::Buffer spectrum_xy;  // 2 × [(k·Nxm + mx)·Ny + jy]
+  field::Buffer mirror_spectrum;  // DCT 전용: 2 × [(jy·nz + k)·(Nx+1) + m]
 
 #ifdef MPMSTD_GPU_FFT
   cufftHandle fft_x_forward = 0, fft_x_backward = 0, fft_y = 0;  // y 는 Z2Z 하나

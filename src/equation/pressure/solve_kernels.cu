@@ -1,5 +1,6 @@
 #include "equation/pressure/solve_kernels.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 
@@ -31,41 +32,41 @@ __global__ void pack_rhs_kernel(real_t* lines, const field::ConstView r, const i
 }
 
 __global__ void reorder_x_to_y_kernel(real_t* sxy, const real_t* sx, const int n_y,
-                                      const int nz_local, const int n_half_x) {
+                                      const int nz_local, const int n_mode_x) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_y) * nz_local * n_half_x) return;
-  const int mx = static_cast<int>(idx % n_half_x);
-  const int kk = static_cast<int>((idx / n_half_x) % nz_local);
-  const int jy = static_cast<int>(idx / (static_cast<long long>(n_half_x) * nz_local));
-  const std::size_t dst = 2 * ((static_cast<std::size_t>(kk) * n_half_x + mx) * n_y + jy);
-  const std::size_t src = 2 * ((static_cast<std::size_t>(jy) * nz_local + kk) * n_half_x + mx);
+  if (idx >= static_cast<long long>(n_y) * nz_local * n_mode_x) return;
+  const int mx = static_cast<int>(idx % n_mode_x);
+  const int kk = static_cast<int>((idx / n_mode_x) % nz_local);
+  const int jy = static_cast<int>(idx / (static_cast<long long>(n_mode_x) * nz_local));
+  const std::size_t dst = 2 * ((static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy);
+  const std::size_t src = 2 * ((static_cast<std::size_t>(jy) * nz_local + kk) * n_mode_x + mx);
   sxy[dst] = sx[src];
   sxy[dst + 1] = sx[src + 1];
 }
 
 __global__ void reorder_y_to_x_kernel(real_t* sx, const real_t* sxy, const int n_y,
-                                      const int nz_local, const int n_half_x) {
+                                      const int nz_local, const int n_mode_x) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_y) * nz_local * n_half_x) return;
-  const int mx = static_cast<int>(idx % n_half_x);
-  const int kk = static_cast<int>((idx / n_half_x) % nz_local);
-  const int jy = static_cast<int>(idx / (static_cast<long long>(n_half_x) * nz_local));
-  const std::size_t dst = 2 * ((static_cast<std::size_t>(jy) * nz_local + kk) * n_half_x + mx);
-  const std::size_t src = 2 * ((static_cast<std::size_t>(kk) * n_half_x + mx) * n_y + jy);
+  if (idx >= static_cast<long long>(n_y) * nz_local * n_mode_x) return;
+  const int mx = static_cast<int>(idx % n_mode_x);
+  const int kk = static_cast<int>((idx / n_mode_x) % nz_local);
+  const int jy = static_cast<int>(idx / (static_cast<long long>(n_mode_x) * nz_local));
+  const std::size_t dst = 2 * ((static_cast<std::size_t>(jy) * nz_local + kk) * n_mode_x + mx);
+  const std::size_t src = 2 * ((static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy);
   sx[dst] = sxy[src];
   sx[dst + 1] = sxy[src + 1];
 }
 
 __global__ void pack_bands_kernel(real_t* D, const real_t* sxy, const int nz_local,
-                                  const int n_half_x, const int n_y,
+                                  const int n_mode_x, const int n_y,
                                   const bool pin_mean_row) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(nz_local) * n_half_x * n_y) return;
+  if (idx >= static_cast<long long>(nz_local) * n_mode_x * n_y) return;
   const int jy = static_cast<int>(idx % n_y);
-  const int mx = static_cast<int>((idx / n_y) % n_half_x);
-  const int kk = static_cast<int>(idx / (static_cast<long long>(n_y) * n_half_x));
-  const int nsys = 2 * n_half_x * n_y;
-  const std::size_t q = 2 * ((static_cast<std::size_t>(kk) * n_half_x + mx) * n_y + jy);
+  const int mx = static_cast<int>((idx / n_y) % n_mode_x);
+  const int kk = static_cast<int>(idx / (static_cast<long long>(n_y) * n_mode_x));
+  const int nsys = 2 * n_mode_x * n_y;
+  const std::size_t q = 2 * ((static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy);
   const std::size_t p = static_cast<std::size_t>(kk) * nsys
                         + 2 * (static_cast<std::size_t>(mx) * n_y + jy);
   const bool pinned = pin_mean_row && kk == 0 && mx == 0 && jy == 0;
@@ -74,14 +75,14 @@ __global__ void pack_bands_kernel(real_t* D, const real_t* sxy, const int nz_loc
 }
 
 __global__ void unpack_bands_kernel(real_t* sxy, const real_t* D, const int nz_local,
-                                    const int n_half_x, const int n_y) {
+                                    const int n_mode_x, const int n_y) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(nz_local) * n_half_x * n_y) return;
+  if (idx >= static_cast<long long>(nz_local) * n_mode_x * n_y) return;
   const int jy = static_cast<int>(idx % n_y);
-  const int mx = static_cast<int>((idx / n_y) % n_half_x);
-  const int kk = static_cast<int>(idx / (static_cast<long long>(n_y) * n_half_x));
-  const int nsys = 2 * n_half_x * n_y;
-  const std::size_t q = 2 * ((static_cast<std::size_t>(kk) * n_half_x + mx) * n_y + jy);
+  const int mx = static_cast<int>((idx / n_y) % n_mode_x);
+  const int kk = static_cast<int>(idx / (static_cast<long long>(n_y) * n_mode_x));
+  const int nsys = 2 * n_mode_x * n_y;
+  const std::size_t q = 2 * ((static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy);
   const std::size_t p = static_cast<std::size_t>(kk) * nsys
                         + 2 * (static_cast<std::size_t>(mx) * n_y + jy);
   sxy[q] = D[p];
@@ -133,6 +134,67 @@ __global__ void subtract_kernel(const field::View p, const int h, const int i1,
 
 
 
+
+// ── x Neumann(DCT) 경로 커널 (solve_kernels.hpp 의 식; CPU 쌍둥이와 같은 산술) ──
+__global__ void pack_mirrored_kernel(real_t* lines, const field::ConstView r, const int h,
+                                     const int n_x, const int n_y, const int nz_local) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(n_x) * n_y * nz_local) return;
+  const int ii = static_cast<int>(idx % n_x);
+  const int kk = static_cast<int>((idx / n_x) % nz_local);
+  const int jj = static_cast<int>(idx / (static_cast<long long>(n_x) * nz_local));
+  const int n2 = 2 * n_x;
+  real_t* line = lines + (static_cast<std::size_t>(jj) * nz_local + kk) * n2;
+  const real_t v = r(ii + h, jj + h, kk + h);
+  line[ii] = v;
+  line[n2 - 1 - ii] = v;  // 거울
+}
+
+__global__ void dct_forward_kernel(real_t* sx, const real_t* ms, const int n_lines,
+                                   const int n_x, const real_t pi) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(n_lines) * n_x) return;
+  const int k = static_cast<int>(idx % n_x);
+  const int line = static_cast<int>(idx / n_x);
+  const std::size_t src = 2 * (static_cast<std::size_t>(line) * (n_x + 1) + k);
+  const std::size_t dst = 2 * (static_cast<std::size_t>(line) * n_x + k);
+  const real_t angle = -pi * k / (2 * n_x);
+  const real_t yr = ms[src], yi = ms[src + 1];
+  sx[dst] = yr * cos(angle) - yi * sin(angle);
+  sx[dst + 1] = 0;
+}
+
+__global__ void dct_backward_kernel(real_t* ms, const real_t* sx, const int n_lines,
+                                    const int n_x, const real_t pi) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(n_lines) * (n_x + 1)) return;
+  const int k = static_cast<int>(idx % (n_x + 1));
+  const int line = static_cast<int>(idx / (n_x + 1));
+  const std::size_t dst = 2 * (static_cast<std::size_t>(line) * (n_x + 1) + k);
+  if (k == n_x) {  // Nyquist
+    ms[dst] = 0;
+    ms[dst + 1] = 0;
+    return;
+  }
+  const std::size_t src = 2 * (static_cast<std::size_t>(line) * n_x + k);
+  const real_t angle = pi * k / (2 * n_x);
+  const real_t x = sx[src];
+  ms[dst] = x * cos(angle);
+  ms[dst + 1] = x * sin(angle);
+}
+
+__global__ void scatter_mirrored_kernel(const field::View p, const real_t* lines,
+                                        const real_t scale, const int h, const int n_x,
+                                        const int n_y, const int nz_local) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(n_x) * n_y * nz_local) return;
+  const int ii = static_cast<int>(idx % n_x);
+  const int kk = static_cast<int>((idx / n_x) % nz_local);
+  const int jj = static_cast<int>(idx / (static_cast<long long>(n_x) * nz_local));
+  const real_t* line = lines + (static_cast<std::size_t>(jj) * nz_local + kk) * (2 * n_x);
+  p(ii + h, jj + h, kk + h) = line[ii] * scale;
+}
+
 }  // namespace
 
 void pack_rhs_to_lines(real_t* lines, const field::Field& rhs,
@@ -145,32 +207,32 @@ void pack_rhs_to_lines(real_t* lines, const field::Field& rhs,
 }
 
 void reorder_x_to_y(real_t* sxy, const real_t* sx, const int n_y, const int nz_local,
-                    const int n_half_x) {
-  const long long n = static_cast<long long>(n_y) * nz_local * n_half_x;
-  reorder_x_to_y_kernel<<<blocks_for(n), kThreads>>>(sxy, sx, n_y, nz_local, n_half_x);
+                    const int n_mode_x) {
+  const long long n = static_cast<long long>(n_y) * nz_local * n_mode_x;
+  reorder_x_to_y_kernel<<<blocks_for(n), kThreads>>>(sxy, sx, n_y, nz_local, n_mode_x);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 void reorder_y_to_x(real_t* sx, const real_t* sxy, const int n_y, const int nz_local,
-                    const int n_half_x) {
-  const long long n = static_cast<long long>(n_y) * nz_local * n_half_x;
-  reorder_y_to_x_kernel<<<blocks_for(n), kThreads>>>(sx, sxy, n_y, nz_local, n_half_x);
+                    const int n_mode_x) {
+  const long long n = static_cast<long long>(n_y) * nz_local * n_mode_x;
+  reorder_y_to_x_kernel<<<blocks_for(n), kThreads>>>(sx, sxy, n_y, nz_local, n_mode_x);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 void pack_spectrum_to_bands(real_t* D, const real_t* sxy, const int nz_local,
-                            const int n_half_x, const int n_y,
+                            const int n_mode_x, const int n_y,
                             const bool pin_mean_row) {
-  const long long n = static_cast<long long>(nz_local) * n_half_x * n_y;
-  pack_bands_kernel<<<blocks_for(n), kThreads>>>(D, sxy, nz_local, n_half_x, n_y,
+  const long long n = static_cast<long long>(nz_local) * n_mode_x * n_y;
+  pack_bands_kernel<<<blocks_for(n), kThreads>>>(D, sxy, nz_local, n_mode_x, n_y,
                                                  pin_mean_row);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 void unpack_bands_to_spectrum(real_t* sxy, const real_t* D, const int nz_local,
-                              const int n_half_x, const int n_y) {
-  const long long n = static_cast<long long>(nz_local) * n_half_x * n_y;
-  unpack_bands_kernel<<<blocks_for(n), kThreads>>>(sxy, D, nz_local, n_half_x, n_y);
+                              const int n_mode_x, const int n_y) {
+  const long long n = static_cast<long long>(nz_local) * n_mode_x * n_y;
+  unpack_bands_kernel<<<blocks_for(n), kThreads>>>(sxy, D, nz_local, n_mode_x, n_y);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -180,6 +242,42 @@ void scatter_lines_to_field(field::Field& phi, const real_t* lines, const real_t
   const long long n = static_cast<long long>(n_x) * n_y * nz_local;
   scatter_lines_kernel<<<blocks_for(n), kThreads>>>(phi.view(), lines, scale,
                                                     halo_width, n_x, n_y, nz_local);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void pack_rhs_to_mirrored_lines(real_t* lines, const field::Field& rhs,
+                                const parallel::Subdomain& sub, const int n_x,
+                                const int n_y, const int nz_local) {
+  (void)sub;
+  const long long n = static_cast<long long>(n_x) * n_y * nz_local;
+  pack_mirrored_kernel<<<blocks_for(n), kThreads>>>(lines, rhs.view(), halo_width, n_x,
+                                                    n_y, nz_local);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void dct_twiddle_forward(real_t* sx, const real_t* mirror_spectrum, const int n_lines,
+                         const int n_x) {
+  const long long n = static_cast<long long>(n_lines) * n_x;
+  dct_forward_kernel<<<blocks_for(n), kThreads>>>(sx, mirror_spectrum, n_lines, n_x,
+                                                  std::acos(real_t(-1)));
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void dct_twiddle_backward(real_t* mirror_spectrum, const real_t* sx, const int n_lines,
+                          const int n_x) {
+  const long long n = static_cast<long long>(n_lines) * (n_x + 1);
+  dct_backward_kernel<<<blocks_for(n), kThreads>>>(mirror_spectrum, sx, n_lines, n_x,
+                                                   std::acos(real_t(-1)));
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void scatter_mirrored_lines_to_field(field::Field& phi, const real_t* lines,
+                                     const real_t scale, const parallel::Subdomain& sub,
+                                     const int n_x, const int n_y, const int nz_local) {
+  (void)sub;
+  const long long n = static_cast<long long>(n_x) * n_y * nz_local;
+  scatter_mirrored_kernel<<<blocks_for(n), kThreads>>>(phi.view(), lines, scale,
+                                                       halo_width, n_x, n_y, nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 

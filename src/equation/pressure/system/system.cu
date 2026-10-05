@@ -64,6 +64,18 @@ std::vector<real_t> make_lambda_x(const grid::Grid& grid,
   return lambda;
 }
 
+std::vector<real_t> make_lambda_x_neumann(const grid::Grid& grid,
+                                          const parallel::Subdomain& sub) {
+  // = system.cpp 의 같은 함수 (x 벽 DCT-II 고유값)
+  const int n = sub.x().n_global;
+  const real_t dx = grid.x.cell_width[halo_width];
+  const real_t pi = std::acos(real_t(-1));
+  std::vector<real_t> lambda(n);
+  for (int m = 0; m < n; ++m)
+    lambda[m] = (1 - std::cos(pi * m / n)) * 2 / (dx * dx);
+  return lambda;
+}
+
 std::vector<real_t> make_lambda_y(const grid::Grid& grid,
                                   const parallel::Subdomain& sub) {
   const int n = sub.y().n_global;
