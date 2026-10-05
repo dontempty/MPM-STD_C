@@ -12,10 +12,11 @@ namespace mpmstd::equation::momentum {
 namespace {
 
 // sweep_axis: 0/1/2 — 밴드 슬롯 매핑과 이웃 선택만 다르다 (CPU 루프와 동일).
+template <class MuArray, class RhoArray>
 __global__ void build_kernel(const int sweep_axis, real_t* A, real_t* B, real_t* C,
                              real_t* D, const real_t* source, const real_t* q,
-                             const real_t* advecting_velocity, const real_t* viscosity,
-                             const real_t* inverse_density, const real_t* dx_along,
+                             const real_t* advecting_velocity, const MuArray viscosity,
+                             const RhoArray inverse_density, const real_t* dx_along,
                              const real_t* dmx_along, const real_t* dx_own,
                              const real_t* dmx_own, const long long own_stride,
                              const int own_axis, const int h, const int i1,
@@ -80,9 +81,10 @@ DeviceAxes device_axes(const int axis, const grid::Grid& grid) {
   return {grid.z.device_cell_width.data(), grid.z.device_center_distance.data()};
 }
 
+template <class MuArray, class RhoArray>
 void launch(const int sweep_axis, real_t* A, real_t* B, real_t* C, real_t* D,
             const real_t* source, const real_t* q, const real_t* advecting_velocity,
-            const real_t* viscosity, const real_t* inverse_density,
+            const MuArray viscosity, const RhoArray inverse_density,
             const grid::Grid& grid, const parallel::Subdomain& sub, const int own_axis,
             const real_t Cmu, const real_t dt) {
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
@@ -133,6 +135,40 @@ void build_z_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
                             const real_t Cmu, const real_t dt) {
   launch(2, A, B, C, D, source, q, advecting_velocity, viscosity, inverse_density,
          grid, sub, own_axis, Cmu, dt);
+}
+
+// ── 상수물성 판 (plan §18-1) — UnitArray 로 같은 커널을 돈다 ──────────────────
+void build_x_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                     const real_t* source, const real_t* q,
+                                     const real_t* advecting_velocity,
+                                     const grid::Grid& grid,
+                                     const parallel::Subdomain& sub,
+                                     const int own_axis, const real_t viscosity,
+                                     const real_t dt) {
+  launch(0, A, B, C, D, source, q, advecting_velocity, equation::UnitArray{},
+         equation::UnitArray{}, grid, sub, own_axis, viscosity, dt);
+}
+
+void build_y_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                     const real_t* source, const real_t* q,
+                                     const real_t* advecting_velocity,
+                                     const grid::Grid& grid,
+                                     const parallel::Subdomain& sub,
+                                     const int own_axis, const real_t viscosity,
+                                     const real_t dt) {
+  launch(1, A, B, C, D, source, q, advecting_velocity, equation::UnitArray{},
+         equation::UnitArray{}, grid, sub, own_axis, viscosity, dt);
+}
+
+void build_z_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                     const real_t* source, const real_t* q,
+                                     const real_t* advecting_velocity,
+                                     const grid::Grid& grid,
+                                     const parallel::Subdomain& sub,
+                                     const int own_axis, const real_t viscosity,
+                                     const real_t dt) {
+  launch(2, A, B, C, D, source, q, advecting_velocity, equation::UnitArray{},
+         equation::UnitArray{}, grid, sub, own_axis, viscosity, dt);
 }
 
 }  // namespace mpmstd::equation::momentum

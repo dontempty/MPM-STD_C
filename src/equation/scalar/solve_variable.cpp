@@ -57,4 +57,47 @@ void solve_variable(Solver& solver, const grid::Grid& grid,
   equation::add_increment(T, solver.stage_first.data(), sub);
 }
 
+// ── 상수물성 판 (plan §18-1) — 위와 동일 구조, 물성 배열 없음 ──────────────
+void solve_constant_property(Solver& solver, const grid::Grid& grid,
+                    const parallel::Subdomain& sub, field::Field& T,
+                    const field::Field& U, const field::Field& V,
+                    const field::Field& W, const real_t Ct, const real_t dt) {
+  const int i1 = sub.x().n_local;
+  const int i2 = sub.y().n_local;
+  const int i3 = sub.z().n_local;
+  check_field_matches("scalar::solve_constant_property", T, sub);
+  check_field_matches("scalar::solve_constant_property", U, sub);
+  check_field_matches("scalar::solve_constant_property", V, sub);
+  check_field_matches("scalar::solve_constant_property", W, sub);
+  if (solver.band_a.size() != static_cast<std::size_t>(i1) * i2 * i3)
+    throw std::invalid_argument(
+        "scalar::solve_constant_property: Solver was created for a different subdomain");
+
+  real_t* A = solver.band_a.data();
+  real_t* B = solver.band_b.data();
+  real_t* C = solver.band_c.data();
+  real_t* D = solver.band_d.data();
+
+  // x 스윕 (주기, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
+  build_x_system_constant_property(A, B, C, D, T.data(), U.data(), V.data(),
+                                   W.data(), grid, sub, Ct, dt);
+  linear_solver::solve_cyclic_many(solver.plan_x, A, B, C, D, i2 * i3, i1);
+  equation::scatter_x(solver.stage_first.data(), D, sub);
+
+  // y 스윕 (주기): D = x 증분 통과
+  build_y_system_constant_property(A, B, C, D, solver.stage_first.data(), T.data(),
+                                   U.data(), V.data(), W.data(), grid, sub, Ct, dt);
+  linear_solver::solve_cyclic_many(solver.plan_y, A, B, C, D, i1 * i3, i2);
+  equation::scatter_y(solver.stage_second.data(), D, sub);
+
+  // z 스윕 (벽): 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
+  build_z_system_constant_property(A, B, C, D, solver.stage_second.data(), T.data(),
+                                   U.data(), V.data(), W.data(), grid, sub, Ct, dt);
+  linear_solver::solve_many(solver.plan_z, A, B, C, D, i1 * i2, i3);
+  equation::scatter_z(solver.stage_first.data(), D, sub);
+
+  // θⁿ⁺¹ = θⁿ + δθ (내부만; ghost 재동기화는 호출자 몫)
+  equation::add_increment(T, solver.stage_first.data(), sub);
+}
+
 }  // namespace mpmstd::equation::scalar

@@ -52,4 +52,27 @@ void block_couple_delta_u_variable(field::Field& delta_u, const field::Field& de
                                    const parallel::Subdomain& sub, real_t Cmu,
                                    real_t dt);
 
+// ── 상수물성 판 (plan §18-1) — 물성 배열 없이 같은 수식 (viscosity = 스칼라 ν).
+void couple_rhs_v_from_delta_u_constant_property(
+    field::Field& rhs_v, const field::Field& delta_u, const field::Field& V,
+    const grid::Grid& grid, const parallel::Subdomain& sub, real_t viscosity,
+    real_t dt);
+void couple_rhs_w_from_delta_uv_constant_property(
+    field::Field& rhs_w, const field::Field& delta_u, const field::Field& delta_v,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    real_t viscosity, real_t dt);
+void block_couple_delta_v_constant_property(field::Field& delta_v,
+                                            const field::Field& delta_w,
+                                            const field::Field& V,
+                                            const grid::Grid& grid,
+                                            const parallel::Subdomain& sub,
+                                            real_t viscosity, real_t dt);
+void block_couple_delta_u_constant_property(field::Field& delta_u,
+                                            const field::Field& delta_v,
+                                            const field::Field& delta_w,
+                                            const field::Field& U,
+                                            const grid::Grid& grid,
+                                            const parallel::Subdomain& sub,
+                                            real_t viscosity, real_t dt);
+
 }  // namespace mpmstd::equation::momentum

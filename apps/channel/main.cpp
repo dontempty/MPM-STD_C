@@ -208,17 +208,12 @@ int main(int argc, char** argv) {
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"),
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
     momentum::Solver momentum_solver(sub);
-    // ── 원본(core_momentum.f90) 충실 경로 = 가변물성 커널의 μ̂≡1 극한 ──
+    // ── 원본(core_momentum.f90) 충실 경로 = 상수물성 전용 커널 (plan §18-1) ──
     // OB 경로(보존형 RHS + 짝 없는 이류형 음해항)는 블록 커플링의 평균이 0 이
     // 아니어서 운동량이 dt 에 비례해 샌다 (CFR 이 벽 항력의 1.17~1.41 배로
-    // 과구동 — 2026-10-04 수지 계측). 가변물성 경로는 M-form 잔차(−M·qⁿ)·
-    // own ×2 응력·cross-stress·전진 대입까지 참조 구조 그대로라 짝이 맞는다.
-    // DHVC 가 같은 이유로 같은 결론이었다 (μ≡1 로 var 커널 통일).
-    Field unit_viscosity(nx, ny, nz, "unit_viscosity");
-    Field unit_inverse_density(nx, ny, nz, "unit_inverse_density");
-    unit_viscosity.fill(1.0);
-    unit_inverse_density.fill(1.0);
-    const real_t Cmu = nu;  // ν_eff = Cmu·μ̂ = ν  (μ̂ ≡ 1)
+    // 과구동 — 2026-10-04 수지 계측). 상수물성 충실 커널은 M-form 잔차·own ×2
+    // 응력·cross-stress·전진 대입까지 참조 구조 그대로, **물성 배열을 만들지도
+    // 참조하지도 않는다** — "가변 + μ̂≡1 배열" 과 비트 일치 검증됨.
     pressure::Solver pressure_solver(grid, sub);
     real_t mean_dPdx = 0;
 
@@ -339,16 +334,16 @@ int main(int argc, char** argv) {
       rhs_U.fill(0);
       rhs_V.fill(0);
       rhs_W.fill(0);
-      momentum::add_advection_diffusion_u_variable(
-          rhs_U, U, V, W, unit_viscosity, unit_inverse_density, grid, sub, Cmu, dt);
-      momentum::add_advection_diffusion_v_variable(
-          rhs_V, U, V, W, unit_viscosity, unit_inverse_density, grid, sub, Cmu, dt);
-      momentum::add_advection_diffusion_w_variable(
-          rhs_W, U, V, W, unit_viscosity, unit_inverse_density, grid, sub, Cmu, dt);
+      momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid,
+                                                             sub, nu, dt);
+      momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid,
+                                                             sub, nu, dt);
+      momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid,
+                                                             sub, nu, dt);
       pressure::add_gradient(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
       mpmstd::physics::add_mean_pressure_gradient(rhs_U, sub, mean_dPdx, dt);
-      momentum::solve_variable(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,
-                               W, unit_viscosity, unit_inverse_density, Cmu, dt);
+      momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V,
+                                        rhs_W, U, V, W, nu, dt);
       sync_velocity(U, V, W, sub);
 
       real_t bulk_after_solve = 0, tau_after = 0;

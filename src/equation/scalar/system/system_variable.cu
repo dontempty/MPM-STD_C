@@ -14,12 +14,13 @@ namespace mpmstd::equation::scalar {
 namespace {
 
 // sweep_axis 별 (셀 → 밴드 슬롯 p) 매핑만 커널 셋으로 나눈다 (CPU 루프와 동일).
+template <class KA, class DKA, class HA, class DHA>
 __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* T, const real_t* U, const real_t* V,
-                               const real_t* W, const real_t* conductivity,
-                               const real_t* conductivity_derivative,
-                               const real_t* inverse_heat_capacity,
-                               const real_t* inverse_heat_capacity_derivative,
+                               const real_t* W, const KA conductivity,
+                               const DKA conductivity_derivative,
+                               const HA inverse_heat_capacity,
+                               const DHA inverse_heat_capacity_derivative,
                                const real_t* dx_x, const real_t* dmx_x,
                                const real_t* dx_y, const real_t* dmx_y,
                                const real_t* dx_z, const real_t* dmx_z, const int h,
@@ -41,13 +42,14 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                B[p], C[p], D[p]);
 }
 
+template <class KA, class DKA, class HA, class DHA>
 __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* source, const real_t* T, const real_t* U,
                                const real_t* V, const real_t* W,
-                               const real_t* conductivity,
-                               const real_t* conductivity_derivative,
-                               const real_t* inverse_heat_capacity,
-                               const real_t* inverse_heat_capacity_derivative,
+                               const KA conductivity,
+                               const DKA conductivity_derivative,
+                               const HA inverse_heat_capacity,
+                               const DHA inverse_heat_capacity_derivative,
                                const real_t* dx_x, const real_t* dmx_x,
                                const real_t* dx_y, const real_t* dmx_y,
                                const real_t* dx_z, const real_t* dmx_z, const int h,
@@ -69,13 +71,14 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                B[p], C[p], D[p]);
 }
 
+template <class KA, class DKA, class HA, class DHA>
 __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* source, const real_t* T, const real_t* U,
                                const real_t* V, const real_t* W,
-                               const real_t* conductivity,
-                               const real_t* conductivity_derivative,
-                               const real_t* inverse_heat_capacity,
-                               const real_t* inverse_heat_capacity_derivative,
+                               const KA conductivity,
+                               const DKA conductivity_derivative,
+                               const HA inverse_heat_capacity,
+                               const DHA inverse_heat_capacity_derivative,
                                const real_t* dx_x, const real_t* dmx_x,
                                const real_t* dx_y, const real_t* dmx_y,
                                const real_t* dx_z, const real_t* dmx_z, const int h,
@@ -159,5 +162,55 @@ void build_z_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
 }
 
 #undef MPMSTD_SCALAR_VARIABLE_ARGS
+
+// ── 상수물성 판 (plan §18-1): κ̂·1/(ρ̂Ĉp)≡1, 미분장≡0 ───────────────────────
+#define MPMSTD_SCALAR_CONSTANT_ARGS                                                   \
+  equation::UnitArray{}, equation::ZeroArray{}, equation::UnitArray{},                \
+      equation::ZeroArray{},                                                          \
+      grid.x.device_cell_width.data(), grid.x.device_center_distance.data(),          \
+      grid.y.device_cell_width.data(), grid.y.device_center_distance.data(),          \
+      grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
+      halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
+      sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
+      sub.topology().z().minus_neighbor == MPI_PROC_NULL,                              \
+      sub.topology().z().plus_neighbor == MPI_PROC_NULL
+
+void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                      const real_t* T, const real_t* U,
+                                      const real_t* V, const real_t* W,
+                                      const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, const real_t Ct,
+                                      const real_t dt) {
+  const LaunchShape shape = launch_shape(sub);
+  build_x_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, T, U, V, W,
+                                                  MPMSTD_SCALAR_CONSTANT_ARGS);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                      const real_t* source, const real_t* T,
+                                      const real_t* U, const real_t* V,
+                                      const real_t* W, const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, const real_t Ct,
+                                      const real_t dt) {
+  const LaunchShape shape = launch_shape(sub);
+  build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
+                                                  MPMSTD_SCALAR_CONSTANT_ARGS);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                      const real_t* source, const real_t* T,
+                                      const real_t* U, const real_t* V,
+                                      const real_t* W, const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, const real_t Ct,
+                                      const real_t dt) {
+  const LaunchShape shape = launch_shape(sub);
+  build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
+                                                  MPMSTD_SCALAR_CONSTANT_ARGS);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+#undef MPMSTD_SCALAR_CONSTANT_ARGS
 
 }  // namespace mpmstd::equation::scalar

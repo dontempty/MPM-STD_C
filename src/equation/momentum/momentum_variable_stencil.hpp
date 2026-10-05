@@ -17,6 +17,7 @@
 
 #include "common/hd.hpp"
 #include "common/types.hpp"
+#include "equation/property_access.hpp"  // UnitArray — 상수물성 경로가 물성 배열 자리에 끼운다
 
 namespace mpmstd::equation::momentum::stencil {
 
@@ -34,10 +35,11 @@ MPMSTD_HD inline real_t face_blend(const real_t dxA, const real_t fA, const real
 // ── ① stage-1 델타형 잔차  R·dt (성분별 — 참조 compute_mpmstd_rhs_var) ──────
 // 반환값을 rhs 에 += 한다 (호출 전 rhs 는 0 또는 다른 명시항).
 
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t rhs_u_variable_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* U, const real_t* V, const real_t* W, const real_t* mu,
-    const real_t* invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
+    const real_t* U, const real_t* V, const real_t* W, const MuArray mu,
+    const RhoArray invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
     const real_t* dmx2, const real_t* dx3, const real_t* dmx3, const real_t Cmu,
     const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25), kTwo = real_t(2);
@@ -106,10 +108,11 @@ MPMSTD_HD inline real_t rhs_u_variable_cell(
   return R * dt;
 }
 
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t rhs_v_variable_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* U, const real_t* V, const real_t* W, const real_t* mu,
-    const real_t* invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
+    const real_t* U, const real_t* V, const real_t* W, const MuArray mu,
+    const RhoArray invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
     const real_t* dmx2, const real_t* dx3, const real_t* dmx3, const real_t Cmu,
     const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25), kTwo = real_t(2);
@@ -178,10 +181,11 @@ MPMSTD_HD inline real_t rhs_v_variable_cell(
   return R * dt;
 }
 
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t rhs_w_variable_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* U, const real_t* V, const real_t* W, const real_t* mu,
-    const real_t* invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
+    const real_t* U, const real_t* V, const real_t* W, const MuArray mu,
+    const RhoArray invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
     const real_t* dmx2, const real_t* dx3, const real_t* dmx3, const real_t Cmu,
     const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25), kTwo = real_t(2);
@@ -254,7 +258,8 @@ MPMSTD_HD inline real_t rhs_w_variable_cell(
 
 // ── ② 스윕 밴드 한 행 (참조 build_adi_bands_var 의 emit 1:1) ─────────────────
 // own 축 체적가중 면 보간 (셀 필드 f 를 own-마이너스 면으로):
-MPMSTD_HD inline real_t own_face_blend(const real_t* f, const long long cell,
+template <class Array>
+MPMSTD_HD inline real_t own_face_blend(const Array f, const long long cell,
                                        const int own_index, const long long own_stride,
                                        const real_t* dx_own, const real_t* dmx_own) {
   return real_t(0.5)
@@ -262,10 +267,11 @@ MPMSTD_HD inline real_t own_face_blend(const real_t* f, const long long cell,
          / dmx_own[own_index];
 }
 
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline void variable_sweep_band(
     const bool own, const bool z_staggered, const long long gi, const long long gm,
     const long long gp, const int a, const int own_index, const long long own_stride,
-    const real_t* q, const real_t* q_advect, const real_t* mu, const real_t* invrho,
+    const real_t* q, const real_t* q_advect, const MuArray mu, const RhoArray invrho,
     const real_t* dx_along, const real_t* dmx_along, const real_t* dx_own,
     const real_t* dmx_own, const real_t Cmu, const real_t dt, real_t& A_value,
     real_t& B_value, real_t& C_value) {
@@ -328,9 +334,10 @@ MPMSTD_HD inline void variable_sweep_band(
 // 반환값만큼 대상에서 **빼면** 된다 (dV[c] -= ..., rhs_v[c] -= ...).
 
 // M21: δU 가 dV 방정식 우변으로 (dV 스윕 전에 주입)
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t couple_rhs_v_from_delta_u_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* delta_u, const real_t* V, const real_t* mu, const real_t* invrho,
+    const real_t* delta_u, const real_t* V, const MuArray mu, const RhoArray invrho,
     const real_t* dx1, const real_t* dmx1, const real_t* dx2, const real_t* dmx2,
     const real_t Cmu, const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25);
@@ -362,10 +369,11 @@ MPMSTD_HD inline real_t couple_rhs_v_from_delta_u_cell(
 }
 
 // M31 + M32: δU·δV 가 dW 방정식 우변으로 (dW 스윕 전에 주입)
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t couple_rhs_w_from_delta_uv_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* delta_u, const real_t* delta_v, const real_t* W, const real_t* mu,
-    const real_t* invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
+    const real_t* delta_u, const real_t* delta_v, const real_t* W, const MuArray mu,
+    const RhoArray invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
     const real_t* dmx2, const real_t* dx3, const real_t* dmx3, const real_t Cmu,
     const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25);
@@ -416,9 +424,10 @@ MPMSTD_HD inline real_t couple_rhs_w_from_delta_uv_cell(
 }
 
 // M23 (사후): δW 가 δV 를 보정
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t couple_delta_v_from_delta_w_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* delta_w, const real_t* V, const real_t* mu, const real_t* invrho,
+    const real_t* delta_w, const real_t* V, const MuArray mu, const RhoArray invrho,
     const real_t* dx2, const real_t* dmx2, const real_t* dx3, const real_t* dmx3,
     const real_t Cmu, const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25);
@@ -449,10 +458,11 @@ MPMSTD_HD inline real_t couple_delta_v_from_delta_w_cell(
 }
 
 // M12 + M13 (사후): δW·δV 가 δU 를 보정
+template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t couple_delta_u_from_delta_vw_cell(
     const int i, const int j, const int k, const int ny_total, const int nz_total,
-    const real_t* delta_v, const real_t* delta_w, const real_t* U, const real_t* mu,
-    const real_t* invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
+    const real_t* delta_v, const real_t* delta_w, const real_t* U, const MuArray mu,
+    const RhoArray invrho, const real_t* dx1, const real_t* dmx1, const real_t* dx2,
     const real_t* dmx2, const real_t* dx3, const real_t* dmx3, const real_t Cmu,
     const real_t dt) {
   const real_t kHalf = real_t(0.5), kQ = real_t(0.25);

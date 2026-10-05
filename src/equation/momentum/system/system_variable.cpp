@@ -32,14 +32,13 @@ OwnSpec own_spec(const int own_axis, const grid::Grid& grid,
   return {1, grid.z.cell_width.data(), grid.z.center_distance.data()};
 }
 
-}  // namespace
-
-void build_x_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
-                            const real_t* source, const real_t* q,
-                            const real_t* advecting_velocity, const real_t* viscosity,
-                            const real_t* inverse_density, const grid::Grid& grid,
-                            const parallel::Subdomain& sub, const int own_axis,
-                            const real_t Cmu, const real_t dt) {
+template <class MuArray, class RhoArray>
+void build_x_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
+                        const real_t* source, const real_t* q,
+                        const real_t* advecting_velocity, const MuArray viscosity,
+                        const RhoArray inverse_density, const grid::Grid& grid,
+                        const parallel::Subdomain& sub, const int own_axis,
+                        const real_t Cmu, const real_t dt) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
@@ -63,12 +62,13 @@ void build_x_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
       }
 }
 
-void build_y_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
-                            const real_t* source, const real_t* q,
-                            const real_t* advecting_velocity, const real_t* viscosity,
-                            const real_t* inverse_density, const grid::Grid& grid,
-                            const parallel::Subdomain& sub, const int own_axis,
-                            const real_t Cmu, const real_t dt) {
+template <class MuArray, class RhoArray>
+void build_y_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
+                        const real_t* source, const real_t* q,
+                        const real_t* advecting_velocity, const MuArray viscosity,
+                        const RhoArray inverse_density, const grid::Grid& grid,
+                        const parallel::Subdomain& sub, const int own_axis,
+                        const real_t Cmu, const real_t dt) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
@@ -92,12 +92,13 @@ void build_y_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
       }
 }
 
-void build_z_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
-                            const real_t* source, const real_t* q,
-                            const real_t* advecting_velocity, const real_t* viscosity,
-                            const real_t* inverse_density, const grid::Grid& grid,
-                            const parallel::Subdomain& sub, const int own_axis,
-                            const real_t Cmu, const real_t dt) {
+template <class MuArray, class RhoArray>
+void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
+                        const real_t* source, const real_t* q,
+                        const real_t* advecting_velocity, const MuArray viscosity,
+                        const RhoArray inverse_density, const grid::Grid& grid,
+                        const parallel::Subdomain& sub, const int own_axis,
+                        const real_t Cmu, const real_t dt) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
@@ -120,5 +121,32 @@ void build_z_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
         D[p] = source[gi];
       }
 }
+
+}  // namespace
+
+#define MPMSTD_DEFINE_SWEEP_WRAPPERS(AXIS)                                            \
+  void build_##AXIS##_sweep_variable(                                                 \
+      real_t* A, real_t* B, real_t* C, real_t* D, const real_t* source,               \
+      const real_t* q, const real_t* advecting_velocity, const real_t* viscosity,     \
+      const real_t* inverse_density, const grid::Grid& grid,                          \
+      const parallel::Subdomain& sub, const int own_axis, const real_t Cmu,           \
+      const real_t dt) {                                                              \
+    build_##AXIS##_sweep_impl(A, B, C, D, source, q, advecting_velocity, viscosity,   \
+                              inverse_density, grid, sub, own_axis, Cmu, dt);         \
+  }                                                                                   \
+  void build_##AXIS##_sweep_constant_property(                                        \
+      real_t* A, real_t* B, real_t* C, real_t* D, const real_t* source,               \
+      const real_t* q, const real_t* advecting_velocity, const grid::Grid& grid,      \
+      const parallel::Subdomain& sub, const int own_axis, const real_t viscosity,     \
+      const real_t dt) {                                                              \
+    build_##AXIS##_sweep_impl(A, B, C, D, source, q, advecting_velocity,              \
+                              equation::UnitArray{}, equation::UnitArray{}, grid,     \
+                              sub, own_axis, viscosity, dt);                          \
+  }
+
+MPMSTD_DEFINE_SWEEP_WRAPPERS(x)
+MPMSTD_DEFINE_SWEEP_WRAPPERS(y)
+MPMSTD_DEFINE_SWEEP_WRAPPERS(z)
+#undef MPMSTD_DEFINE_SWEEP_WRAPPERS
 
 }  // namespace mpmstd::equation::momentum

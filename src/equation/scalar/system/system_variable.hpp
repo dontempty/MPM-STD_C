@@ -41,4 +41,24 @@ void build_z_system_variable(real_t* A, real_t* B, real_t* C, real_t* D,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              real_t Ct, real_t dt);
 
+// ── 상수물성 판 (plan §18-1) — 물성 없이 같은 융합 조립 (κ̂≡1, dκ̂≡0) ─────────
+void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                      const real_t* T, const real_t* U,
+                                      const real_t* V, const real_t* W,
+                                      const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, real_t Ct,
+                                      real_t dt);
+void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                      const real_t* source, const real_t* T,
+                                      const real_t* U, const real_t* V,
+                                      const real_t* W, const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, real_t Ct,
+                                      real_t dt);
+void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                      const real_t* source, const real_t* T,
+                                      const real_t* U, const real_t* V,
+                                      const real_t* W, const grid::Grid& grid,
+                                      const parallel::Subdomain& sub, real_t Ct,
+                                      real_t dt);
+
 }  // namespace mpmstd::equation::scalar

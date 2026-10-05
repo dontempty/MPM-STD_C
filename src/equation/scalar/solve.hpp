@@ -53,6 +53,13 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
 // 확산은 OB 와 같은 식이 되지만 대류 이산화는 다르다 (참조 스킴의 성질).
 // 상수물성 앱(OB·DHVC)은 이 함수와 PropertyFields 를 쓰지 않는다.
 //   사용: update_properties(...) → solve_variable(...) → T 교환 + 벽 채움.
+// ── 상수물성 충실 경로 (plan §18-1) — solve_variable 과 같은 융합 구조를
+// 물성 배열 없이 돈다 (κ̂·1/(ρ̂Ĉp)≡1, 미분장≡0). Ct = 스칼라 확산 계수.
+void solve_constant_property(Solver& solver, const grid::Grid& grid,
+                             const parallel::Subdomain& sub, field::Field& T,
+                             const field::Field& U, const field::Field& V,
+                             const field::Field& W, real_t Ct, real_t dt);
+
 void solve_variable(Solver& solver, const grid::Grid& grid,
                     const parallel::Subdomain& sub, field::Field& T,
                     const field::Field& U, const field::Field& V,

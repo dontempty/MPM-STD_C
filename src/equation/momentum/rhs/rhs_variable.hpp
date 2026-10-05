@@ -40,4 +40,27 @@ void add_advection_diffusion_w_variable(field::Field& rhs, const field::Field& U
                                         const parallel::Subdomain& sub, real_t Cmu,
                                         real_t dt);
 
+// ── 상수물성 판 (plan §18-1) — 물성 배열 없이 같은 수식 (viscosity = 스칼라 ν).
+void add_advection_diffusion_u_constant_property(field::Field& rhs,
+                                                 const field::Field& U,
+                                                 const field::Field& V,
+                                                 const field::Field& W,
+                                                 const grid::Grid& grid,
+                                                 const parallel::Subdomain& sub,
+                                                 real_t viscosity, real_t dt);
+void add_advection_diffusion_v_constant_property(field::Field& rhs,
+                                                 const field::Field& U,
+                                                 const field::Field& V,
+                                                 const field::Field& W,
+                                                 const grid::Grid& grid,
+                                                 const parallel::Subdomain& sub,
+                                                 real_t viscosity, real_t dt);
+void add_advection_diffusion_w_constant_property(field::Field& rhs,
+                                                 const field::Field& U,
+                                                 const field::Field& V,
+                                                 const field::Field& W,
+                                                 const grid::Grid& grid,
+                                                 const parallel::Subdomain& sub,
+                                                 real_t viscosity, real_t dt);
+
 }  // namespace mpmstd::equation::momentum

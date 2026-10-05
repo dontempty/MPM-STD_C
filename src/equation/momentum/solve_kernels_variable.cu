@@ -36,9 +36,10 @@ Shape make_shape(const parallel::Subdomain& sub) {
   const int i = shape.h                                                               \
                 + static_cast<int>(idx / (static_cast<long long>(shape.nk) * shape.nj))
 
+template <class MuArray, class RhoArray>
 __global__ void couple_rhs_v_kernel(const Shape shape, real_t* rhs_v,
                                     const real_t* delta_u, const real_t* V,
-                                    const real_t* mu, const real_t* invrho,
+                                    const MuArray mu, const RhoArray invrho,
                                     const real_t* dx1, const real_t* dmx1,
                                     const real_t* dx2, const real_t* dmx2,
                                     const real_t Cmu, const real_t dt) {
@@ -49,10 +50,11 @@ __global__ void couple_rhs_v_kernel(const Shape shape, real_t* rhs_v,
                                               dmx2, Cmu, dt);
 }
 
+template <class MuArray, class RhoArray>
 __global__ void couple_rhs_w_kernel(const Shape shape, real_t* rhs_w,
                                     const real_t* delta_u, const real_t* delta_v,
-                                    const real_t* W, const real_t* mu,
-                                    const real_t* invrho, const real_t* dx1,
+                                    const real_t* W, const MuArray mu,
+                                    const RhoArray invrho, const real_t* dx1,
                                     const real_t* dmx1, const real_t* dx2,
                                     const real_t* dmx2, const real_t* dx3,
                                     const real_t* dmx3, const real_t Cmu,
@@ -65,9 +67,10 @@ __global__ void couple_rhs_w_kernel(const Shape shape, real_t* rhs_w,
                                                dmx3, Cmu, dt);
 }
 
+template <class MuArray, class RhoArray>
 __global__ void couple_delta_v_kernel(const Shape shape, real_t* delta_v,
                                       const real_t* delta_w, const real_t* V,
-                                      const real_t* mu, const real_t* invrho,
+                                      const MuArray mu, const RhoArray invrho,
                                       const real_t* dx2, const real_t* dmx2,
                                       const real_t* dx3, const real_t* dmx3,
                                       const real_t Cmu, const real_t dt) {
@@ -78,10 +81,11 @@ __global__ void couple_delta_v_kernel(const Shape shape, real_t* delta_v,
                                                 invrho, dx2, dmx2, dx3, dmx3, Cmu, dt);
 }
 
+template <class MuArray, class RhoArray>
 __global__ void couple_delta_u_kernel(const Shape shape, real_t* delta_u,
                                       const real_t* delta_v, const real_t* delta_w,
-                                      const real_t* U, const real_t* mu,
-                                      const real_t* invrho, const real_t* dx1,
+                                      const real_t* U, const MuArray mu,
+                                      const RhoArray invrho, const real_t* dx1,
                                       const real_t* dmx1, const real_t* dx2,
                                       const real_t* dmx2, const real_t* dx3,
                                       const real_t* dmx3, const real_t Cmu,
@@ -174,6 +178,76 @@ void block_couple_delta_u_variable(field::Field& delta_u, const field::Field& de
       grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
       grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
       grid.z.device_center_distance.data(), Cmu, dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+// ── 상수물성 판 (plan §18-1) — UnitArray 로 같은 커널 ────────────────────────
+void couple_rhs_v_from_delta_u_constant_property(
+    field::Field& rhs_v, const field::Field& delta_u, const field::Field& V,
+    const grid::Grid& grid, const parallel::Subdomain& sub, const real_t viscosity,
+    const real_t dt) {
+  check_field_matches("couple_rhs_v_from_delta_u_constant_property", rhs_v, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_constant_property", delta_u, sub);
+  const Shape shape = make_shape(sub);
+  couple_rhs_v_kernel<<<shape.blocks, shape.threads>>>(
+      shape, rhs_v.data(), delta_u.data(), V.data(), equation::UnitArray{},
+      equation::UnitArray{}, grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), viscosity, dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void couple_rhs_w_from_delta_uv_constant_property(
+    field::Field& rhs_w, const field::Field& delta_u, const field::Field& delta_v,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  check_field_matches("couple_rhs_w_from_delta_uv_constant_property", rhs_w, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_constant_property", delta_u, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_constant_property", delta_v, sub);
+  const Shape shape = make_shape(sub);
+  couple_rhs_w_kernel<<<shape.blocks, shape.threads>>>(
+      shape, rhs_w.data(), delta_u.data(), delta_v.data(), W.data(),
+      equation::UnitArray{}, equation::UnitArray{}, grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_center_distance.data(), viscosity, dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void block_couple_delta_v_constant_property(field::Field& delta_v,
+                                            const field::Field& delta_w,
+                                            const field::Field& V,
+                                            const grid::Grid& grid,
+                                            const parallel::Subdomain& sub,
+                                            const real_t viscosity, const real_t dt) {
+  check_field_matches("block_couple_delta_v_constant_property", delta_v, sub);
+  check_field_matches("block_couple_delta_v_constant_property", delta_w, sub);
+  const Shape shape = make_shape(sub);
+  couple_delta_v_kernel<<<shape.blocks, shape.threads>>>(
+      shape, delta_v.data(), delta_w.data(), V.data(), equation::UnitArray{},
+      equation::UnitArray{}, grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_center_distance.data(), viscosity, dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void block_couple_delta_u_constant_property(field::Field& delta_u,
+                                            const field::Field& delta_v,
+                                            const field::Field& delta_w,
+                                            const field::Field& U,
+                                            const grid::Grid& grid,
+                                            const parallel::Subdomain& sub,
+                                            const real_t viscosity, const real_t dt) {
+  check_field_matches("block_couple_delta_u_constant_property", delta_u, sub);
+  check_field_matches("block_couple_delta_u_constant_property", delta_v, sub);
+  check_field_matches("block_couple_delta_u_constant_property", delta_w, sub);
+  const Shape shape = make_shape(sub);
+  couple_delta_u_kernel<<<shape.blocks, shape.threads>>>(
+      shape, delta_u.data(), delta_v.data(), delta_w.data(), U.data(),
+      equation::UnitArray{}, equation::UnitArray{}, grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_center_distance.data(), viscosity, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 

@@ -37,4 +37,26 @@ void build_z_sweep_variable(real_t* A, real_t* B, real_t* C, real_t* D,
                             const parallel::Subdomain& sub, int own_axis, real_t Cmu,
                             real_t dt);
 
+// ── 상수물성 판 (plan §18-1) — 물성 배열 없이 UnitArray 로 같은 수식을 돈다.
+//    viscosity 는 스칼라 ν (= Cmu·μ̂ 에서 μ̂≡1). 결과는 "가변 + 1 배열" 과
+//    비트 일치해야 한다 (검증 게이트).
+void build_x_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                     const real_t* source, const real_t* q,
+                                     const real_t* advecting_velocity,
+                                     const grid::Grid& grid,
+                                     const parallel::Subdomain& sub, int own_axis,
+                                     real_t viscosity, real_t dt);
+void build_y_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                     const real_t* source, const real_t* q,
+                                     const real_t* advecting_velocity,
+                                     const grid::Grid& grid,
+                                     const parallel::Subdomain& sub, int own_axis,
+                                     real_t viscosity, real_t dt);
+void build_z_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
+                                     const real_t* source, const real_t* q,
+                                     const real_t* advecting_velocity,
+                                     const grid::Grid& grid,
+                                     const parallel::Subdomain& sub, int own_axis,
+                                     real_t viscosity, real_t dt);
+
 }  // namespace mpmstd::equation::momentum

@@ -11,9 +11,10 @@ namespace mpmstd::equation::momentum {
 namespace {
 
 // component: 0=U, 1=V, 2=W (성분별 셀 함수 선택만 — 수식은 스텐실 한 곳)
+template <class MuArray, class RhoArray>
 __global__ void add_kernel(real_t* rhs, const real_t* U, const real_t* V,
-                           const real_t* W, const real_t* viscosity,
-                           const real_t* inverse_density, const real_t* dx1,
+                           const real_t* W, const MuArray viscosity,
+                           const RhoArray inverse_density, const real_t* dx1,
                            const real_t* dmx1, const real_t* dx2, const real_t* dmx2,
                            const real_t* dx3, const real_t* dmx3, const int h,
                            const int ni, const int nj, const int nk,
@@ -65,6 +66,28 @@ void add_impl(const char* who, field::Field& rhs, const field::Field& U,
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
+void add_impl_constant(const char* who, field::Field& rhs, const field::Field& U,
+                       const field::Field& V, const field::Field& W,
+                       const grid::Grid& grid, const parallel::Subdomain& sub,
+                       const real_t viscosity, const real_t dt, const int component) {
+  check_field_matches(who, rhs, sub);
+  check_field_matches(who, U, sub);
+  check_field_matches(who, V, sub);
+  check_field_matches(who, W, sub);
+  const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
+  const long long n = static_cast<long long>(ni) * nj * nk;
+  const int threads = 256;
+  const int blocks = static_cast<int>((n + threads - 1) / threads);
+  add_kernel<<<blocks, threads>>>(
+      rhs.data(), U.data(), V.data(), W.data(), equation::UnitArray{},
+      equation::UnitArray{}, grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_center_distance.data(), halo_width, ni, nj, nk,
+      sub.y().n_total, sub.z().n_total, viscosity, dt, component);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
 }  // namespace
 
 void add_advection_diffusion_u_variable(field::Field& rhs, const field::Field& U,
@@ -98,6 +121,30 @@ void add_advection_diffusion_w_variable(field::Field& rhs, const field::Field& U
                                         const real_t Cmu, const real_t dt) {
   add_impl("add_advection_diffusion_w_variable", rhs, U, V, W, viscosity,
            inverse_density, grid, sub, Cmu, dt, 2);
+}
+
+void add_advection_diffusion_u_constant_property(
+    field::Field& rhs, const field::Field& U, const field::Field& V,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  add_impl_constant("add_advection_diffusion_u_constant_property", rhs, U, V, W,
+                    grid, sub, viscosity, dt, 0);
+}
+
+void add_advection_diffusion_v_constant_property(
+    field::Field& rhs, const field::Field& U, const field::Field& V,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  add_impl_constant("add_advection_diffusion_v_constant_property", rhs, U, V, W,
+                    grid, sub, viscosity, dt, 1);
+}
+
+void add_advection_diffusion_w_constant_property(
+    field::Field& rhs, const field::Field& U, const field::Field& V,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  add_impl_constant("add_advection_diffusion_w_constant_property", rhs, U, V, W,
+                    grid, sub, viscosity, dt, 2);
 }
 
 }  // namespace mpmstd::equation::momentum

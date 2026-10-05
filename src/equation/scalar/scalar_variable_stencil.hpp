@@ -21,6 +21,7 @@
 
 #include "common/hd.hpp"
 #include "common/types.hpp"
+#include "equation/property_access.hpp"
 
 namespace mpmstd::equation::scalar::stencil {
 
@@ -30,9 +31,10 @@ MPMSTD_HD inline long long variable_index(const int i, const int j, const int k,
 }
 
 // ── 한 축의 밴드 + R 기여 (참조 scalar_var_stencil.hpp axis_band 1:1) ─────────
+template <class KappaArray, class DKappaArray>
 MPMSTD_HD inline void variable_axis_band(
-    const real_t* T, const real_t* conductivity, const real_t* conductivity_derivative,
-    const real_t* face_velocity, const long long cm, const long long cc,
+    const real_t* T, const KappaArray conductivity,
+    const DKappaArray conductivity_derivative, const real_t* face_velocity, const long long cm, const long long cc,
     const long long cp, const real_t dx_m, const real_t dx_c, const real_t dx_p,
     const real_t dmx_lo, const real_t dmx_hi, const real_t half_ct_inverse_heat_capacity,
     const bool wall_lo, const bool wall_hi, const bool full_offdiag_mask,
@@ -87,12 +89,13 @@ MPMSTD_HD inline void variable_axis_band(
 // ── 셀 하나의 밴드(am, ac, ap) + 팩된 D (참조 build_A_rhs_cell 1:1) ──────────
 // sweep_axis: 0=x, 1=y, 2=z (이 커널은 참조 1:1 이식이라 축 인자를 유지한다 —
 // 호출자는 system_variable 의 build_x/y/z_system_variable 세 함수로 명시 분기).
+template <class KappaArray, class DKappaArray, class HeatCapArray, class DHeatCapArray>
 MPMSTD_HD inline void build_variable_cell(
     const int sweep_axis, const int i, const int j, const int k, const int ny_total,
     const int nz_total, const real_t* source, const real_t* T, const real_t* U,
-    const real_t* V, const real_t* W, const real_t* conductivity,
-    const real_t* conductivity_derivative, const real_t* inverse_heat_capacity,
-    const real_t* inverse_heat_capacity_derivative, const real_t* dx_x,
+    const real_t* V, const real_t* W, const KappaArray conductivity,
+    const DKappaArray conductivity_derivative, const HeatCapArray inverse_heat_capacity,
+    const DHeatCapArray inverse_heat_capacity_derivative, const real_t* dx_x,
     const real_t* dmx_x, const real_t* dx_y, const real_t* dmx_y, const real_t* dx_z,
     const real_t* dmx_z, const real_t Ct, const real_t dt, const bool is_first_sweep,
     const bool z_wall_lo, const bool z_wall_hi, real_t& am, real_t& ac, real_t& ap,
