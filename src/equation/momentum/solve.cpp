@@ -8,6 +8,7 @@
 #include "equation/momentum/solve_kernels.hpp"
 #include "equation/sweep_kernels.hpp"
 #include "equation/momentum/system/system.hpp"
+#include "equation/momentum/wall_rows.hpp"
 
 // 오케스트레이션 전용 TU — CPU/GPU 양쪽 빌드에 그대로 들어간다. 루프·커널은
 // solve_kernels.{cpp,cu} 와 system.{cpp,cu} 가 백엔드별로 구현한다.

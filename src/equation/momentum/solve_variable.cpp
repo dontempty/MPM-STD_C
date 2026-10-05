@@ -6,6 +6,7 @@
 #include "equation/momentum/solve.hpp"
 #include "equation/momentum/solve_kernels_variable.hpp"
 #include "equation/momentum/system/system.hpp"
+#include "equation/momentum/wall_rows.hpp"
 #include "equation/momentum/system/system_variable.hpp"
 #include "equation/sweep_kernels.hpp"
 
