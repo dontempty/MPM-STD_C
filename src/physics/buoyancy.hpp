@@ -24,7 +24,7 @@ void add_buoyancy_z(field::Field& rhs_w, const field::Field& T, const grid::Grid
 //   rhs_w += dt · (1/ρ̂)_면 · (T_면 + (a₂/a₁)·T_면²·ΔT)
 // T 와 1/ρ̂ 둘 다 같은 z-면 체적가중 보간 (셀중심 함정 동일). 2차항은 ρ(T) 의
 // 비선형 몫 — density_quadratic_ratio() (글리세롤 a₂≠0; ΔT=0 이면 OB 로 환원).
-void add_buoyancy_z_variable(field::Field& rhs_w, const field::Field& T,
+void add_buoyancy_z_variable_property(field::Field& rhs_w, const field::Field& T,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              real_t density_quadratic_ratio, real_t delta_temperature,

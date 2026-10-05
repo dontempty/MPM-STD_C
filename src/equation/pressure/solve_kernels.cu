@@ -288,16 +288,16 @@ __global__ void advance_predictor_kernel(real_t* ph, real_t* p0, const real_t* d
 
 }  // namespace
 
-void correct_velocity_variable(field::Field& U, field::Field& V, field::Field& W,
+void correct_velocity_variable_property(field::Field& U, field::Field& V, field::Field& W,
                                const field::Field& phi,
                                const field::Field& pressure_predictor,
                                const field::Field& inverse_density,
                                const grid::Grid& grid, const parallel::Subdomain& sub,
                                const real_t dt) {
-  check_field_matches("correct_velocity_variable", U, sub);
-  check_field_matches("correct_velocity_variable", phi, sub);
-  check_field_matches("correct_velocity_variable", pressure_predictor, sub);
-  check_field_matches("correct_velocity_variable", inverse_density, sub);
+  check_field_matches("correct_velocity_variable_property", U, sub);
+  check_field_matches("correct_velocity_variable_property", phi, sub);
+  check_field_matches("correct_velocity_variable_property", pressure_predictor, sub);
+  check_field_matches("correct_velocity_variable_property", inverse_density, sub);
   const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
   const long long n = static_cast<long long>(ni) * nj * nk;
   const int threads = 256;

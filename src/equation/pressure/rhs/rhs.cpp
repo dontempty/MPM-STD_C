@@ -54,13 +54,13 @@ void add_gradient(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
       }
 }
 
-void add_extra_term_variable(field::Field& rhs_field,
+void add_extra_term_variable_property(field::Field& rhs_field,
                              const field::Field& pressure_predictor,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub) {
-  check_field_matches("add_extra_term_variable", rhs_field, sub);
-  check_field_matches("add_extra_term_variable", pressure_predictor, sub);
-  check_field_matches("add_extra_term_variable", inverse_density, sub);
+  check_field_matches("add_extra_term_variable_property", rhs_field, sub);
+  check_field_matches("add_extra_term_variable_property", pressure_predictor, sub);
+  check_field_matches("add_extra_term_variable_property", inverse_density, sub);
   const int h = halo_width;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
   const auto at = [ny_total, nz_total](int i, int j, int k) {
@@ -101,14 +101,14 @@ void add_extra_term_variable(field::Field& rhs_field,
       }
 }
 
-void add_gradient_variable(field::Field& rhs_u, field::Field& rhs_v,
+void add_gradient_variable_property(field::Field& rhs_u, field::Field& rhs_v,
                            field::Field& rhs_w, const field::Field& P,
                            const field::Field& inverse_density,
                            const grid::Grid& grid, const parallel::Subdomain& sub,
                            const real_t dt) {
-  check_field_matches("add_gradient_variable", rhs_u, sub);
-  check_field_matches("add_gradient_variable", P, sub);
-  check_field_matches("add_gradient_variable", inverse_density, sub);
+  check_field_matches("add_gradient_variable_property", rhs_u, sub);
+  check_field_matches("add_gradient_variable_property", P, sub);
+  check_field_matches("add_gradient_variable_property", inverse_density, sub);
   const int h = halo_width;
   const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
   const auto at = [ny_total, nz_total](int i, int j, int k) {

@@ -8,7 +8,7 @@
 //
 // OB(rhs.hpp)와 역할은 같지만 식이 다르다: own 방향 확산 ×2, cross-stress
 // (전치 응력) 포함, 이중 체적가중 면 μ, 1/ρ̂ 면 보간. 압력·부력은 여기 없다 —
-// main 이 뒤에 += 로 조립한다 (pressure::add_gradient_variable, buoyancy).
+// main 이 뒤에 += 로 조립한다 (pressure::add_gradient_variable_property, buoyancy).
 // 상수물성 극한(μ̂≡1, 1/ρ̂≡1)에서 cross-stress 는 비압축 연속으로 소거되는
 // 항이라 OB 와 같은 물리로 환원된다 (이산적으로는 참조 스킴 그대로).
 //

@@ -89,7 +89,7 @@ void accumulate(field::Field& P, const field::Field& phi);
 // ── 가변 밀도(NOB) 투영 (PaScaL_TCS §804-821 1:1) ───────────────────────────
 // u −= dt·[ ∇(δp) + ((1/ρ̂)_면 − 1)·∇p̂ ].  rhs 의 ExtraTerm 과 짝 —
 // 합치면 가변 밀도 투영이 반복 없이 닫힌다. p̂(dPhat)·1/ρ̂ ghost 최신 전제.
-void correct_velocity_variable(field::Field& U, field::Field& V, field::Field& W,
+void correct_velocity_variable_property(field::Field& U, field::Field& V, field::Field& W,
                                const field::Field& phi,
                                const field::Field& pressure_predictor,
                                const field::Field& inverse_density,

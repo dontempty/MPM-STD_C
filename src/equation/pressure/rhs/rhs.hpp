@@ -28,15 +28,15 @@ void add_gradient(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
 // ── 가변 밀도(NOB) 경로 ──────────────────────────────────────────────────────
 // Poisson 우변의 ExtraTerm (PaScaL_TCS §214-225; dt 배율 없음 — div/dt 에 더함):
 //   rhs += ∇·[(1 − (1/ρ̂)_면)·∇p̂],   p̂ = 2차 외삽 압력 예측자 (dPhat)
-// 상수밀도 Poisson 해(dP)와 사후 투영(correct_velocity_variable)이 짝을 이뤄
+// 상수밀도 Poisson 해(dP)와 사후 투영(correct_velocity_variable_property)이 짝을 이뤄
 // 가변 밀도 ∇·[(1/ρ̂)∇p] = div/dt 를 반복 없이 닫는다. p̂·1/ρ̂ ghost 최신 전제.
-void add_extra_term_variable(field::Field& rhs, const field::Field& pressure_predictor,
+void add_extra_term_variable_property(field::Field& rhs, const field::Field& pressure_predictor,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub);
 
 // 증분 투영 예측자의 가변 밀도 판 (PaScaL_TCS mom.f90:331/343):
 //   rhs_u −= dt·(1/ρ̂)_면·(P_c − P_{i−1})/dmx_i   (v, w 동형; 면 체적가중)
-void add_gradient_variable(field::Field& rhs_u, field::Field& rhs_v,
+void add_gradient_variable_property(field::Field& rhs_u, field::Field& rhs_v,
                            field::Field& rhs_w, const field::Field& P,
                            const field::Field& inverse_density,
                            const grid::Grid& grid, const parallel::Subdomain& sub,

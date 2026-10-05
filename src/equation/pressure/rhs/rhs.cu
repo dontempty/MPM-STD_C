@@ -117,13 +117,13 @@ __global__ void add_extra_term_kernel(real_t* rhs, const real_t* ph, const real_
 
 }  // namespace
 
-void add_extra_term_variable(field::Field& rhs_field,
+void add_extra_term_variable_property(field::Field& rhs_field,
                              const field::Field& pressure_predictor,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub) {
-  check_field_matches("add_extra_term_variable", rhs_field, sub);
-  check_field_matches("add_extra_term_variable", pressure_predictor, sub);
-  check_field_matches("add_extra_term_variable", inverse_density, sub);
+  check_field_matches("add_extra_term_variable_property", rhs_field, sub);
+  check_field_matches("add_extra_term_variable_property", pressure_predictor, sub);
+  check_field_matches("add_extra_term_variable_property", inverse_density, sub);
   const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
   const long long n = static_cast<long long>(ni) * nj * nk;
   const int threads = 256;
@@ -166,14 +166,14 @@ __global__ void add_gradient_variable_kernel(
 
 }  // namespace
 
-void add_gradient_variable(field::Field& rhs_u, field::Field& rhs_v,
+void add_gradient_variable_property(field::Field& rhs_u, field::Field& rhs_v,
                            field::Field& rhs_w, const field::Field& P,
                            const field::Field& inverse_density,
                            const grid::Grid& grid, const parallel::Subdomain& sub,
                            const real_t dt) {
-  check_field_matches("add_gradient_variable", rhs_u, sub);
-  check_field_matches("add_gradient_variable", P, sub);
-  check_field_matches("add_gradient_variable", inverse_density, sub);
+  check_field_matches("add_gradient_variable_property", rhs_u, sub);
+  check_field_matches("add_gradient_variable_property", P, sub);
+  check_field_matches("add_gradient_variable_property", inverse_density, sub);
   const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
   const long long n = static_cast<long long>(ni) * nj * nk;
   const int threads = 256;

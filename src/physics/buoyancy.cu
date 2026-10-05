@@ -57,14 +57,14 @@ void add_buoyancy_z(field::Field& rhs_w, const field::Field& T, const grid::Grid
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
-void add_buoyancy_z_variable(field::Field& rhs_w, const field::Field& T,
+void add_buoyancy_z_variable_property(field::Field& rhs_w, const field::Field& T,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const real_t density_quadratic_ratio,
                              const real_t delta_temperature, const real_t dt) {
-  check_field_matches("add_buoyancy_z_variable", rhs_w, sub);
-  check_field_matches("add_buoyancy_z_variable", T, sub);
-  check_field_matches("add_buoyancy_z_variable", inverse_density, sub);
+  check_field_matches("add_buoyancy_z_variable_property", rhs_w, sub);
+  check_field_matches("add_buoyancy_z_variable_property", T, sub);
+  check_field_matches("add_buoyancy_z_variable_property", inverse_density, sub);
   const long long n = static_cast<long long>(sub.x().n_local) * sub.y().n_local
                       * sub.z().n_local;
   buoyancy_variable_kernel<<<static_cast<int>((n + kThreads - 1) / kThreads),

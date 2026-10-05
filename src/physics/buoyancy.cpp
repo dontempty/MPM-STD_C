@@ -23,14 +23,14 @@ void add_buoyancy_z(field::Field& rhs_w_field, const field::Field& T_field,
         rhs_w(i, j, k) += dt * stencil::temperature_at_z_face(T, i, j, k, dz, dmz);
 }
 
-void add_buoyancy_z_variable(field::Field& rhs_w, const field::Field& T_field,
+void add_buoyancy_z_variable_property(field::Field& rhs_w, const field::Field& T_field,
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const real_t density_quadratic_ratio,
                              const real_t delta_temperature, const real_t dt) {
-  check_field_matches("add_buoyancy_z_variable", rhs_w, sub);
-  check_field_matches("add_buoyancy_z_variable", T_field, sub);
-  check_field_matches("add_buoyancy_z_variable", inverse_density, sub);
+  check_field_matches("add_buoyancy_z_variable_property", rhs_w, sub);
+  check_field_matches("add_buoyancy_z_variable_property", T_field, sub);
+  check_field_matches("add_buoyancy_z_variable_property", inverse_density, sub);
   const int h = halo_width;
   const field::View rhs = rhs_w.view();
   const field::ConstView T = T_field.view();

@@ -44,7 +44,7 @@ struct PropertyModel {
     return m;
   }
 
-  // 부력 비선형 몫 a₂/a₁ (ρ(T) 2차항; physics/buoyancy add_buoyancy_z_variable)
+  // 부력 비선형 몫 a₂/a₁ (ρ(T) 2차항; physics/buoyancy add_buoyancy_z_variable_property)
   real_t density_quadratic_ratio() const {
     return (a[2] > -1e-14 && a[2] < 1e-14) ? real_t(0) : a[2] / a[1];
   }

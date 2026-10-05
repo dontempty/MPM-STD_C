@@ -309,10 +309,10 @@ int main(int argc, char** argv) {
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
-      physics::add_buoyancy_z_variable(rhs_W, T, properties.inverse_density, grid,
+      physics::add_buoyancy_z_variable_property(rhs_W, T, properties.inverse_density, grid,
                                        sub, density_quadratic_ratio,
                                        s.physics.delta_temperature, dt);
-      pressure::add_gradient_variable(rhs_U, rhs_V, rhs_W, P,
+      pressure::add_gradient_variable_property(rhs_U, rhs_V, rhs_W, P,
                                       properties.inverse_density, grid, sub, dt);
       momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,
                                W, properties.viscosity, properties.inverse_density,
@@ -325,10 +325,10 @@ int main(int argc, char** argv) {
       //    결정으로 캠페인 일관성 위해 보류, A/B 검증은 완료).
       rhs_dP.fill(0);
       pressure::add_divergence(rhs_dP, U, V, W, grid, sub, dt);
-      pressure::add_extra_term_variable(rhs_dP, pressure_predictor,
+      pressure::add_extra_term_variable_property(rhs_dP, pressure_predictor,
                                         properties.inverse_density, grid, sub);
       pressure::solve(pressure_solver, grid, sub, rhs_dP, dP);
-      pressure::correct_velocity_variable(U, V, W, dP, pressure_predictor,
+      pressure::correct_velocity_variable_property(U, V, W, dP, pressure_predictor,
                                           properties.inverse_density, grid, sub, dt);
       pressure::accumulate(P, dP);  // 증분: Pⁿ⁺¹ = Pⁿ + δp (ghost 포함)
       sync_velocity(U, V, W, sub);
