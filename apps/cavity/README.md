@@ -30,8 +30,9 @@ u_max(z), w_max(x), sec/step, T_center. 프로파일 `stats/<Ra>/cavity_stats_<s
 (u_max = 연직 중앙선 x=½ 최대 |u|, w_max = 수평 중앙선 z=½ 최대 |w|; 흐름 방향이 반대로
 잡히면 위치는 z↔1−z, x↔1−x 대칭. 전 항목은 `plot/benchmark.py <field dump>` 가 계산.)
 
-## 검증 결과 (2026-10-05, 128², `velocity_ghost = mirror`)
-1e3~1e5 **전 10항목 ≤ 0.7%** (대부분 ≤ 0.3%), 극값 위치 3자리 일치 — 상세 표는
+## 검증 결과 (2026-10-06, `velocity_ghost = mirror`; 1e3~1e5 128², 1e6 256²)
+1e3~1e5 **전 10항목 ≤ 0.7%** (대부분 ≤ 0.3%), 1e6 은 8항목 ≤ 0.6% + Nu_max −1.4%·Nu_min
+−1.0%(논문이 외삽에 가장 민감하다고 밝힌 항목), 극값 위치 전 Ra 3자리 일치 — 상세 표는
 `docs/Design/20261005_boundary_condition_framework.md` 단계 4b.
 `velocity_ghost = value`(기본, 1차 벽: 전단 V₁/dx = 마찰 절반)는 +1~8% 로 Ra 와 함께
 악화하며 256² 에서 오차 반감(1차 수렴). 벤치마크는 반드시 mirror 로.
