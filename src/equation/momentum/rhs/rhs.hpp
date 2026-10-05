@@ -1,24 +1,18 @@
 #pragma once
-// 운동량 방정식의 명시(explicit) RHS — 전부 += (계획 §5.5). 성분마다 rhs 필드를
-// 호출자가 선언하고 fill(0) 후 쌓는다. 압력 구배는 pressure::add_gradient 가,
-// 채널 평균 구배 강제는 physics::channel_forcing 이 **그 뒤에** 더한다.
+// 충실(참조 1:1) 운동량 stage-1 RHS — 물성 축으로 두 진입점을 제공한다:
+//   *_variable_property  : 물성 배열(μ̂, 1/ρ̂) 사용 — NOB (rbc_nob)
+//   *_constant_property  : 물성 배열 없음(UnitArray 접힘), 스칼라 ν — OB (channel·DHVC)
+// 수식 정본은 momentum_stencil.hpp 하나 (물성 접근자 템플릿) — 두 경로는
+// 같은 식의 인스턴스화라 "가변+1배열 = 상수" 비트 일치가 보장된다.
+// 가변 점성(NOB) 운동량의 stage-1 명시 우변 — rhs += dt·(R − M·qⁿ − 북키핑).
 //
-//   rhs_q += dt·ν·∇²qⁿ − dt·∇·(u qⁿ)
+// OB(rhs.hpp)와 역할은 같지만 식이 다르다: own 방향 확산 ×2, cross-stress
+// (전치 응력) 포함, 이중 체적가중 면 μ, 1/ρ̂ 면 보간. 압력·부력은 여기 없다 —
+// main 이 뒤에 += 로 조립한다 (pressure::add_gradient_variable, buoyancy).
+// 상수물성 극한(μ̂≡1, 1/ρ̂≡1)에서 cross-stress 는 비압축 연속으로 소거되는
+// 항이라 OB 와 같은 물리로 환원된다 (이산적으로는 참조 스킴 그대로).
 //
-// 수식은 MPM-STD_C OB 경로 1:1 (momentum_kernels_cpu.cpp 의 compute_mpmstd_rhs):
-// * 확산: 라플라시안 세 방향 각 1회 (델타형 — 음해 밴드와의 쌍은 solve.hpp 참조)
-// * 대류: 보존형 면 플럭스 (면 속도 × 2점 평균), 전체 계수 1
-// * W 는 z-면 변수라 z 라플라시안의 메트릭이 다르다 (제어체적 = dmz, 이웃 = dz):
-//     셀 중심(U,V):  ((q_{k+1}−q_k)/dmz_{k+1} − (q_k−q_{k−1})/dmz_k)/dz_k
-//     z-면   (W) :  ((q_{k+1}−q_k)/dz_k     − (q_k−q_{k−1})/dz_{k−1})/dmz_k
-//   그래서 함수가 둘이다 — 이름이 슬롯 해석을 말한다 (enum·플래그 없음).
-//
-// ⚠ 이 보존형 RHS + 이류형 음해 밴드/블록 커플링 조합은 증분 짝이 없어
-//   운동량이 dt 에 비례해 샌다 (CFR 과구동; 2026-10-04 조사). 원본 충실
-//   M-form 은 **가변물성 경로(rhs_variable + solve_variable_property, μ̂≡1)** 가 담당
-//   한다 — 채널은 그쪽을 쓴다. 이 OB 경로는 rbc(OB) 하위호환용.
-//
-// 호출 전 q 와 U, V, W 의 ghost 가 최신이어야 한다 (교환 + 벽 처리).
+// Cmu = √(Pr/Ra) (자유낙하 무차원의 점성 계수; 참조 Cmu).
 
 #include "common/types.hpp"
 #include "field/field.hpp"
@@ -27,18 +21,51 @@
 
 namespace mpmstd::equation::momentum {
 
-// 셀 중심 z 슬롯 성분 (U, V): rhs += dt·ν∇²q − dt·∇·(u q)
-void add_advection_diffusion_cell(field::Field& rhs, const field::Field& q,
-                                  const field::Field& U, const field::Field& V,
-                                  const field::Field& W, const grid::Grid& grid,
-                                  const parallel::Subdomain& sub, real_t viscosity,
-                                  real_t dt);
+void add_advection_diffusion_u_variable_property(field::Field& rhs, const field::Field& U,
+                                        const field::Field& V, const field::Field& W,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub, real_t Cmu,
+                                        real_t dt);
 
-// z-면 슬롯 성분 (W): 같은 식, z 메트릭만 면 기준
-void add_advection_diffusion_z_face(field::Field& rhs, const field::Field& w,
-                                    const field::Field& U, const field::Field& V,
-                                    const field::Field& W, const grid::Grid& grid,
-                                    const parallel::Subdomain& sub, real_t viscosity,
-                                    real_t dt);
+void add_advection_diffusion_v_variable_property(field::Field& rhs, const field::Field& U,
+                                        const field::Field& V, const field::Field& W,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub, real_t Cmu,
+                                        real_t dt);
+
+void add_advection_diffusion_w_variable_property(field::Field& rhs, const field::Field& U,
+                                        const field::Field& V, const field::Field& W,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub, real_t Cmu,
+                                        real_t dt);
+
+// ── 상수물성 판 (plan §18-1) — 물성 배열 없이 같은 수식 (viscosity = 스칼라 ν).
+void add_advection_diffusion_u_constant_property(field::Field& rhs,
+                                                 const field::Field& U,
+                                                 const field::Field& V,
+                                                 const field::Field& W,
+                                                 const grid::Grid& grid,
+                                                 const parallel::Subdomain& sub,
+                                                 real_t viscosity, real_t dt);
+void add_advection_diffusion_v_constant_property(field::Field& rhs,
+                                                 const field::Field& U,
+                                                 const field::Field& V,
+                                                 const field::Field& W,
+                                                 const grid::Grid& grid,
+                                                 const parallel::Subdomain& sub,
+                                                 real_t viscosity, real_t dt);
+void add_advection_diffusion_w_constant_property(field::Field& rhs,
+                                                 const field::Field& U,
+                                                 const field::Field& V,
+                                                 const field::Field& W,
+                                                 const grid::Grid& grid,
+                                                 const parallel::Subdomain& sub,
+                                                 real_t viscosity, real_t dt);
 
 }  // namespace mpmstd::equation::momentum

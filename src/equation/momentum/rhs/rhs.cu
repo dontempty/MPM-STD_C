@@ -2,77 +2,149 @@
 
 #include "common/cuda_check.hpp"
 #include "common/field_checks.hpp"
-#include "equation/transport_stencil.hpp"
+#include "equation/momentum/momentum_stencil.hpp"
 
-// GPU 백엔드 — rhs.cpp 의 쌍둥이. 수식은 momentum_stencil.hpp 하나를 같이 쓰고,
-// 여기는 커널 발사만 있다. GPU 빌드는 rhs.cpp 대신 이 파일을 담는다 (Makefile).
+// GPU 백엔드 — rhs.cpp 의 쌍둥이. 수식은 momentum_stencil.hpp.
 
 namespace mpmstd::equation::momentum {
 
 namespace {
 
-__global__ void add_kernel(const field::View rhs, const field::ConstView q,
-                           const field::ConstView U, const field::ConstView V,
-                           const field::ConstView W, const real_t* dx_x,
-                           const real_t* dmx_x, const real_t* dx_y,
-                           const real_t* dmx_y, const real_t* dx_z,
-                           const real_t* dmx_z, const int h, const int ni,
-                           const int nj, const int nk, const real_t nu_dt,
-                           const real_t dt, const bool w_is_z_face) {
+// component: 0=U, 1=V, 2=W (성분별 셀 함수 선택만 — 수식은 스텐실 한 곳)
+template <class MuArray, class RhoArray>
+__global__ void add_kernel(real_t* rhs, const real_t* U, const real_t* V,
+                           const real_t* W, const MuArray viscosity,
+                           const RhoArray inverse_density, const real_t* dx1,
+                           const real_t* dmx1, const real_t* dx2, const real_t* dmx2,
+                           const real_t* dx3, const real_t* dmx3, const int h,
+                           const int ni, const int nj, const int nk,
+                           const int ny_total, const int nz_total, const real_t Cmu,
+                           const real_t dt, const int component) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
   if (idx >= static_cast<long long>(ni) * nj * nk) return;
   const int k = h + static_cast<int>(idx % nk);
   const int j = h + static_cast<int>((idx / nk) % nj);
   const int i = h + static_cast<int>(idx / (static_cast<long long>(nk) * nj));
-  rhs(i, j, k) += equation::stencil::advection_diffusion(q, U, V, W, i, j, k, dx_x, dmx_x,
-                                               dx_y, dmx_y, dx_z, dmx_z, nu_dt, dt,
-                                               w_is_z_face);
+  real_t value;
+  if (component == 0)
+    value = stencil::rhs_u_cell(i, j, k, ny_total, nz_total, U, V, W,
+                                         viscosity, inverse_density, dx1, dmx1, dx2,
+                                         dmx2, dx3, dmx3, Cmu, dt);
+  else if (component == 1)
+    value = stencil::rhs_v_cell(i, j, k, ny_total, nz_total, U, V, W,
+                                         viscosity, inverse_density, dx1, dmx1, dx2,
+                                         dmx2, dx3, dmx3, Cmu, dt);
+  else
+    value = stencil::rhs_w_cell(i, j, k, ny_total, nz_total, U, V, W,
+                                         viscosity, inverse_density, dx1, dmx1, dx2,
+                                         dmx2, dx3, dmx3, Cmu, dt);
+  rhs[stencil::vindex(i, j, k, ny_total, nz_total)] += value;
 }
 
-void add_impl(const char* who, field::Field& rhs, const field::Field& q,
-              const field::Field& U, const field::Field& V, const field::Field& W,
-              const grid::Grid& grid, const parallel::Subdomain& sub,
-              const real_t viscosity, const real_t dt, const bool w_is_z_face) {
+void add_impl(const char* who, field::Field& rhs, const field::Field& U,
+              const field::Field& V, const field::Field& W,
+              const field::Field& viscosity, const field::Field& inverse_density,
+              const grid::Grid& grid, const parallel::Subdomain& sub, const real_t Cmu,
+              const real_t dt, const int component) {
   check_field_matches(who, rhs, sub);
-  check_field_matches(who, q, sub);
   check_field_matches(who, U, sub);
   check_field_matches(who, V, sub);
   check_field_matches(who, W, sub);
-
-  const int h = halo_width;
-  const int ni = sub.x().n_local;
-  const int nj = sub.y().n_local;
-  const int nk = sub.z().n_local;
+  check_field_matches(who, viscosity, sub);
+  check_field_matches(who, inverse_density, sub);
+  const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
   const long long n = static_cast<long long>(ni) * nj * nk;
   const int threads = 256;
   const int blocks = static_cast<int>((n + threads - 1) / threads);
   add_kernel<<<blocks, threads>>>(
-      rhs.view(), q.view(), U.view(), V.view(), W.view(),
-      grid.x.device_cell_width.data(), grid.x.device_center_distance.data(),
-      grid.y.device_cell_width.data(), grid.y.device_center_distance.data(),
-      grid.z.device_cell_width.data(), grid.z.device_center_distance.data(), h, ni,
-      nj, nk, viscosity * dt, dt, w_is_z_face);
+      rhs.data(), U.data(), V.data(), W.data(), viscosity.data(),
+      inverse_density.data(), grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_center_distance.data(), halo_width, ni, nj, nk,
+      sub.y().n_total, sub.z().n_total, Cmu, dt, component);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void add_impl_constant(const char* who, field::Field& rhs, const field::Field& U,
+                       const field::Field& V, const field::Field& W,
+                       const grid::Grid& grid, const parallel::Subdomain& sub,
+                       const real_t viscosity, const real_t dt, const int component) {
+  check_field_matches(who, rhs, sub);
+  check_field_matches(who, U, sub);
+  check_field_matches(who, V, sub);
+  check_field_matches(who, W, sub);
+  const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
+  const long long n = static_cast<long long>(ni) * nj * nk;
+  const int threads = 256;
+  const int blocks = static_cast<int>((n + threads - 1) / threads);
+  add_kernel<<<blocks, threads>>>(
+      rhs.data(), U.data(), V.data(), W.data(), equation::UnitArray{},
+      equation::UnitArray{}, grid.x.device_cell_width.data(),
+      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_center_distance.data(), halo_width, ni, nj, nk,
+      sub.y().n_total, sub.z().n_total, viscosity, dt, component);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 }  // namespace
 
-void add_advection_diffusion_cell(field::Field& rhs, const field::Field& q,
-                                  const field::Field& U, const field::Field& V,
-                                  const field::Field& W, const grid::Grid& grid,
-                                  const parallel::Subdomain& sub,
-                                  const real_t viscosity, const real_t dt) {
-  add_impl("add_advection_diffusion_cell", rhs, q, U, V, W, grid, sub, viscosity, dt,
-           /*w_is_z_face=*/false);
+void add_advection_diffusion_u_variable_property(field::Field& rhs, const field::Field& U,
+                                        const field::Field& V, const field::Field& W,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub,
+                                        const real_t Cmu, const real_t dt) {
+  add_impl("add_advection_diffusion_u_variable_property", rhs, U, V, W, viscosity,
+           inverse_density, grid, sub, Cmu, dt, 0);
 }
 
-void add_advection_diffusion_z_face(field::Field& rhs, const field::Field& w,
-                                    const field::Field& U, const field::Field& V,
-                                    const field::Field& W, const grid::Grid& grid,
-                                    const parallel::Subdomain& sub,
-                                    const real_t viscosity, const real_t dt) {
-  add_impl("add_advection_diffusion_z_face", rhs, w, U, V, W, grid, sub, viscosity, dt,
-           /*w_is_z_face=*/true);
+void add_advection_diffusion_v_variable_property(field::Field& rhs, const field::Field& U,
+                                        const field::Field& V, const field::Field& W,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub,
+                                        const real_t Cmu, const real_t dt) {
+  add_impl("add_advection_diffusion_v_variable_property", rhs, U, V, W, viscosity,
+           inverse_density, grid, sub, Cmu, dt, 1);
+}
+
+void add_advection_diffusion_w_variable_property(field::Field& rhs, const field::Field& U,
+                                        const field::Field& V, const field::Field& W,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub,
+                                        const real_t Cmu, const real_t dt) {
+  add_impl("add_advection_diffusion_w_variable_property", rhs, U, V, W, viscosity,
+           inverse_density, grid, sub, Cmu, dt, 2);
+}
+
+void add_advection_diffusion_u_constant_property(
+    field::Field& rhs, const field::Field& U, const field::Field& V,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  add_impl_constant("add_advection_diffusion_u_constant_property", rhs, U, V, W,
+                    grid, sub, viscosity, dt, 0);
+}
+
+void add_advection_diffusion_v_constant_property(
+    field::Field& rhs, const field::Field& U, const field::Field& V,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  add_impl_constant("add_advection_diffusion_v_constant_property", rhs, U, V, W,
+                    grid, sub, viscosity, dt, 1);
+}
+
+void add_advection_diffusion_w_constant_property(
+    field::Field& rhs, const field::Field& U, const field::Field& V,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  add_impl_constant("add_advection_diffusion_w_constant_property", rhs, U, V, W,
+                    grid, sub, viscosity, dt, 2);
 }
 
 }  // namespace mpmstd::equation::momentum

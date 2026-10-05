@@ -1,4 +1,4 @@
-#include "equation/scalar/rhs/rhs.hpp"
+#include "equation/scalar/legacy_ob/rhs.hpp"
 
 #include "common/field_checks.hpp"
 #include "equation/transport_stencil.hpp"

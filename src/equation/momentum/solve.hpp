@@ -1,5 +1,8 @@
 #pragma once
-// 운동량 방정식 solve — 성분별 델타형 3-스윕 ADI + 블록 커플링 (OB 상수 점성).
+// 운동량 방정식 solve — Solver(밴드·스테이지·증분) 공유 + 세 진입점:
+//   solve()                   : legacy OB 간이 스킴 (legacy_ob/solve.cpp — rbc 전용, 은퇴 예정)
+//   solve_variable_property() : 충실 가변물성 (solve.cpp)
+//   solve_constant_property() : 충실 상수물성, 물성 배열 없음 (solve.cpp)
 //
 //   각 성분 q ∈ {U, V, W}:
 //     (I − ½dtνLx − ¼dtCx)(I − ½dtνLy − ¼dtCy)(I − ½dtνLz − ¼dtCz) δq = rhs_q

@@ -1,55 +1,205 @@
 #include "equation/momentum/solve_kernels.hpp"
 
-#include <cstddef>
-
+#include "common/field_checks.hpp"
 #include "equation/momentum/momentum_stencil.hpp"
 
-// CPU 백엔드 — 커플링 수식은 momentum_stencil.hpp, 여기는 루프·산포만.
+// CPU 백엔드 — 수식은 momentum_stencil.hpp 한 곳 (GPU 쌍둥이
+// solve_kernels.cu).
 
 namespace mpmstd::equation::momentum {
 
-namespace {
-
-inline std::size_t at(const int i, const int j, const int k, const int ny_total,
-                      const int nz_total) {
-  return (static_cast<std::size_t>(i) * ny_total + j) * nz_total + k;
-}
-
-}  // namespace
-
-void block_couple_delta_v(field::Field& dV_field, const field::Field& dW_field,
-                          const field::Field& V_field, const grid::Grid& grid,
-                          const parallel::Subdomain& sub, const real_t dt) {
+void couple_rhs_v_from_delta_u_variable_property(field::Field& rhs_v,
+                                        const field::Field& delta_u,
+                                        const field::Field& V,
+                                        const field::Field& viscosity,
+                                        const field::Field& inverse_density,
+                                        const grid::Grid& grid,
+                                        const parallel::Subdomain& sub,
+                                        const real_t Cmu, const real_t dt) {
+  check_field_matches("couple_rhs_v_from_delta_u_variable_property", rhs_v, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_variable_property", delta_u, sub);
   const int h = halo_width;
-  const field::View dV = dV_field.view();
-  const field::ConstView dW = dW_field.view();
-  const field::ConstView V = V_field.view();
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* rhs = rhs_v.data();
   for (int i = h; i < sub.x().n_total - h; ++i)
     for (int j = h; j < sub.y().n_total - h; ++j)
       for (int k = h; k < sub.z().n_total - h; ++k)
-        dV(i, j, k) -= dt * stencil::couple_dv_from_dw(
-                                dW, V, i, j, k, grid.y.cell_width.data(),
-                                grid.y.center_distance.data(),
-                                grid.z.center_distance.data());
+        rhs[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_rhs_v_from_delta_u_cell(
+                i, j, k, ny_total, nz_total, delta_u.data(), V.data(),
+                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(),
+                grid.x.center_distance.data(), grid.y.cell_width.data(),
+                grid.y.center_distance.data(), Cmu, dt);
 }
 
-void block_couple_delta_u(field::Field& dU_field, const field::Field& dV_field,
-                          const field::Field& dW_field, const field::Field& U_field,
-                          const grid::Grid& grid, const parallel::Subdomain& sub,
-                          const real_t dt) {
+void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
+                                         const field::Field& delta_u,
+                                         const field::Field& delta_v,
+                                         const field::Field& W,
+                                         const field::Field& viscosity,
+                                         const field::Field& inverse_density,
+                                         const grid::Grid& grid,
+                                         const parallel::Subdomain& sub,
+                                         const real_t Cmu, const real_t dt) {
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", rhs_w, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", delta_u, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_variable_property", delta_v, sub);
   const int h = halo_width;
-  const field::View dU = dU_field.view();
-  const field::ConstView dV = dV_field.view();
-  const field::ConstView dW = dW_field.view();
-  const field::ConstView U = U_field.view();
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* rhs = rhs_w.data();
   for (int i = h; i < sub.x().n_total - h; ++i)
     for (int j = h; j < sub.y().n_total - h; ++j)
       for (int k = h; k < sub.z().n_total - h; ++k)
-        dU(i, j, k) -= dt * stencil::couple_du_from_dv_dw(
-                                dV, dW, U, i, j, k, grid.x.cell_width.data(),
-                                grid.x.center_distance.data(),
-                                grid.y.center_distance.data(),
-                                grid.z.center_distance.data());
+        rhs[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_rhs_w_from_delta_uv_cell(
+                i, j, k, ny_total, nz_total, delta_u.data(), delta_v.data(), W.data(),
+                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(),
+                grid.x.center_distance.data(), grid.y.cell_width.data(),
+                grid.y.center_distance.data(), grid.z.cell_width.data(),
+                grid.z.center_distance.data(), Cmu, dt);
+}
+
+void block_couple_delta_v_variable_property(field::Field& delta_v, const field::Field& delta_w,
+                                   const field::Field& V,
+                                   const field::Field& viscosity,
+                                   const field::Field& inverse_density,
+                                   const grid::Grid& grid,
+                                   const parallel::Subdomain& sub, const real_t Cmu,
+                                   const real_t dt) {
+  check_field_matches("block_couple_delta_v_variable_property", delta_v, sub);
+  check_field_matches("block_couple_delta_v_variable_property", delta_w, sub);
+  const int h = halo_width;
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* dv = delta_v.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        dv[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_delta_v_from_delta_w_cell(
+                i, j, k, ny_total, nz_total, delta_w.data(), V.data(),
+                viscosity.data(), inverse_density.data(), grid.y.cell_width.data(),
+                grid.y.center_distance.data(), grid.z.cell_width.data(),
+                grid.z.center_distance.data(), Cmu, dt);
+}
+
+void block_couple_delta_u_variable_property(field::Field& delta_u, const field::Field& delta_v,
+                                   const field::Field& delta_w, const field::Field& U,
+                                   const field::Field& viscosity,
+                                   const field::Field& inverse_density,
+                                   const grid::Grid& grid,
+                                   const parallel::Subdomain& sub, const real_t Cmu,
+                                   const real_t dt) {
+  check_field_matches("block_couple_delta_u_variable_property", delta_u, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_v, sub);
+  check_field_matches("block_couple_delta_u_variable_property", delta_w, sub);
+  const int h = halo_width;
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* du = delta_u.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        du[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_delta_u_from_delta_vw_cell(
+                i, j, k, ny_total, nz_total, delta_v.data(), delta_w.data(), U.data(),
+                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(),
+                grid.x.center_distance.data(), grid.y.cell_width.data(),
+                grid.y.center_distance.data(), grid.z.cell_width.data(),
+                grid.z.center_distance.data(), Cmu, dt);
+}
+
+// ── 상수물성 판 — 루프는 위와 동일, 물성 자리만 UnitArray (plan §18-1) ──────
+
+void couple_rhs_v_from_delta_u_constant_property(
+    field::Field& rhs_v, const field::Field& delta_u, const field::Field& V,
+    const grid::Grid& grid, const parallel::Subdomain& sub, const real_t viscosity,
+    const real_t dt) {
+  check_field_matches("couple_rhs_v_from_delta_u_constant_property", rhs_v, sub);
+  check_field_matches("couple_rhs_v_from_delta_u_constant_property", delta_u, sub);
+  const int h = halo_width;
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* rhs = rhs_v.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        rhs[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_rhs_v_from_delta_u_cell(
+                i, j, k, ny_total, nz_total, delta_u.data(), V.data(),
+                equation::UnitArray{}, equation::UnitArray{},
+                grid.x.cell_width.data(), grid.x.center_distance.data(),
+                grid.y.cell_width.data(), grid.y.center_distance.data(), viscosity,
+                dt);
+}
+
+void couple_rhs_w_from_delta_uv_constant_property(
+    field::Field& rhs_w, const field::Field& delta_u, const field::Field& delta_v,
+    const field::Field& W, const grid::Grid& grid, const parallel::Subdomain& sub,
+    const real_t viscosity, const real_t dt) {
+  check_field_matches("couple_rhs_w_from_delta_uv_constant_property", rhs_w, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_constant_property", delta_u, sub);
+  check_field_matches("couple_rhs_w_from_delta_uv_constant_property", delta_v, sub);
+  const int h = halo_width;
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* rhs = rhs_w.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        rhs[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_rhs_w_from_delta_uv_cell(
+                i, j, k, ny_total, nz_total, delta_u.data(), delta_v.data(), W.data(),
+                equation::UnitArray{}, equation::UnitArray{},
+                grid.x.cell_width.data(), grid.x.center_distance.data(),
+                grid.y.cell_width.data(), grid.y.center_distance.data(),
+                grid.z.cell_width.data(), grid.z.center_distance.data(), viscosity,
+                dt);
+}
+
+void block_couple_delta_v_constant_property(field::Field& delta_v,
+                                            const field::Field& delta_w,
+                                            const field::Field& V,
+                                            const grid::Grid& grid,
+                                            const parallel::Subdomain& sub,
+                                            const real_t viscosity, const real_t dt) {
+  check_field_matches("block_couple_delta_v_constant_property", delta_v, sub);
+  check_field_matches("block_couple_delta_v_constant_property", delta_w, sub);
+  const int h = halo_width;
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* dv = delta_v.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        dv[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_delta_v_from_delta_w_cell(
+                i, j, k, ny_total, nz_total, delta_w.data(), V.data(),
+                equation::UnitArray{}, equation::UnitArray{},
+                grid.y.cell_width.data(), grid.y.center_distance.data(),
+                grid.z.cell_width.data(), grid.z.center_distance.data(), viscosity,
+                dt);
+}
+
+void block_couple_delta_u_constant_property(field::Field& delta_u,
+                                            const field::Field& delta_v,
+                                            const field::Field& delta_w,
+                                            const field::Field& U,
+                                            const grid::Grid& grid,
+                                            const parallel::Subdomain& sub,
+                                            const real_t viscosity, const real_t dt) {
+  check_field_matches("block_couple_delta_u_constant_property", delta_u, sub);
+  check_field_matches("block_couple_delta_u_constant_property", delta_v, sub);
+  check_field_matches("block_couple_delta_u_constant_property", delta_w, sub);
+  const int h = halo_width;
+  const int ny_total = sub.y().n_total, nz_total = sub.z().n_total;
+  real_t* du = delta_u.data();
+  for (int i = h; i < sub.x().n_total - h; ++i)
+    for (int j = h; j < sub.y().n_total - h; ++j)
+      for (int k = h; k < sub.z().n_total - h; ++k)
+        du[stencil::vindex(i, j, k, ny_total, nz_total)] -=
+            stencil::couple_delta_u_from_delta_vw_cell(
+                i, j, k, ny_total, nz_total, delta_v.data(), delta_w.data(), U.data(),
+                equation::UnitArray{}, equation::UnitArray{},
+                grid.x.cell_width.data(), grid.x.center_distance.data(),
+                grid.y.cell_width.data(), grid.y.center_distance.data(),
+                grid.z.cell_width.data(), grid.z.center_distance.data(), viscosity,
+                dt);
 }
 
 }  // namespace mpmstd::equation::momentum

@@ -1,4 +1,4 @@
-#include "equation/scalar/rhs/rhs.hpp"
+#include "equation/scalar/legacy_ob/rhs.hpp"
 
 #include "common/cuda_check.hpp"
 #include "common/field_checks.hpp"

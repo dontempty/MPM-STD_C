@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "boundary/wall.hpp"
-#include "equation/momentum/rhs/rhs_variable.hpp"
+#include "equation/momentum/rhs/rhs.hpp"
 #include "equation/momentum/solve.hpp"
 #include "equation/pressure/rhs/rhs.hpp"
 #include "equation/pressure/solve.hpp"
