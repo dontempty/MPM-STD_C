@@ -38,26 +38,37 @@ __global__ void pin_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
 
 }  // namespace
 
-void fold_z_wall_value(real_t* A, real_t* B, real_t* C,
-                       const parallel::Subdomain& sub, const int nsys,
-                       const int nrow) {
+void fold_wall_value(real_t* A, real_t* B, real_t* C, const parallel::Subdomain& sub,
+                     const int axis, const int nsys, const int nrow) {
   (void)B;  // ZeroGhost: 비대각만 제거 — B 유지 (system.hpp ⚠)
-  if (sub.topology().z().minus_neighbor == MPI_PROC_NULL) {
+  if (sub.topology().axis(axis).minus_neighbor == MPI_PROC_NULL) {
     fold_bottom_kernel<<<blocks_for(nsys), kThreads>>>(A, nsys);
     MPMSTD_CUDA_CHECK_LAUNCH();
   }
-  if (sub.topology().z().plus_neighbor == MPI_PROC_NULL) {
+  if (sub.topology().axis(axis).plus_neighbor == MPI_PROC_NULL) {
     fold_top_kernel<<<blocks_for(nsys), kThreads>>>(
         C, nsys, static_cast<long long>(nrow - 1) * nsys);
     MPMSTD_CUDA_CHECK_LAUNCH();
   }
 }
 
-void pin_z_bottom_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,
-                                const parallel::Subdomain& sub, const int nsys) {
-  if (sub.topology().z().minus_neighbor != MPI_PROC_NULL) return;
+void pin_minus_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,
+                             const parallel::Subdomain& sub, const int axis,
+                             const int nsys) {
+  if (sub.topology().axis(axis).minus_neighbor != MPI_PROC_NULL) return;
   pin_kernel<<<blocks_for(nsys), kThreads>>>(A, B, C, D, nsys);
   MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void fold_z_wall_value(real_t* A, real_t* B, real_t* C,
+                       const parallel::Subdomain& sub, const int nsys,
+                       const int nrow) {
+  fold_wall_value(A, B, C, sub, 2, nsys, nrow);
+}
+
+void pin_z_bottom_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,
+                                const parallel::Subdomain& sub, const int nsys) {
+  pin_minus_wall_face_row(A, B, C, D, sub, 2, nsys);
 }
 
 }  // namespace mpmstd::equation::momentum

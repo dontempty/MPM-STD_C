@@ -17,11 +17,19 @@
 
 namespace mpmstd::equation::momentum {
 
-// δghost = 0 (ZeroGhost Dirichlet) 의 fold: 하단 행 A = 0, 상단 행 C = 0. B 불변.
+// ── 축 인자 판 (본체; 2026-10-05 BC 프레임워크). 밴드 레이아웃 [sys + row·nsys] 는
+// 어느 축 스윕이든 같으므로 "어느 축의 벽을 소유했나" 판정만 축을 탄다. ──
+// δghost = 0 (ZeroGhost Dirichlet) 의 fold: minus 벽 행 A = 0, plus 벽 행 C = 0. B 불변.
+void fold_wall_value(real_t* A, real_t* B, real_t* C, const parallel::Subdomain& sub,
+                     int axis, int nsys, int nrow);
+// 스윕 축 = own 축 성분(U 의 x 스윕 등) 전용: minus 벽면(내부 행 0)을 항등행으로
+// (그 벽 소유 랭크에서만).
+void pin_minus_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,
+                             const parallel::Subdomain& sub, int axis, int nsys);
+
+// ── z 전용 이름 (= axis 2; legacy_ob 가 쓴다) ──
 void fold_z_wall_value(real_t* A, real_t* B, real_t* C,
                        const parallel::Subdomain& sub, int nsys, int nrow);
-
-// W 전용: 하단 벽면(내부 행 0)을 항등행으로 (하단 벽 소유 랭크에서만).
 void pin_z_bottom_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,
                                 const parallel::Subdomain& sub, int nsys);
 

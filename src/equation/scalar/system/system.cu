@@ -26,8 +26,7 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* dx_z, const real_t* dmx_z, const int h,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
-                               const real_t dt, const bool wall_lower,
-                               const bool wall_upper) {
+                               const real_t dt, const stencil::WallMask wall) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
   if (idx >= static_cast<long long>(i1) * i2 * i3) return;
   const int kk = static_cast<int>(idx % i3);
@@ -38,7 +37,9 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
                                dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, true,
-                               wall_lower && kk == 0, wall_upper && kk == i3 - 1, A[p],
+                               wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
+                               wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
+                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, A[p],
                                B[p], C[p], D[p]);
 }
 
@@ -55,8 +56,7 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* dx_z, const real_t* dmx_z, const int h,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
-                               const real_t dt, const bool wall_lower,
-                               const bool wall_upper) {
+                               const real_t dt, const stencil::WallMask wall) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
   if (idx >= static_cast<long long>(i1) * i2 * i3) return;
   const int kk = static_cast<int>(idx % i3);
@@ -67,7 +67,9 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
                                dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, false,
-                               wall_lower && kk == 0, wall_upper && kk == i3 - 1, A[p],
+                               wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
+                               wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
+                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, A[p],
                                B[p], C[p], D[p]);
 }
 
@@ -84,8 +86,7 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* dx_z, const real_t* dmx_z, const int h,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
-                               const real_t dt, const bool wall_lower,
-                               const bool wall_upper) {
+                               const real_t dt, const stencil::WallMask wall) {
   const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
   if (idx >= static_cast<long long>(i1) * i2 * i3) return;
   const int jj = static_cast<int>(idx % i2);
@@ -96,8 +97,19 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
                                dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, false,
-                               wall_lower && kk == 0, wall_upper && kk == i3 - 1, A[p],
+                               wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
+                               wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
+                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, A[p],
                                B[p], C[p], D[p]);
+}
+
+stencil::WallMask wall_mask(const parallel::Subdomain& sub) {
+  stencil::WallMask m;
+  for (int a = 0; a < 3; ++a) {
+    m.lo[a] = sub.topology().axis(a).minus_neighbor == MPI_PROC_NULL;
+    m.hi[a] = sub.topology().axis(a).plus_neighbor == MPI_PROC_NULL;
+  }
+  return m;
 }
 
 struct LaunchShape {
@@ -122,8 +134,7 @@ LaunchShape launch_shape(const parallel::Subdomain& sub) {
       grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
       halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
       sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
-      sub.topology().z().minus_neighbor == MPI_PROC_NULL,                              \
-      sub.topology().z().plus_neighbor == MPI_PROC_NULL
+      wall_mask(sub)
 
 void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* T, const real_t* U, const real_t* V,
@@ -172,8 +183,7 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
       grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
       halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
       sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
-      sub.topology().z().minus_neighbor == MPI_PROC_NULL,                              \
-      sub.topology().z().plus_neighbor == MPI_PROC_NULL
+      wall_mask(sub)
 
 void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                       const real_t* T, const real_t* U,

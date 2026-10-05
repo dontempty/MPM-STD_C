@@ -91,3 +91,34 @@ make_boundary_condition(axis_kind_text[3], override_text[5][3][2])  // 기본값
 
 **교훈** — sbatch `-o`·입력 ini 를 `/tmp` 스크래치에 두면 계산 노드에서 안 보여 잡이
 로그 없이 즉사(기존 메모리 교훈 재확인). 전부 NFS(`tmp_const_gate/`)로.
+
+### 단계 2 — x(·y) 벽 ghost + ADI 스윕 벽 닫기 축 매개변수화 ✅ (2026-10-05)
+
+**바꾼 것** (기존 앱 코드 무수정 — 전부 라이브러리 안)
+- `parallel/topology`: `AxisComm::periodic` (축 전체 주기 여부 — 내부 랭크는 이웃만
+  보고 알 수 없어 필요) + `Topology::axis(a)` / `Subdomain::axis(a)` 인덱스 접근자.
+- `boundary/wall.{hpp,cpp,cu}`: 본체를 **(axis, side) 한 벽면 단위**로 재작성
+  `fill_wall_mirror/value/zero_gradient(f, sub, axis, side, …)`, `zero_wall_faces` —
+  z 전용 이름은 axis=2 를 minus→plus 순으로 두 번 부르는 래퍼 (원래 순서와 동일).
+  GPU 커널은 평면 (p,q) 디코드 + 축 슬롯으로 일반화.
+- `boundary/apply.{hpp,cpp}` 신설: BoundaryCondition 테이블 → 함수 선택
+  (속도 법선 성분 = 벽면 0 / 접선 Dirichlet = value, Neumann = zero_gradient;
+  T Dirichlet = mirror, Neumann = zero_gradient; P = zero_gradient).
+- `momentum/wall_rows`: `fold_wall_value(…, axis, …)`, `pin_minus_wall_face_row(…, axis, …)`
+  본체 + z 이름 래퍼(legacy_ob 용). `momentum/solve.cpp`: 스윕마다
+  `solve_sweep(plan, axis, own_axis)` — 주기면 순환 TDMA, 벽이면 fold(+own 축이면
+  pin)+비주기 TDMA; δ 증분 ghost 닫기도 3축 루프(`close_delta_wall_ghosts`).
+- `scalar/scalar_stencil.hpp`: `build_cell` 벽 플래그 2→6개(x/y/z lo/hi), 첫 스윕(x)
+  축이 벽이면 그 행 δ 비대각 제거(나중 스윕의 full_offdiag 와 같은 닫기);
+  `system.{cpp,cu}` 는 `WallMask`(3축 소유)로 플래그 공급. `scalar/solve.cpp` 도
+  축별 cyclic/비주기 선택 (벽 행 닫기는 마스크가 하므로 fold 없음).
+
+**검증 (cpu04 np=2 `gate_bc2.sh`; GPU 는 gpu02 에서 4앱 컴파일만)**
+| 항목 | 결과 |
+|---|---|
+| 채널 스모크 md5 | `2336c4a5…` **비트 일치** |
+| rbc 스모크 | `Nu = 30.6631, theta_c = -0.00361` 동일 |
+| rbc_nob 스모크 (가변물성 스칼라 — 마스크 확장 영향권) | `theta_c = 0.01503, Nu = 46.0362` 동일 |
+| GPU 빌드 (`build_gpu_bc/`, rbc·rbc_nob·dhvc·channel) | 성공 (경고 3건은 기존) |
+
+x 벽 자체의 물리 검증은 압력 DCT(단계 3) 없이는 불가 → 단계 4 cavity 에서 함께.

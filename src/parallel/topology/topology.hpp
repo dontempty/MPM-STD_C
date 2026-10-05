@@ -1,6 +1,8 @@
 #pragma once
 // 3D Cartesian 프로세스 격자 + 축별 1D 서브커뮤니케이터.
-// 축은 추상화하지 않는다 — topo.x() / topo.y() / topo.z() 로 이름으로 집는다.
+// 축은 이름으로 집는다 — topo.x() / topo.y() / topo.z(). BC 프레임워크(2026-10-05,
+// docs/Design/20261005_boundary_condition_framework.md)부터는 "축이 매개변수인"
+// 코드(ghost 채움·밴드 fold·스윕 선택)를 위해 axis(0|1|2) 인덱스 접근자도 둔다.
 // (parallel/ 의 하위 폴더 topology/·subdomain/ 는 정리용 구분일 뿐, namespace 는
 //  전부 mpmstd::parallel 이다 — 계획 §4.1)
 
@@ -20,6 +22,8 @@ struct AxisComm {
   int nprocs = 0;                      // 이 축의 블록 수
   int minus_neighbor = MPI_PROC_NULL;  // − 쪽 이웃 랭크 (벽이면 MPI_PROC_NULL)
   int plus_neighbor = MPI_PROC_NULL;   // + 쪽 이웃 랭크
+  bool periodic = false;               // 축 전체가 주기인가 (TDMA cyclic/벽 선택 —
+                                       // 내부 랭크는 이웃만 보고는 알 수 없다)
 };
 
 class Topology {
@@ -36,6 +40,7 @@ class Topology {
   const AxisComm& x() const { return x_; }
   const AxisComm& y() const { return y_; }
   const AxisComm& z() const { return z_; }
+  const AxisComm& axis(const int a) const { return a == 0 ? x_ : (a == 1 ? y_ : z_); }
 
  private:
   MPI_Comm cart_comm_ = MPI_COMM_NULL;

@@ -14,16 +14,27 @@
 //   첫 스윕  : 세 축 모두 → D = dt·(R − ΣM·θⁿ + d(1/ρ̂Ĉp)·θ·Σdiv), 대각 보정 포함
 //   나중 스윕: 스윕 축 밴드만, D = 이전 스윕의 증분 (전치 통과)
 //
-// 벽(z) 마스크 2종 — 참조의 jem/jep 닫기를 그대로 재현한다:
+// 벽 마스크 2종 — 참조의 jem/jep 닫기(z 벽)를 그대로 재현하고, 2026-10-05 BC
+// 프레임워크부터는 **세 축 모두**에 같은 마스크를 건다 (x/y 벽 = cavity):
 //   wall_lo/hi      : 벽 면의 dκ̂ 를 0 으로 (밴드에서만; R 는 마스크 전 값 사용)
 //   full_offdiag    : 나중 스윕의 벽 행 비대각 전체 제거 (δθ_wall = 0 닫기 —
 //                     OB 모듈의 fold_z_wall_mirror 대신 참조는 이 마스크가 담당)
+// 첫 스윕(x)에서 x 벽은 full_offdiag 가 아니라 dκ̂ 마스크만 — z 벽의 첫 스윕 처리와
+// 같은 규칙(스윕 축의 벽 행 닫기는 그 축이 "나중 스윕"일 때 full_offdiag; 첫 스윕
+// 축이 벽이면 δ 밴드의 비대각을 별도로 끈다 — 아래 build_cell 의 x 분기).
+// 주기 축은 플래그가 전부 false 라 기존 결과와 비트 동일.
 
 #include "common/hd.hpp"
 #include "common/types.hpp"
 #include "equation/property_access.hpp"
 
 namespace mpmstd::equation::scalar::stencil {
+
+// 세 축의 벽 소유 플래그 (system.cpp/.cu 가 Topology 에서 채워 build 에 넘긴다;
+// 주기 축은 false). POD — GPU 커널에 값으로 넘어간다.
+struct WallMask {
+  bool lo[3], hi[3];
+};
 
 MPMSTD_HD inline long long cell_index(const int i, const int j, const int k,
                                           const int ny_total, const int nz_total) {
@@ -98,6 +109,7 @@ MPMSTD_HD inline void build_cell(
     const DHeatCapArray inverse_heat_capacity_derivative, const real_t* dx_x,
     const real_t* dmx_x, const real_t* dx_y, const real_t* dmx_y, const real_t* dx_z,
     const real_t* dmx_z, const real_t Ct, const real_t dt, const bool is_first_sweep,
+    const bool x_wall_lo, const bool x_wall_hi, const bool y_wall_lo, const bool y_wall_hi,
     const bool z_wall_lo, const bool z_wall_hi, real_t& am, real_t& ac, real_t& ap,
     real_t& D_value) {
   const long long c = cell_index(i, j, k, ny_total, nz_total);
@@ -119,11 +131,11 @@ MPMSTD_HD inline void build_cell(
     real_t eAMz, eACz, eAPz, dvz, cvz, vsz;
     axis_band(T, conductivity, conductivity_derivative, U, xm, c, xp,
                        dx_x[i - 1], dx_x[i], dx_x[i + 1], dmx_x[i], dmx_x[i + 1],
-                       half_ct_ihc, false, false, false, true, eAMx, eACx, eAPx, dvx,
+                       half_ct_ihc, x_wall_lo, x_wall_hi, false, true, eAMx, eACx, eAPx, dvx,
                        cvx, vsx);
     axis_band(T, conductivity, conductivity_derivative, V, ym, c, yp,
                        dx_y[j - 1], dx_y[j], dx_y[j + 1], dmx_y[j], dmx_y[j + 1],
-                       half_ct_ihc, false, false, false, true, eAMy, eACy, eAPy, dvy,
+                       half_ct_ihc, y_wall_lo, y_wall_hi, false, true, eAMy, eACy, eAPy, dvy,
                        cvy, vsy);
     axis_band(T, conductivity, conductivity_derivative, W, zm, c, zp,
                        dx_z[k - 1], dx_z[k], dx_z[k + 1], dmx_z[k], dmx_z[k + 1],
@@ -141,6 +153,12 @@ MPMSTD_HD inline void build_cell(
     ac = eAC_d * dt - half_ct_dihc * div_sum * dt + real_t(1);
     ap = eAP_d * dt;
     am = eAM_d * dt;
+    // 첫 스윕 축이 벽이면(x 벽 — cavity) 그 벽 행의 δ 비대각을 끈다 (δθ_wall = 0;
+    // 나중 스윕의 full_offdiag 와 같은 닫기. M·θⁿ 의 R 쪽은 마스크 전 값 그대로).
+    if (sweep_axis == 0) {
+      if (x_wall_lo) am = 0;
+      if (x_wall_hi) ap = 0;
+    }
     const real_t MxTn = eAPx * T[xp] + eACx * T[c] + eAMx * T[xm];
     const real_t MyTn = eAPy * T[yp] + eACy * T[c] + eAMy * T[ym];
     const real_t MzTn = eAPz * T[zp] + eACz * T[c] + eAMz * T[zm];
@@ -152,15 +170,15 @@ MPMSTD_HD inline void build_cell(
       const long long xp = cell_index(i + 1, j, k, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, U, xm, c, xp,
                          dx_x[i - 1], dx_x[i], dx_x[i + 1], dmx_x[i], dmx_x[i + 1],
-                         half_ct_ihc, false, false, false, false, eAM_d, eAC_d, eAP_d,
-                         dv, cv, vs);
+                         half_ct_ihc, x_wall_lo, x_wall_hi, /*full_offdiag=*/true,
+                         false, eAM_d, eAC_d, eAP_d, dv, cv, vs);
     } else if (sweep_axis == 1) {
       const long long ym = cell_index(i, j - 1, k, ny_total, nz_total);
       const long long yp = cell_index(i, j + 1, k, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, V, ym, c, yp,
                          dx_y[j - 1], dx_y[j], dx_y[j + 1], dmx_y[j], dmx_y[j + 1],
-                         half_ct_ihc, false, false, false, false, eAM_d, eAC_d, eAP_d,
-                         dv, cv, vs);
+                         half_ct_ihc, y_wall_lo, y_wall_hi, /*full_offdiag=*/true,
+                         false, eAM_d, eAC_d, eAP_d, dv, cv, vs);
     } else {
       const long long zm = cell_index(i, j, k - 1, ny_total, nz_total);
       const long long zp = cell_index(i, j, k + 1, ny_total, nz_total);

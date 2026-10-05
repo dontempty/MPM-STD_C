@@ -13,13 +13,16 @@ namespace mpmstd::equation::scalar {
 
 namespace {
 
-struct WallOwnership {
-  bool lower, upper;
-};
+// 세 축의 벽 소유 (주기 축은 이웃이 있으므로 false — 기존 z 전용 결과와 비트 동일)
+using stencil::WallMask;
 
-WallOwnership z_wall_ownership(const parallel::Subdomain& sub) {
-  return {sub.topology().z().minus_neighbor == MPI_PROC_NULL,
-          sub.topology().z().plus_neighbor == MPI_PROC_NULL};
+WallMask wall_mask(const parallel::Subdomain& sub) {
+  WallMask m;
+  for (int a = 0; a < 3; ++a) {
+    m.lo[a] = sub.topology().axis(a).minus_neighbor == MPI_PROC_NULL;
+    m.hi[a] = sub.topology().axis(a).plus_neighbor == MPI_PROC_NULL;
+  }
+  return m;
 }
 
 }  // namespace
@@ -33,7 +36,7 @@ void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i2 * i3;
-  const WallOwnership wall = z_wall_ownership(sub);
+  const WallMask wall = wall_mask(sub);
   for (int i = h; i < h + i1; ++i)
     for (int j = h; j < h + i2; ++j)
       for (int k = h; k < h + i3; ++k) {
@@ -47,7 +50,9 @@ void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
             grid.x.cell_width.data(), grid.x.center_distance.data(),
             grid.y.cell_width.data(), grid.y.center_distance.data(),
             grid.z.cell_width.data(), grid.z.center_distance.data(), Ct, dt,
-            /*is_first_sweep=*/true, wall.lower && k == h, wall.upper && k == h + i3 - 1,
+            /*is_first_sweep=*/true, wall.lo[0] && i == h, wall.hi[0] && i == h + i1 - 1,
+            wall.lo[1] && j == h, wall.hi[1] && j == h + i2 - 1,
+            wall.lo[2] && k == h, wall.hi[2] && k == h + i3 - 1,
             A[p], B[p], C[p], D[p]);
       }
 }
@@ -61,7 +66,7 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i3;
-  const WallOwnership wall = z_wall_ownership(sub);
+  const WallMask wall = wall_mask(sub);
   for (int j = h; j < h + i2; ++j)
     for (int i = h; i < h + i1; ++i)
       for (int k = h; k < h + i3; ++k) {
@@ -75,7 +80,9 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
             grid.x.cell_width.data(), grid.x.center_distance.data(),
             grid.y.cell_width.data(), grid.y.center_distance.data(),
             grid.z.cell_width.data(), grid.z.center_distance.data(), Ct, dt,
-            /*is_first_sweep=*/false, wall.lower && k == h, wall.upper && k == h + i3 - 1,
+            /*is_first_sweep=*/false, wall.lo[0] && i == h, wall.hi[0] && i == h + i1 - 1,
+            wall.lo[1] && j == h, wall.hi[1] && j == h + i2 - 1,
+            wall.lo[2] && k == h, wall.hi[2] && k == h + i3 - 1,
             A[p], B[p], C[p], D[p]);
       }
 }
@@ -89,7 +96,7 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i2;
-  const WallOwnership wall = z_wall_ownership(sub);
+  const WallMask wall = wall_mask(sub);
   for (int k = h; k < h + i3; ++k)
     for (int i = h; i < h + i1; ++i)
       for (int j = h; j < h + i2; ++j) {
@@ -103,7 +110,9 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
             grid.x.cell_width.data(), grid.x.center_distance.data(),
             grid.y.cell_width.data(), grid.y.center_distance.data(),
             grid.z.cell_width.data(), grid.z.center_distance.data(), Ct, dt,
-            /*is_first_sweep=*/false, wall.lower && k == h, wall.upper && k == h + i3 - 1,
+            /*is_first_sweep=*/false, wall.lo[0] && i == h, wall.hi[0] && i == h + i1 - 1,
+            wall.lo[1] && j == h, wall.hi[1] && j == h + i2 - 1,
+            wall.lo[2] && k == h, wall.hi[2] && k == h + i3 - 1,
             A[p], B[p], C[p], D[p]);
       }
 }
@@ -118,7 +127,7 @@ void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i2 * i3;
-  const WallOwnership wall = z_wall_ownership(sub);
+  const WallMask wall = wall_mask(sub);
   for (int i = h; i < h + i1; ++i)
     for (int j = h; j < h + i2; ++j)
       for (int k = h; k < h + i3; ++k) {
@@ -131,7 +140,9 @@ void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
             grid.x.cell_width.data(), grid.x.center_distance.data(),
             grid.y.cell_width.data(), grid.y.center_distance.data(),
             grid.z.cell_width.data(), grid.z.center_distance.data(), Ct, dt,
-            /*is_first_sweep=*/true, wall.lower && k == h, wall.upper && k == h + i3 - 1,
+            /*is_first_sweep=*/true, wall.lo[0] && i == h, wall.hi[0] && i == h + i1 - 1,
+            wall.lo[1] && j == h, wall.hi[1] && j == h + i2 - 1,
+            wall.lo[2] && k == h, wall.hi[2] && k == h + i3 - 1,
             A[p], B[p], C[p], D[p]);
       }
 }
@@ -144,7 +155,7 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i3;
-  const WallOwnership wall = z_wall_ownership(sub);
+  const WallMask wall = wall_mask(sub);
   for (int j = h; j < h + i2; ++j)
     for (int i = h; i < h + i1; ++i)
       for (int k = h; k < h + i3; ++k) {
@@ -157,7 +168,9 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
             grid.x.cell_width.data(), grid.x.center_distance.data(),
             grid.y.cell_width.data(), grid.y.center_distance.data(),
             grid.z.cell_width.data(), grid.z.center_distance.data(), Ct, dt,
-            /*is_first_sweep=*/false, wall.lower && k == h, wall.upper && k == h + i3 - 1,
+            /*is_first_sweep=*/false, wall.lo[0] && i == h, wall.hi[0] && i == h + i1 - 1,
+            wall.lo[1] && j == h, wall.hi[1] && j == h + i2 - 1,
+            wall.lo[2] && k == h, wall.hi[2] && k == h + i3 - 1,
             A[p], B[p], C[p], D[p]);
       }
 }
@@ -170,7 +183,7 @@ void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i2;
-  const WallOwnership wall = z_wall_ownership(sub);
+  const WallMask wall = wall_mask(sub);
   for (int k = h; k < h + i3; ++k)
     for (int i = h; i < h + i1; ++i)
       for (int j = h; j < h + i2; ++j) {
@@ -183,7 +196,9 @@ void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
             grid.x.cell_width.data(), grid.x.center_distance.data(),
             grid.y.cell_width.data(), grid.y.center_distance.data(),
             grid.z.cell_width.data(), grid.z.center_distance.data(), Ct, dt,
-            /*is_first_sweep=*/false, wall.lower && k == h, wall.upper && k == h + i3 - 1,
+            /*is_first_sweep=*/false, wall.lo[0] && i == h, wall.hi[0] && i == h + i1 - 1,
+            wall.lo[1] && j == h, wall.hi[1] && j == h + i2 - 1,
+            wall.lo[2] && k == h, wall.hi[2] && k == h + i3 - 1,
             A[p], B[p], C[p], D[p]);
       }
 }

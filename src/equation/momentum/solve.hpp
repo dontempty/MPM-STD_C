@@ -16,8 +16,9 @@
 //   재층류화의 원인이었음). 벽수직 δW 는 사후 보정을 받지 않는다.
 // * rhs_u/v/w 는 호출자가 조립해 const 로 (운동량 명시항 → 압력 구배
 //   pressure::add_gradient_constant_property → 채널 강제 physics::channel_forcing 순).
-// * 경계 가정: x·y 주기(순환 TDMA), z 벽 — U·V 는 fold_z_wall_value,
-//   W 는 상단 fold + 하단 벽면 항등행 (system/system.hpp 의 ⚠ 참조).
+// * 경계: 축마다 Topology 의 periodic 플래그로 고른다 (2026-10-05 BC 프레임워크) —
+//   주기 축 = 순환 TDMA, 벽 축 = 접선 성분 fold(δghost=0) / 법선 성분 fold +
+//   minus 벽면 항등행 (system/system.hpp 의 ⚠ 참조). 기존 앱은 x·y 주기, z 벽.
 // * 수식 출처: MPM-STD_C momentum OB 경로 1:1 (ref_03 §1.5).
 //
 // 사용 (매 스텝):

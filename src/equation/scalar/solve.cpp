@@ -13,6 +13,18 @@
 
 namespace mpmstd::equation::scalar {
 
+namespace {
+// 주기 축 → 순환 TDMA, 벽 축 → 비주기 TDMA (벽 행 닫기는 조립 마스크가 이미 했다)
+void solve_sweep(linear_solver::TdmaPlan& plan, real_t* A, real_t* B, real_t* C,
+                 real_t* D, const parallel::Subdomain& sub, const int axis,
+                 const int nsys, const int nrow) {
+  if (sub.topology().axis(axis).periodic)
+    linear_solver::solve_cyclic_many(plan, A, B, C, D, nsys, nrow);
+  else
+    linear_solver::solve_many(plan, A, B, C, D, nsys, nrow);
+}
+}  // namespace
+
 void solve_variable_property(Solver& solver, const grid::Grid& grid,
                     const parallel::Subdomain& sub, field::Field& T,
                     const field::Field& U, const field::Field& V,
@@ -35,22 +47,22 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   real_t* C = solver.band_c.data();
   real_t* D = solver.band_d.data();
 
-  // x 스윕 (주기, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
+  // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
   build_x_system_variable_property(A, B, C, D, T.data(), U.data(), V.data(), W.data(),
                           properties, grid, sub, Ct, dt);
-  linear_solver::solve_cyclic_many(solver.plan_x, A, B, C, D, i2 * i3, i1);
+  solve_sweep(solver.plan_x, A, B, C, D, sub, 0, i2 * i3, i1);
   equation::scatter_x(solver.stage_first.data(), D, sub);
 
-  // y 스윕 (주기): D = x 증분 통과
+  // y 스윕: D = x 증분 통과
   build_y_system_variable_property(A, B, C, D, solver.stage_first.data(), T.data(), U.data(),
                           V.data(), W.data(), properties, grid, sub, Ct, dt);
-  linear_solver::solve_cyclic_many(solver.plan_y, A, B, C, D, i1 * i3, i2);
+  solve_sweep(solver.plan_y, A, B, C, D, sub, 1, i1 * i3, i2);
   equation::scatter_y(solver.stage_second.data(), D, sub);
 
-  // z 스윕 (벽): 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
+  // z 스윕: 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
   build_z_system_variable_property(A, B, C, D, solver.stage_second.data(), T.data(), U.data(),
                           V.data(), W.data(), properties, grid, sub, Ct, dt);
-  linear_solver::solve_many(solver.plan_z, A, B, C, D, i1 * i2, i3);
+  solve_sweep(solver.plan_z, A, B, C, D, sub, 2, i1 * i2, i3);
   equation::scatter_z(solver.stage_first.data(), D, sub);
 
   // θⁿ⁺¹ = θⁿ + δθ (내부만; ghost 재동기화는 호출자 몫)
@@ -78,22 +90,22 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
   real_t* C = solver.band_c.data();
   real_t* D = solver.band_d.data();
 
-  // x 스윕 (주기, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
+  // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
   build_x_system_constant_property(A, B, C, D, T.data(), U.data(), V.data(),
                                    W.data(), grid, sub, Ct, dt);
-  linear_solver::solve_cyclic_many(solver.plan_x, A, B, C, D, i2 * i3, i1);
+  solve_sweep(solver.plan_x, A, B, C, D, sub, 0, i2 * i3, i1);
   equation::scatter_x(solver.stage_first.data(), D, sub);
 
-  // y 스윕 (주기): D = x 증분 통과
+  // y 스윕: D = x 증분 통과
   build_y_system_constant_property(A, B, C, D, solver.stage_first.data(), T.data(),
                                    U.data(), V.data(), W.data(), grid, sub, Ct, dt);
-  linear_solver::solve_cyclic_many(solver.plan_y, A, B, C, D, i1 * i3, i2);
+  solve_sweep(solver.plan_y, A, B, C, D, sub, 1, i1 * i3, i2);
   equation::scatter_y(solver.stage_second.data(), D, sub);
 
-  // z 스윕 (벽): 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
+  // z 스윕: 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
   build_z_system_constant_property(A, B, C, D, solver.stage_second.data(), T.data(),
                                    U.data(), V.data(), W.data(), grid, sub, Ct, dt);
-  linear_solver::solve_many(solver.plan_z, A, B, C, D, i1 * i2, i3);
+  solve_sweep(solver.plan_z, A, B, C, D, sub, 2, i1 * i2, i3);
   equation::scatter_z(solver.stage_first.data(), D, sub);
 
   // θⁿ⁺¹ = θⁿ + δθ (내부만; ghost 재동기화는 호출자 몫)

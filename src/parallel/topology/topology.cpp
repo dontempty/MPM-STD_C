@@ -45,6 +45,9 @@ Topology::Topology(const MpiContext& mpi, int npx, int npy, int npz,
   x_ = make_axis_comm(cart_comm_, 0);
   y_ = make_axis_comm(cart_comm_, 1);
   z_ = make_axis_comm(cart_comm_, 2);
+  x_.periodic = periodic_x;
+  y_.periodic = periodic_y;
+  z_.periodic = periodic_z;
 }
 
 Topology::~Topology() {

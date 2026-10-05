@@ -59,6 +59,7 @@ class Subdomain {
   const AxisSize& x() const { return x_; }
   const AxisSize& y() const { return y_; }
   const AxisSize& z() const { return z_; }
+  const AxisSize& axis(const int a) const { return a == 0 ? x_ : (a == 1 ? y_ : z_); }
 
   // 배열 한 개의 총 원소 수 = x.n_total * y.n_total * z.n_total
   std::size_t n_elements() const;
