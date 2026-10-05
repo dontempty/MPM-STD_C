@@ -1,0 +1,62 @@
+# settings loaded from input_cavity_1e5_256.ini  (1 ranks)
+[mesh]
+nx = 256
+ny = 1
+nz = 256
+
+[domain]
+lx = 1
+ly = 0.0078125
+lz = 1
+
+[stretch]
+uniform_z = true
+
+[process]
+npx = 1
+npy = 1
+npz = 1
+
+[physics]
+rayleigh = 100000
+prandtl = 0.71
+delta_temperature = 0
+gravity_axis = 2
+
+[initial]
+perturb = 0
+restart_from = ""
+warmstart_from = ""
+
+[boundary]
+x = wall
+y = periodic
+z = wall
+t_x_minus = 0.5
+t_x_plus = -0.5
+t_z_minus = adiabatic
+t_z_plus = adiabatic
+
+[time]
+end_time = 300
+dt_max = 0.01
+max_cfl = 0.5
+max_step = 0
+
+[output]
+stats_dir = "stats/1e5_256"
+monitor_interval = 1000
+stats_start_time = 0
+stats_interval = 20
+checkpoint_interval = 50000
+checkpoint_dir = "checkpoints/1e5_256"
+# boundary condition table:
+  x: wall  u-=dirichlet(0)  u+=dirichlet(0)  v-=dirichlet(0)  v+=dirichlet(0)  w-=dirichlet(0)  w+=dirichlet(0)  p-=neumann  p+=neumann  t-=dirichlet(0.5)  t+=dirichlet(-0.5)
+  y: periodic
+  z: wall  u-=dirichlet(0)  u+=dirichlet(0)  v-=dirichlet(0)  v+=dirichlet(0)  w-=dirichlet(0)  w+=dirichlet(0)  p-=neumann  p+=neumann  t-=neumann  t+=neumann
+# cavity OB: Ra=1e+05 Pr=0.71 -> nu=2.664583e-03 alpha=3.752933e-03 | 256x1x256
+# step      time        dt     max|div|   Nu_hot   Nu_cold   u_max(z)          w_max(x)        sec/step   T_center
+      1     0.010   0.01000   1.47e-13   1.0000   1.0000    -0.885 (0.0020)     0.850 (0.0176)   0.0001 -1.95312e-03
+#   max|U| 3.321e-03  max|V| 0.000e+00  max|W| 3.192e-03
+   1000     5.092   0.00609   1.42e-14   5.5644   5.5644   -53.418 (0.1543)    76.819 (0.0605)   0.0613  1.70080e-03
+#   max|U| 2.266e-01  max|V| 0.000e+00  max|W| 3.003e-01

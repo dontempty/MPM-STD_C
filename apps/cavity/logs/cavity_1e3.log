@@ -1,0 +1,81 @@
+# settings loaded from input_cavity_1e3.ini  (1 ranks)
+[mesh]
+nx = 128
+ny = 1
+nz = 128
+
+[domain]
+lx = 1
+ly = 0.0078125
+lz = 1
+
+[stretch]
+uniform_z = true
+
+[process]
+npx = 1
+npy = 1
+npz = 1
+
+[physics]
+rayleigh = 1000
+prandtl = 0.71
+delta_temperature = 0
+gravity_axis = 2
+
+[initial]
+perturb = 0
+restart_from = ""
+warmstart_from = ""
+
+[boundary]
+x = wall
+y = periodic
+z = wall
+t_x_minus = 0.5
+t_x_plus = -0.5
+t_z_minus = adiabatic
+t_z_plus = adiabatic
+
+[time]
+end_time = 40
+dt_max = 0.005
+max_cfl = 0.5
+max_step = 0
+
+[output]
+stats_dir = "stats/1e3"
+monitor_interval = 1000
+stats_start_time = 0
+stats_interval = 20
+checkpoint_interval = 50000
+checkpoint_dir = "checkpoints/1e3"
+# boundary condition table:
+  x: wall  u-=dirichlet(0)  u+=dirichlet(0)  v-=dirichlet(0)  v+=dirichlet(0)  w-=dirichlet(0)  w+=dirichlet(0)  p-=neumann  p+=neumann  t-=dirichlet(0.5)  t+=dirichlet(-0.5)
+  y: periodic
+  z: wall  u-=dirichlet(0)  u+=dirichlet(0)  v-=dirichlet(0)  v+=dirichlet(0)  w-=dirichlet(0)  w+=dirichlet(0)  p-=neumann  p+=neumann  t-=neumann  t+=neumann
+# cavity OB: Ra=1e+03 Pr=0.71 -> nu=2.664583e-02 alpha=3.752933e-02 | 128x1x128
+# step      time        dt     max|div|   Nu_hot   Nu_cold   u_max(z)          w_max(x)        sec/step   T_center
+      1     0.005   0.00500   1.61e-14   1.0000   1.0000    -0.043 (0.0039)     0.040 (0.0352)   0.0000 -3.90625e-03
+#   max|U| 1.627e-03  max|V| 0.000e+00  max|W| 1.514e-03
+   1000     5.000   0.00500   3.55e-15   1.1211   1.1211    -3.746 (0.1836)     3.797 (0.1758)   0.0156 -1.18105e-03
+#   max|U| 1.407e-01  max|V| 0.000e+00  max|W| 1.426e-01
+   2000    10.000   0.00500   3.55e-15   1.1260   1.1260    -3.723 (0.1836)     3.775 (0.1758)   0.0140 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+   3000    15.000   0.00500   3.55e-15   1.1260   1.1260     3.723 (0.8164)    -3.775 (0.8242)   0.0139 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+# stats written: stats/1e3/cavity_stats_00004000.dat
+   4000    20.000   0.00500   3.55e-15   1.1260   1.1260    -3.723 (0.1836)     3.775 (0.1758)   0.0139 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+   5000    25.000   0.00500   3.55e-15   1.1260   1.1260    -3.723 (0.1836)     3.775 (0.1758)   0.0139 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+   6000    30.000   0.00500   3.33e-15   1.1260   1.1260    -3.723 (0.1836)     3.775 (0.1758)   0.0139 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+   7000    35.000   0.00500   3.55e-15   1.1260   1.1260    -3.723 (0.1836)     3.775 (0.1758)   0.0133 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+# stats written: stats/1e3/cavity_stats_00008000.dat
+   8000    40.000   0.00500   3.33e-15   1.1260   1.1260    -3.723 (0.1836)     3.775 (0.1758)   0.0141 -1.13994e-03
+#   max|U| 1.399e-01  max|V| 0.000e+00  max|W| 1.418e-01
+# stats written: stats/1e3/cavity_stats_00008000.dat
+# checkpoint written: checkpoints/1e3/cavity_ck_00008000.bin (t=40.0000)
+# FINAL: Nu_hot = 1.1260  Nu_cold = 1.1260  u_max = -3.723 (z=0.1836)  w_max = 3.775 (x=0.1758)  (Ra = 1000, t = 40.0, step = 8000)

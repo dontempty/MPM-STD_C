@@ -14,6 +14,7 @@
 #include "common/types.hpp"
 #include "grid/grid.hpp"
 #include "parallel/subdomain/subdomain.hpp"
+#include "equation/scalar/scalar_stencil.hpp"
 #include "physics/properties.hpp"
 
 namespace mpmstd::equation::scalar {
@@ -24,7 +25,7 @@ void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             real_t Ct, real_t dt);
+                             const stencil::WallMask& wall, real_t Ct, real_t dt);
 
 // 나중 스윕 (y 주기 / z 벽): 자기 축 밴드만, D = 이전 스윕 증분(source)
 void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
@@ -32,33 +33,36 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             real_t Ct, real_t dt);
+                             const stencil::WallMask& wall, real_t Ct, real_t dt);
 
 void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* source, const real_t* T, const real_t* U,
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             real_t Ct, real_t dt);
+                             const stencil::WallMask& wall, real_t Ct, real_t dt);
 
 // ── 상수물성 판 (plan §18-1) — 물성 없이 같은 융합 조립 (κ̂≡1, dκ̂≡0) ─────────
 void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                       const real_t* T, const real_t* U,
                                       const real_t* V, const real_t* W,
                                       const grid::Grid& grid,
-                                      const parallel::Subdomain& sub, real_t Ct,
+                                      const parallel::Subdomain& sub,
+                                      const stencil::WallMask& wall, real_t Ct,
                                       real_t dt);
 void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                       const real_t* source, const real_t* T,
                                       const real_t* U, const real_t* V,
                                       const real_t* W, const grid::Grid& grid,
-                                      const parallel::Subdomain& sub, real_t Ct,
+                                      const parallel::Subdomain& sub,
+                                      const stencil::WallMask& wall, real_t Ct,
                                       real_t dt);
 void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                       const real_t* source, const real_t* T,
                                       const real_t* U, const real_t* V,
                                       const real_t* W, const grid::Grid& grid,
-                                      const parallel::Subdomain& sub, real_t Ct,
+                                      const parallel::Subdomain& sub,
+                                      const stencil::WallMask& wall, real_t Ct,
                                       real_t dt);
 
 }  // namespace mpmstd::equation::scalar

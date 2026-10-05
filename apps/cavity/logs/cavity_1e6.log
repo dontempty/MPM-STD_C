@@ -1,0 +1,78 @@
+# settings loaded from input_cavity_1e6.ini  (1 ranks)
+[mesh]
+nx = 256
+ny = 1
+nz = 256
+
+[domain]
+lx = 1
+ly = 0.0078125
+lz = 1
+
+[stretch]
+uniform_z = true
+
+[process]
+npx = 1
+npy = 1
+npz = 1
+
+[physics]
+rayleigh = 1000000
+prandtl = 0.71
+delta_temperature = 0
+gravity_axis = 2
+
+[initial]
+perturb = 0
+restart_from = ""
+warmstart_from = ""
+
+[boundary]
+x = wall
+y = periodic
+z = wall
+t_x_minus = 0.5
+t_x_plus = -0.5
+t_z_minus = adiabatic
+t_z_plus = adiabatic
+
+[time]
+end_time = 600
+dt_max = 0.01
+max_cfl = 0.5
+max_step = 0
+
+[output]
+stats_dir = "stats/1e6"
+monitor_interval = 1000
+stats_start_time = 0
+stats_interval = 20
+checkpoint_interval = 50000
+checkpoint_dir = "checkpoints/1e6"
+# boundary condition table:
+  x: wall  u-=dirichlet(0)  u+=dirichlet(0)  v-=dirichlet(0)  v+=dirichlet(0)  w-=dirichlet(0)  w+=dirichlet(0)  p-=neumann  p+=neumann  t-=dirichlet(0.5)  t+=dirichlet(-0.5)
+  y: periodic
+  z: wall  u-=dirichlet(0)  u+=dirichlet(0)  v-=dirichlet(0)  v+=dirichlet(0)  w-=dirichlet(0)  w+=dirichlet(0)  p-=neumann  p+=neumann  t-=neumann  t+=neumann
+# cavity OB: Ra=1e+06 Pr=0.71 -> nu=8.426150e-04 alpha=1.186782e-03 | 256x1x256
+# step      time        dt     max|div|   Nu_hot   Nu_cold   u_max(z)          w_max(x)        sec/step   T_center
+      1     0.010   0.01000   1.60e-13   1.0000   1.0000    -2.816 (0.0020)    -2.743 (0.9902)   0.0001 -1.95312e-03
+#   max|U| 3.342e-03  max|V| 0.000e+00  max|W| 3.256e-03
+   1000     4.313   0.00459   1.42e-14  10.8602  10.8602   273.099 (0.8965)   333.554 (0.0371)   0.0657  2.79714e-03
+#   max|U| 3.348e-01  max|V| 0.000e+00  max|W| 4.086e-01
+   2000    10.443   0.00637   1.42e-14   7.6697   7.6697    66.500 (0.9590)   246.082 (0.0371)   0.0625 -3.65997e-04
+#   max|U| 1.190e-01  max|V| 0.000e+00  max|W| 2.932e-01
+   3000    16.462   0.00741   1.34e-14   9.8187   9.8187   -53.888 (0.1465)   211.575 (0.0332)   0.0607  2.02279e-03
+#   max|U| 1.711e-01  max|V| 0.000e+00  max|W| 2.537e-01
+# stats written: stats/1e6/cavity_stats_00003467.dat
+   4000    23.741   0.00650   1.42e-14   9.1159   9.1159  -116.187 (0.1191)   249.415 (0.0371)   0.0589  1.72577e-03
+#   max|U| 1.946e-01  max|V| 0.000e+00  max|W| 2.960e-01
+   5000    30.896   0.00721   1.40e-14   8.8027   8.8027    74.704 (0.8496)   225.185 (0.0371)   0.0599  1.54447e-03
+#   max|U| 1.688e-01  max|V| 0.000e+00  max|W| 2.676e-01
+   6000    37.966   0.00731   1.39e-14   9.1039   9.1039   -54.932 (0.1543)   221.939 (0.0371)   0.0589  1.81246e-03
+#   max|U| 1.553e-01  max|V| 0.000e+00  max|W| 2.645e-01
+# stats written: stats/1e6/cavity_stats_00006280.dat
+   7000    45.104   0.00716   1.38e-14   9.2336   9.2336    64.779 (0.8535)   226.677 (0.0371)   0.0590  1.89476e-03
+#   max|U| 1.593e-01  max|V| 0.000e+00  max|W| 2.698e-01
+   8000    52.276   0.00710   1.36e-14   9.1828   9.1828   -70.424 (0.1465)   228.409 (0.0371)   0.0607  1.85241e-03
+#   max|U| 1.618e-01  max|V| 0.000e+00  max|W| 2.716e-01

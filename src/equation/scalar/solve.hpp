@@ -27,6 +27,7 @@
 #include "grid/grid.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
+#include "boundary/boundary_condition.hpp"
 #include "physics/properties.hpp"
 
 namespace mpmstd::equation::scalar {
@@ -38,10 +39,20 @@ struct Solver {
   Solver& operator=(const Solver&) = delete;
 
   linear_solver::TdmaPlan plan_x, plan_y, plan_z;
+  // 벽 행 음해 닫기 계수 [axis][side] — 0 = drop(PaScaL 충실, 기본: 기존 앱 비트 불변),
+  // −1 = Dirichlet 거울 ghost 일치, +1 = Neumann 영구배 ghost 일치. 의미·안정성은
+  // scalar_stencil.hpp 의 WallMask::closure 주석. 새 앱은 set_wall_closure 로 ghost
+  // 정책과 맞출 것 (cavity: 드롭이면 dt·κ/dx² ≳ 3 에서 폭주 — 실측).
+  real_t wall_closure[3][2] = {{0, 0}, {0, 0}, {0, 0}};
   // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
   field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
   field::Buffer stage_first, stage_second;       // 전체 모양 스크래치 (δ 핑퐁)
 };
+
+// BoundaryCondition 테이블의 필드 which(보통 T)에 맞춰 wall_closure 를 채운다
+// (Dirichlet → −1, Neumann → +1, 주기 → 0).
+void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc,
+                      boundary::Field which);
 
 // θⁿ⁺¹ = θⁿ + δθ. T 의 내부만 갱신한다 — ghost 는 다음 스텝의 교환+벽 채움 몫.
 void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,

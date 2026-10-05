@@ -39,7 +39,7 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, true,
                                wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
-                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, A[p],
+                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
                                B[p], C[p], D[p]);
 }
 
@@ -69,7 +69,7 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, false,
                                wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
-                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, A[p],
+                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
                                B[p], C[p], D[p]);
 }
 
@@ -99,17 +99,8 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, false,
                                wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
-                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, A[p],
+                               wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
                                B[p], C[p], D[p]);
-}
-
-stencil::WallMask wall_mask(const parallel::Subdomain& sub) {
-  stencil::WallMask m;
-  for (int a = 0; a < 3; ++a) {
-    m.lo[a] = sub.topology().axis(a).minus_neighbor == MPI_PROC_NULL;
-    m.hi[a] = sub.topology().axis(a).plus_neighbor == MPI_PROC_NULL;
-  }
-  return m;
 }
 
 struct LaunchShape {
@@ -134,14 +125,15 @@ LaunchShape launch_shape(const parallel::Subdomain& sub) {
       grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
       halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
       sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
-      wall_mask(sub)
+      wall
 
 void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* T, const real_t* U, const real_t* V,
                              const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             const real_t Ct, const real_t dt) {
+                             const stencil::WallMask& wall, const real_t Ct,
+                             const real_t dt) {
   const LaunchShape shape = launch_shape(sub);
   build_x_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
@@ -153,7 +145,8 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             const real_t Ct, const real_t dt) {
+                             const stencil::WallMask& wall, const real_t Ct,
+                             const real_t dt) {
   const LaunchShape shape = launch_shape(sub);
   build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
@@ -165,7 +158,8 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             const real_t Ct, const real_t dt) {
+                             const stencil::WallMask& wall, const real_t Ct,
+                             const real_t dt) {
   const LaunchShape shape = launch_shape(sub);
   build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
@@ -183,13 +177,14 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
       grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
       halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
       sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
-      wall_mask(sub)
+      wall
 
 void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                       const real_t* T, const real_t* U,
                                       const real_t* V, const real_t* W,
                                       const grid::Grid& grid,
-                                      const parallel::Subdomain& sub, const real_t Ct,
+                                      const parallel::Subdomain& sub,
+                                      const stencil::WallMask& wall, const real_t Ct,
                                       const real_t dt) {
   const LaunchShape shape = launch_shape(sub);
   build_x_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, T, U, V, W,
@@ -201,7 +196,8 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const real_t* source, const real_t* T,
                                       const real_t* U, const real_t* V,
                                       const real_t* W, const grid::Grid& grid,
-                                      const parallel::Subdomain& sub, const real_t Ct,
+                                      const parallel::Subdomain& sub,
+                                      const stencil::WallMask& wall, const real_t Ct,
                                       const real_t dt) {
   const LaunchShape shape = launch_shape(sub);
   build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
@@ -213,7 +209,8 @@ void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const real_t* source, const real_t* T,
                                       const real_t* U, const real_t* V,
                                       const real_t* W, const grid::Grid& grid,
-                                      const parallel::Subdomain& sub, const real_t Ct,
+                                      const parallel::Subdomain& sub,
+                                      const stencil::WallMask& wall, const real_t Ct,
                                       const real_t dt) {
   const LaunchShape shape = launch_shape(sub);
   build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,

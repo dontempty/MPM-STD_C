@@ -5,6 +5,7 @@
 #include "equation/scalar/solve.hpp"
 #include "equation/scalar/system/system.hpp"
 #include "equation/sweep_kernels.hpp"
+#include <mpi.h>
 
 // 가변-κ̂ (NOB) 에너지 solve — 오케스트레이션 전용 TU (CPU/GPU 공용).
 // OB solve 와 달리 rhs 인자가 없다: 첫 스윕(x)이 우변을 융합 조립한다
@@ -23,7 +24,30 @@ void solve_sweep(linear_solver::TdmaPlan& plan, real_t* A, real_t* B, real_t* C,
   else
     linear_solver::solve_many(plan, A, B, C, D, nsys, nrow);
 }
+
+// 세 축의 벽 소유 + 닫기 계수 (주기 축은 소유 false — 기존 결과와 비트 동일)
+stencil::WallMask make_wall_mask(const Solver& solver, const parallel::Subdomain& sub) {
+  stencil::WallMask m;
+  for (int a = 0; a < 3; ++a) {
+    m.lo[a] = sub.topology().axis(a).minus_neighbor == MPI_PROC_NULL;
+    m.hi[a] = sub.topology().axis(a).plus_neighbor == MPI_PROC_NULL;
+    m.closure_lo[a] = solver.wall_closure[a][0];
+    m.closure_hi[a] = solver.wall_closure[a][1];
+  }
+  return m;
+}
 }  // namespace
+
+void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc,
+                      const boundary::Field which) {
+  for (int a = 0; a < 3; ++a)
+    for (int side = 0; side < 2; ++side) {
+      const boundary::BcKind kind = bc.at(which, a, side).kind;
+      solver.wall_closure[a][side] =
+          kind == boundary::BcKind::Dirichlet ? real_t(-1)
+          : kind == boundary::BcKind::Neumann ? real_t(1) : real_t(0);
+    }
+}
 
 void solve_variable_property(Solver& solver, const grid::Grid& grid,
                     const parallel::Subdomain& sub, field::Field& T,
@@ -46,22 +70,23 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   real_t* B = solver.band_b.data();
   real_t* C = solver.band_c.data();
   real_t* D = solver.band_d.data();
+  const stencil::WallMask wall = make_wall_mask(solver, sub);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
   build_x_system_variable_property(A, B, C, D, T.data(), U.data(), V.data(), W.data(),
-                          properties, grid, sub, Ct, dt);
+                          properties, grid, sub, wall, Ct, dt);
   solve_sweep(solver.plan_x, A, B, C, D, sub, 0, i2 * i3, i1);
   equation::scatter_x(solver.stage_first.data(), D, sub);
 
   // y 스윕: D = x 증분 통과
   build_y_system_variable_property(A, B, C, D, solver.stage_first.data(), T.data(), U.data(),
-                          V.data(), W.data(), properties, grid, sub, Ct, dt);
+                          V.data(), W.data(), properties, grid, sub, wall, Ct, dt);
   solve_sweep(solver.plan_y, A, B, C, D, sub, 1, i1 * i3, i2);
   equation::scatter_y(solver.stage_second.data(), D, sub);
 
   // z 스윕: 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
   build_z_system_variable_property(A, B, C, D, solver.stage_second.data(), T.data(), U.data(),
-                          V.data(), W.data(), properties, grid, sub, Ct, dt);
+                          V.data(), W.data(), properties, grid, sub, wall, Ct, dt);
   solve_sweep(solver.plan_z, A, B, C, D, sub, 2, i1 * i2, i3);
   equation::scatter_z(solver.stage_first.data(), D, sub);
 
@@ -89,22 +114,23 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
   real_t* B = solver.band_b.data();
   real_t* C = solver.band_c.data();
   real_t* D = solver.band_d.data();
+  const stencil::WallMask wall = make_wall_mask(solver, sub);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
   build_x_system_constant_property(A, B, C, D, T.data(), U.data(), V.data(),
-                                   W.data(), grid, sub, Ct, dt);
+                                   W.data(), grid, sub, wall, Ct, dt);
   solve_sweep(solver.plan_x, A, B, C, D, sub, 0, i2 * i3, i1);
   equation::scatter_x(solver.stage_first.data(), D, sub);
 
   // y 스윕: D = x 증분 통과
   build_y_system_constant_property(A, B, C, D, solver.stage_first.data(), T.data(),
-                                   U.data(), V.data(), W.data(), grid, sub, Ct, dt);
+                                   U.data(), V.data(), W.data(), grid, sub, wall, Ct, dt);
   solve_sweep(solver.plan_y, A, B, C, D, sub, 1, i1 * i3, i2);
   equation::scatter_y(solver.stage_second.data(), D, sub);
 
   // z 스윕: 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
   build_z_system_constant_property(A, B, C, D, solver.stage_second.data(), T.data(),
-                                   U.data(), V.data(), W.data(), grid, sub, Ct, dt);
+                                   U.data(), V.data(), W.data(), grid, sub, wall, Ct, dt);
   solve_sweep(solver.plan_z, A, B, C, D, sub, 2, i1 * i2, i3);
   equation::scatter_z(solver.stage_first.data(), D, sub);
 

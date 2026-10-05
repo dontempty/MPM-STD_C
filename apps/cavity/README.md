@@ -1,0 +1,52 @@
+# cavity — 입력 `[boundary]` 로 축별 BC 를 받는 첫 앱 (de Vahl Davis 2D 검증)
+
+설계·단계별 검증 기록 정본: `docs/Design/20261005_boundary_condition_framework.md`.
+
+## 문제
+de Vahl Davis (1983) 차등가열 정방 공동, Pr = 0.71, Ra 1e3~1e6.
+x = 0 벽 T = +0.5 (hot), x = 1 벽 T = −0.5 (cold), 상하벽 단열, 전 벽 no-slip.
+**2D 는 ny = 1 축 붕괴** (y 주기, 셀 1개) — 별도 2D 코드 없이 진짜 2D 비용.
+
+무차원: 자유낙하 스케일 (ν = √(Pr/Ra), α = 1/√(Ra·Pr), 부력 계수 1).
+벤치마크의 속도(u·L/α)는 출력에서 이미 √(Ra·Pr) 를 곱해 둔 값이다.
+
+## 실행
+```
+make cavity
+sbatch apps/cavity/sbatch_cavity_ladder.sh      # 1e3~1e6 을 cpu04 에서 병렬 (각 1 랭크)
+```
+로그 `logs/cavity_<Ra>.log` 의 모니터 열: step, t, dt, max|div|, Nu_hot, Nu_cold,
+u_max(z), w_max(x), sec/step, T_center. 프로파일 `stats/<Ra>/cavity_stats_<step>.dat`
+(section 1: 연직 중앙선 u·T, 2: 수평 중앙선 w·T, 3: hot 벽 첫 셀 열 진단).
+시각화: `plot/plot_cavity.ipynb`.
+
+## 벤치마크 (de Vahl Davis 1983, Richardson 외삽값)
+| Ra | Nu_avg | u_max (z) | w_max (x) |
+|---|---|---|---|
+| 1e3 | 1.118 | 3.649 (0.813) | 3.697 (0.178) |
+| 1e4 | 2.243 | 16.178 (0.823) | 19.617 (0.119) |
+| 1e5 | 4.519 | 34.73 (0.855) | 68.59 (0.066) |
+| 1e6 | 8.800 | 64.63 (0.850) | 219.36 (0.0379) |
+(u_max = 연직 중앙선 x = ½ 의 최대 |u|, w_max = 수평 중앙선 z = ½ 의 최대 |w|.
+우리 코드는 흐름 방향이 반대로 잡힐 수 있어 위치는 z ↔ 1−z, x ↔ 1−x 대칭으로 읽는다.)
+
+## 입력 요점 (`input_cavity_<Ra>.ini`)
+```ini
+[boundary]
+x = wall                ; periodic | wall | dirichlet | neumann
+y = periodic
+z = wall
+t_x_minus = 0.5         ; 숫자 → Dirichlet
+t_x_plus  = -0.5
+t_z_minus = adiabatic   ; adiabatic | slip | neumann → Neumann 0
+t_z_plus  = adiabatic
+; 접선 속도 slip 은 예: w_x_minus = slip,  lid 는 예: u_z_plus = 1.0
+```
+`gravity_axis = 2` (부력은 W), `delta_temperature = 0` (상수물성 OB).
+
+## ★ 벽 행 음해 닫기 (안정성 — 2026-10-05 실측)
+에너지 방정식의 벽 셀 음해 닫기가 PaScaL 충실 "drop"(δθ_ghost = 0)이면 거울 ghost
+(Dirichlet)와 어긋나 **dt·α/dx² ≳ 3 에서 벽 셀 모드가 폭주**한다 (증폭률 → −2;
+Ra=1e3 128² 에서 Nu 가 1e5 까지 치솟는 것으로 드러남). RBC/DHVC 는 확산수 ≪ 1 이라
+무해했다. cavity 는 `scalar::set_wall_closure(solver, bc, Field::T)` 로 ghost 정책과
+일치하는 닫기(Dirichlet −1 / Neumann +1)를 쓴다 — 기존 앱은 기본 0 (비트 불변).

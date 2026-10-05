@@ -34,6 +34,15 @@ namespace mpmstd::equation::scalar::stencil {
 // 주기 축은 false). POD — GPU 커널에 값으로 넘어간다.
 struct WallMask {
   bool lo[3], hi[3];
+  // 벽 행의 음해 닫기 (δ-형): ghost 증분 δθ_g = closure · δθ₁ 로 소거 →
+  //   비대각 eAM(eAP) 을 0 으로 하고 대각 eAC += closure · eAM(eAP).
+  //   0  = drop(δθ_g = 0; PaScaL jem/jep 충실 — RBC/DHVC 기본, z 벽)
+  //  −1  = Dirichlet 거울 ghost(θ_g = 2θ_w − θ₁)와 일치
+  //  +1  = Neumann 영구배 ghost(θ_g = θ₁)와 일치
+  // ★ drop 은 거울 ghost 와 어긋나 dt·κ/dx² ≳ 3 에서 벽 셀 모드가 불안정
+  //   (증폭률 → 1 − 2·3/2 = −2; cavity Ra=1e3 128² 에서 실측 폭주, 2026-10-05).
+  //   RBC/DHVC 는 확산수 ≪ 1 이라 무해. 새 앱은 ghost 정책과 일치하는 값을 쓸 것.
+  real_t closure_lo[3], closure_hi[3];
 };
 
 MPMSTD_HD inline long long cell_index(const int i, const int j, const int k,
@@ -49,6 +58,7 @@ MPMSTD_HD inline void axis_band(
     const long long cp, const real_t dx_m, const real_t dx_c, const real_t dx_p,
     const real_t dmx_lo, const real_t dmx_hi, const real_t half_ct_inverse_heat_capacity,
     const bool wall_lo, const bool wall_hi, const bool full_offdiag_mask,
+    const real_t closure_lo, const real_t closure_hi,
     const bool want_rhs, real_t& eAM, real_t& eAC, real_t& eAP, real_t& div_axis,
     real_t& convect_axis, real_t& viscous_axis) {
   const real_t half = real_t(0.5), quarter = real_t(0.25);
@@ -91,9 +101,9 @@ MPMSTD_HD inline void axis_band(
   eAM = -cf * kappa_lo / dmx_lo + cf * dx_c * (half / dmx_lo) * dkappa_lo * ded_lo
         - quarter * vlo / dmx_lo;
 
-  if (full_offdiag_mask) {
-    if (wall_lo) eAM = 0;
-    if (wall_hi) eAP = 0;
+  if (full_offdiag_mask) {  // 벽 행 닫기 (WallMask::closure 주석)
+    if (wall_lo) { eAC += closure_lo * eAM; eAM = 0; }
+    if (wall_hi) { eAC += closure_hi * eAP; eAP = 0; }
   }
 }
 
@@ -110,8 +120,8 @@ MPMSTD_HD inline void build_cell(
     const real_t* dmx_x, const real_t* dx_y, const real_t* dmx_y, const real_t* dx_z,
     const real_t* dmx_z, const real_t Ct, const real_t dt, const bool is_first_sweep,
     const bool x_wall_lo, const bool x_wall_hi, const bool y_wall_lo, const bool y_wall_hi,
-    const bool z_wall_lo, const bool z_wall_hi, real_t& am, real_t& ac, real_t& ap,
-    real_t& D_value) {
+    const bool z_wall_lo, const bool z_wall_hi, const WallMask& wall, real_t& am,
+    real_t& ac, real_t& ap, real_t& D_value) {
   const long long c = cell_index(i, j, k, ny_total, nz_total);
   const real_t half_ct_ihc = real_t(0.5) * Ct * inverse_heat_capacity[c];
   const real_t half_ct_dihc = real_t(0.5) * Ct * inverse_heat_capacity_derivative[c];
@@ -131,15 +141,15 @@ MPMSTD_HD inline void build_cell(
     real_t eAMz, eACz, eAPz, dvz, cvz, vsz;
     axis_band(T, conductivity, conductivity_derivative, U, xm, c, xp,
                        dx_x[i - 1], dx_x[i], dx_x[i + 1], dmx_x[i], dmx_x[i + 1],
-                       half_ct_ihc, x_wall_lo, x_wall_hi, false, true, eAMx, eACx, eAPx, dvx,
-                       cvx, vsx);
+                       half_ct_ihc, x_wall_lo, x_wall_hi, false, 0, 0, true, eAMx, eACx, eAPx,
+                       dvx, cvx, vsx);
     axis_band(T, conductivity, conductivity_derivative, V, ym, c, yp,
                        dx_y[j - 1], dx_y[j], dx_y[j + 1], dmx_y[j], dmx_y[j + 1],
-                       half_ct_ihc, y_wall_lo, y_wall_hi, false, true, eAMy, eACy, eAPy, dvy,
-                       cvy, vsy);
+                       half_ct_ihc, y_wall_lo, y_wall_hi, false, 0, 0, true, eAMy, eACy, eAPy,
+                       dvy, cvy, vsy);
     axis_band(T, conductivity, conductivity_derivative, W, zm, c, zp,
                        dx_z[k - 1], dx_z[k], dx_z[k + 1], dmx_z[k], dmx_z[k + 1],
-                       half_ct_ihc, z_wall_lo, z_wall_hi, /*full_offdiag=*/false, true,
+                       half_ct_ihc, z_wall_lo, z_wall_hi, /*full_offdiag=*/false, 0, 0, true,
                        eAMz, eACz, eAPz, dvz, cvz, vsz);
 
     const real_t div_sum = dvx + dvy + dvz;
@@ -153,11 +163,11 @@ MPMSTD_HD inline void build_cell(
     ac = eAC_d * dt - half_ct_dihc * div_sum * dt + real_t(1);
     ap = eAP_d * dt;
     am = eAM_d * dt;
-    // 첫 스윕 축이 벽이면(x 벽 — cavity) 그 벽 행의 δ 비대각을 끈다 (δθ_wall = 0;
+    // 첫 스윕 축이 벽이면(x 벽 — cavity) 그 벽 행을 닫는다 (WallMask::closure;
     // 나중 스윕의 full_offdiag 와 같은 닫기. M·θⁿ 의 R 쪽은 마스크 전 값 그대로).
     if (sweep_axis == 0) {
-      if (x_wall_lo) am = 0;
-      if (x_wall_hi) ap = 0;
+      if (x_wall_lo) { ac += wall.closure_lo[0] * am; am = 0; }
+      if (x_wall_hi) { ac += wall.closure_hi[0] * ap; ap = 0; }
     }
     const real_t MxTn = eAPx * T[xp] + eACx * T[c] + eAMx * T[xm];
     const real_t MyTn = eAPy * T[yp] + eACy * T[c] + eAMy * T[ym];
@@ -171,21 +181,24 @@ MPMSTD_HD inline void build_cell(
       axis_band(T, conductivity, conductivity_derivative, U, xm, c, xp,
                          dx_x[i - 1], dx_x[i], dx_x[i + 1], dmx_x[i], dmx_x[i + 1],
                          half_ct_ihc, x_wall_lo, x_wall_hi, /*full_offdiag=*/true,
-                         false, eAM_d, eAC_d, eAP_d, dv, cv, vs);
+                         wall.closure_lo[0], wall.closure_hi[0], false, eAM_d, eAC_d,
+                         eAP_d, dv, cv, vs);
     } else if (sweep_axis == 1) {
       const long long ym = cell_index(i, j - 1, k, ny_total, nz_total);
       const long long yp = cell_index(i, j + 1, k, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, V, ym, c, yp,
                          dx_y[j - 1], dx_y[j], dx_y[j + 1], dmx_y[j], dmx_y[j + 1],
                          half_ct_ihc, y_wall_lo, y_wall_hi, /*full_offdiag=*/true,
-                         false, eAM_d, eAC_d, eAP_d, dv, cv, vs);
+                         wall.closure_lo[1], wall.closure_hi[1], false, eAM_d, eAC_d,
+                         eAP_d, dv, cv, vs);
     } else {
       const long long zm = cell_index(i, j, k - 1, ny_total, nz_total);
       const long long zp = cell_index(i, j, k + 1, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, W, zm, c, zp,
                          dx_z[k - 1], dx_z[k], dx_z[k + 1], dmx_z[k], dmx_z[k + 1],
                          half_ct_ihc, z_wall_lo, z_wall_hi, /*full_offdiag=*/true,
-                         false, eAM_d, eAC_d, eAP_d, dv, cv, vs);
+                         wall.closure_lo[2], wall.closure_hi[2], false, eAM_d, eAC_d,
+                         eAP_d, dv, cv, vs);
     }
     ac = eAC_d * dt + real_t(1);
     ap = eAP_d * dt;
