@@ -19,7 +19,7 @@ namespace {
 // 여기 없는 키는 전부 unknown-key 에러가 된다 (schema.cpp).
 
 std::vector<Binding> make_bindings(Settings& s) {
-  return {
+  std::vector<Binding> b = {
       {"mesh", "nx", &s.mesh.nx, true},
       {"mesh", "ny", &s.mesh.ny, true},
       {"mesh", "nz", &s.mesh.nz, true},
@@ -56,6 +56,25 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"output", "checkpoint_interval", &s.output.checkpoint_interval, false},
       {"output", "checkpoint_dir", &s.output.checkpoint_dir, false},
   };
+  // [boundary] — 축 kind 3개 + 면 override 30개(u v w p t × x y z × minus plus),
+  // 전부 옵션. 키 이름은 boundary_condition.hpp 머리말의 문법과 1:1.
+  static const char* const kField[] = {"u", "v", "w", "p", "t"};
+  static const char* const kAxis[] = {"x", "y", "z"};
+  static const char* const kSide[] = {"minus", "plus"};
+  static std::string key_storage[3 + mpmstd::boundary::kFieldCount * 3 * 2];
+  int n = 0;
+  for (int a = 0; a < 3; ++a) {
+    key_storage[n] = kAxis[a];
+    b.push_back({"boundary", key_storage[n++].c_str(), &s.boundary.axis_kind[a], false});
+  }
+  for (int f = 0; f < mpmstd::boundary::kFieldCount; ++f)
+    for (int a = 0; a < 3; ++a)
+      for (int side = 0; side < 2; ++side) {
+        key_storage[n] = std::string(kField[f]) + "_" + kAxis[a] + "_" + kSide[side];
+        b.push_back({"boundary", key_storage[n++].c_str(),
+                     &s.boundary.override_text[f][a][side], false});
+      }
+  return b;
 }
 
 // ── 의미 검증 — 값은 맞게 파싱됐지만 물리적으로 말이 안 되는 것 ─────────────
@@ -107,6 +126,13 @@ void validate(const IniFile& ini, const Settings& s) {
 Settings make_settings(const IniFile& ini) {
   Settings s;
   mpmstd::config::apply_bindings(ini, make_bindings(s));
+  try {
+    s.boundary.condition = mpmstd::boundary::make_boundary_condition(
+        {s.boundary.axis_kind[0], s.boundary.axis_kind[1], s.boundary.axis_kind[2]},
+        s.boundary.override_text);
+  } catch (const std::exception& e) {
+    throw std::runtime_error(ini.name() + ": [boundary] " + e.what());
+  }
   validate(ini, s);
   return s;
 }
@@ -174,6 +200,21 @@ std::string format_settings(const Settings& s) {
   add("perturb = " + format_number(s.initial.perturb));
   add("restart_from = \"" + s.initial.restart_from + "\"");
   add("warmstart_from = \"" + s.initial.warmstart_from + "\"");
+  add("");
+  add("[boundary]");
+  {
+    static const char* const kField[] = {"u", "v", "w", "p", "t"};
+    static const char* const kAxis[] = {"x", "y", "z"};
+    static const char* const kSide[] = {"minus", "plus"};
+    for (int a = 0; a < 3; ++a) add(std::string(kAxis[a]) + " = " + s.boundary.axis_kind[a]);
+    for (int f = 0; f < mpmstd::boundary::kFieldCount; ++f)
+      for (int a = 0; a < 3; ++a)
+        for (int side = 0; side < 2; ++side) {
+          const std::string& t = s.boundary.override_text[f][a][side];
+          if (!t.empty())
+            add(std::string(kField[f]) + "_" + kAxis[a] + "_" + kSide[side] + " = " + t);
+        }
+  }
   add("");
   add("[time]");
   add("end_time = " + format_number(s.time.end_time));
