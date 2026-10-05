@@ -32,6 +32,7 @@
 //   (U, V, W 교환 + 벽 처리 → 투영)
 
 #include "common/types.hpp"
+#include "boundary/boundary_condition.hpp"
 #include "field/buffer.hpp"
 #include "field/field.hpp"
 #include "grid/grid.hpp"
@@ -51,9 +52,20 @@ struct Solver {
   field::Buffer stage_first, stage_second;       // 스윕 핑퐁 (전체 모양)
 
   // 증분 δU, δV, δW — 블록 커플링의 스텐실이 이웃 증분을 읽으므로
-  // halo 교환이 필요해 Field 로 소유한다 (벽 ghost 는 "증분 = 0" 정책).
+  // halo 교환이 필요해 Field 로 소유한다 (벽 ghost 는 closure 에 맞춘 증분 ghost).
   field::Field delta_u, delta_v, delta_w;
+
+  // 접선 성분 벽 행 음해 닫기 계수 [axis][side] (wall_rows.hpp fold_wall):
+  //   0 = δghost 0 (value ghost 와 짝; 기본 — 기존 앱 비트 불변)
+  //  −1 = 거울 ghost 일치 ([boundary] velocity_ghost = mirror)
+  //  +1 = 영구배 ghost 일치 (slip)
+  // 법선 성분은 closure 와 무관하게 minus 벽면 행 항등(pin) + plus 쪽 C = 0.
+  real_t wall_closure[3][2] = {{0, 0}, {0, 0}, {0, 0}};
 };
+
+// BoundaryCondition 테이블에서 wall_closure 를 채운다: 비주기 축의 접선 Dirichlet →
+// (velocity_ghost == Mirror ? −1 : 0), Neumann(slip) → +1. 주기 축 0.
+void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc);
 
 void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
            const field::Field& rhs_u, const field::Field& rhs_v,

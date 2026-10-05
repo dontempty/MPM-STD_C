@@ -6,6 +6,7 @@
 //
 // ── 입력 ([boundary]) ──────────────────────────────────────────────────────
 //   x = periodic | wall | dirichlet | neumann        축 kind (y, z 동일)
+//   velocity_ghost = value | mirror                  접선 속도 ghost 정책 (아래 enum)
 //   <field>_<axis>_<side> = <숫자> | adiabatic | slip  면별 오버라이드
 //       field ∈ u v w p t,  axis ∈ x y z,  side ∈ minus plus
 //       숫자      → 그 면 Dirichlet(그 값)   예: t_x_minus = 0.5, u_z_plus = 1.0 (lid)
@@ -43,8 +44,16 @@ struct FaceBc {
   real_t value = 0;
 };
 
+// 접선 속도 Dirichlet 벽의 ghost 정책 ([boundary] velocity_ghost = value | mirror):
+//   Value  : ghost = 벽값 (1차 — 벽 전단을 V₁/dx 로 봐 마찰 절반; 채널·RBC 관례, 기본)
+//   Mirror : ghost = 2·벽값 − V₁ (2차 — no-slip 면이 정확히 벽면; cavity 벤치마크용)
+// ⚠ Mirror 는 운동량 벽 행 닫기 B −= A 와 짝 (momentum::set_wall_closure) — drop 과
+//   섞으면 dt·ν/dx² ≳ 3 에서 벽 셀 모드 불안정 (스칼라와 같은 기전).
+enum class VelocityGhost { Value, Mirror };
+
 struct BoundaryCondition {
   std::array<AxisKind, 3> axis{AxisKind::Periodic, AxisKind::Periodic, AxisKind::Periodic};
+  VelocityGhost velocity_ghost = VelocityGhost::Value;
   // face[field][axis][side]
   FaceBc face[kFieldCount][3][2];
 
@@ -68,7 +77,8 @@ FaceBc parse_face_override(const std::string& text);
 // override 적용). override 가 빈 문자열이면 그 면은 기본값 유지.
 BoundaryCondition make_boundary_condition(
     const std::array<std::string, 3>& axis_kind_text,
-    const std::string (&override_text)[kFieldCount][3][2]);
+    const std::string (&override_text)[kFieldCount][3][2],
+    const std::string& velocity_ghost_text = "value");
 
 std::string format_boundary_condition(const BoundaryCondition& bc);  // 로그 에코용
 

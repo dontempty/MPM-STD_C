@@ -25,6 +25,24 @@ __global__ void fold_top_kernel(real_t* C, const int nsys, const long long top) 
   if (s < nsys) C[top + s] = 0;
 }
 
+__global__ void fold_closure_bottom_kernel(real_t* A, real_t* B, const int nsys,
+                                           const real_t closure) {
+  const int s = blockIdx.x * blockDim.x + threadIdx.x;
+  if (s < nsys) {
+    B[s] += closure * A[s];
+    A[s] = 0;
+  }
+}
+
+__global__ void fold_closure_top_kernel(real_t* C, real_t* B, const int nsys,
+                                        const long long top, const real_t closure) {
+  const int s = blockIdx.x * blockDim.x + threadIdx.x;
+  if (s < nsys) {
+    B[top + s] += closure * C[top + s];
+    C[top + s] = 0;
+  }
+}
+
 __global__ void pin_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                            const int nsys) {
   const int s = blockIdx.x * blockDim.x + threadIdx.x;
@@ -48,6 +66,20 @@ void fold_wall_value(real_t* A, real_t* B, real_t* C, const parallel::Subdomain&
   if (sub.topology().axis(axis).plus_neighbor == MPI_PROC_NULL) {
     fold_top_kernel<<<blocks_for(nsys), kThreads>>>(
         C, nsys, static_cast<long long>(nrow - 1) * nsys);
+    MPMSTD_CUDA_CHECK_LAUNCH();
+  }
+}
+
+void fold_wall(real_t* A, real_t* B, real_t* C, const parallel::Subdomain& sub,
+               const int axis, const int nsys, const int nrow, const real_t closure_minus,
+               const real_t closure_plus) {
+  if (sub.topology().axis(axis).minus_neighbor == MPI_PROC_NULL) {
+    fold_closure_bottom_kernel<<<blocks_for(nsys), kThreads>>>(A, B, nsys, closure_minus);
+    MPMSTD_CUDA_CHECK_LAUNCH();
+  }
+  if (sub.topology().axis(axis).plus_neighbor == MPI_PROC_NULL) {
+    fold_closure_top_kernel<<<blocks_for(nsys), kThreads>>>(
+        C, B, nsys, static_cast<long long>(nrow - 1) * nsys, closure_plus);
     MPMSTD_CUDA_CHECK_LAUNCH();
   }
 }

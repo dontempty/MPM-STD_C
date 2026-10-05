@@ -42,10 +42,11 @@ void apply_velocity_wall_ghosts(field::Field& U, field::Field& V, field::Field& 
                 + std::to_string(axis) + ", side " + std::to_string(side) + ")");
           zero_wall_faces(*component[c], sub, axis, side);
         } else {
-          // 접선 성분: value(no-slip/lid) 또는 zero_gradient(slip). mirror 금지 —
-          // 과잉 감쇠 전례 (wall.hpp 공식 표).
-          fill_cell_centered_face(*component[c], face, axis, side, sub,
-                                  /*dirichlet_as_mirror=*/false);
+          // 접선 성분: Dirichlet → value(기본, 1차) 또는 mirror(2차; boundary_condition.hpp
+          // VelocityGhost — 운동량 닫기와 짝), Neumann → zero_gradient(slip).
+          fill_cell_centered_face(
+              *component[c], face, axis, side, sub,
+              /*dirichlet_as_mirror=*/bc.velocity_ghost == VelocityGhost::Mirror);
         }
       }
   }

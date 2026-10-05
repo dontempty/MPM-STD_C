@@ -19,6 +19,23 @@ void fold_wall_value(real_t* A, real_t* B, real_t* C, const parallel::Subdomain&
   }
 }
 
+void fold_wall(real_t* A, real_t* B, real_t* C, const parallel::Subdomain& sub,
+               const int axis, const int nsys, const int nrow, const real_t closure_minus,
+               const real_t closure_plus) {
+  if (sub.topology().axis(axis).minus_neighbor == MPI_PROC_NULL)
+    for (int s = 0; s < nsys; ++s) {
+      B[s] += closure_minus * A[s];
+      A[s] = 0;
+    }
+  if (sub.topology().axis(axis).plus_neighbor == MPI_PROC_NULL) {
+    const std::size_t top = static_cast<std::size_t>(nrow - 1) * nsys;
+    for (int s = 0; s < nsys; ++s) {
+      B[top + s] += closure_plus * C[top + s];
+      C[top + s] = 0;
+    }
+  }
+}
+
 void pin_minus_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,
                              const parallel::Subdomain& sub, const int axis,
                              const int nsys) {

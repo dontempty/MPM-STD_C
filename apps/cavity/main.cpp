@@ -266,6 +266,9 @@ int main(int argc, char** argv) {
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"),
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
     momentum::Solver momentum_solver(sub);
+    // 접선 속도 벽 행 닫기를 ghost 정책과 일치 ([boundary] velocity_ghost: value → 0,
+    // mirror → −1; slip → +1). 기본 value 는 1차(벽 마찰 절반) — 벤치마크는 mirror 권장.
+    momentum::set_wall_closure(momentum_solver, bc);
     scalar::Solver scalar_solver(sub);
     // 에너지 벽 행 닫기를 ghost 정책과 일치시킨다 (Dirichlet 거울 → −1, 단열 → +1).
     // 기본 drop(PaScaL 충실)은 dt·α/dx² ≳ 3 에서 벽 셀 모드가 폭주 (scalar/solve.hpp).
@@ -337,6 +340,46 @@ int main(int argc, char** argv) {
                      w[at(h, h, k)], u[at(h + 1, h, k)]);
       std::fclose(f);
       std::printf("# stats written: %s\n", path);
+    };
+
+    // 최종 2D 장 덤프 (벤치마크 후처리 plot/benchmark.py 입력): U 는 x 면 (nx+1)×nz,
+    // W 는 z 면 nx×(nz+1), T 는 셀중심 nx×nz. npz = 1 전제 (검증 런).
+    const auto write_field_dump = [&](long step_now, double t_now) {
+      if (!mpi.is_root() || sub.topology().z().nprocs != 1) return;
+      const int h = halo_width;
+      std::vector<real_t> u, w, th;
+      U.download(u);
+      W.download(w);
+      T.download(th);
+      const auto at = [&](int i, int j, int k) {
+        return (static_cast<std::size_t>(i) * ny + j) * nz + k;
+      };
+      char path[512];
+      std::snprintf(path, sizeof(path), "%s/cavity_field_%08ld.dat",
+                    s.output.stats_dir.c_str(), step_now);
+      std::FILE* f = std::fopen(path, "w");
+      if (!f) return;
+      std::fprintf(f, "# cavity field dump  step=%ld t=%.6f Ra=%g Pr=%g nx=%d nz=%d lx=%g lz=%g\n",
+                   step_now, t_now, s.physics.rayleigh, s.physics.prandtl, s.mesh.nx,
+                   s.mesh.nz, s.domain.lx, s.domain.lz);
+      std::fprintf(f, "# velocities in free-fall units (multiply by sqrt(Ra Pr) for L/alpha)\n");
+      std::fprintf(f, "# block U: (nx+1) x nz rows of  x_face z_center U\n");
+      for (int i = h; i <= nx - h; ++i)
+        for (int k = h; k < nz - h; ++k)
+          std::fprintf(f, "%.10f %.10f %.12e\n", grid.x.face[i], grid.z.center[k],
+                       u[at(i, h, k)]);
+      std::fprintf(f, "# block W: nx x (nz+1) rows of  x_center z_face W\n");
+      for (int i = h; i < nx - h; ++i)
+        for (int k = h; k <= nz - h; ++k)
+          std::fprintf(f, "%.10f %.10f %.12e\n", grid.x.center[i], grid.z.face[k],
+                       w[at(i, h, k)]);
+      std::fprintf(f, "# block T: nx x nz rows of  x_center z_center T\n");
+      for (int i = h; i < nx - h; ++i)
+        for (int k = h; k < nz - h; ++k)
+          std::fprintf(f, "%.10f %.10f %.12e\n", grid.x.center[i], grid.z.center[k],
+                       th[at(i, h, k)]);
+      std::fclose(f);
+      std::printf("# field dump written: %s\n", path);
     };
 
     const auto write_checkpoint = [&](long step_now, double t_now) {
@@ -421,6 +464,7 @@ int main(int argc, char** argv) {
     }
 
     write_statistics(step, t);
+    write_field_dump(step, t);
     if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval != 0)
       write_checkpoint(step, t);
     diag = compute_diagnostics(U, V, W, T, grid, sub, bc, s.domain.lx, s.domain.lz,

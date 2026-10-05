@@ -35,3 +35,7 @@ apps/dhvc/restart_*/
 apps/dhvc/logs/
 apps/dhvc/plot/*.png
 apps/dhvc/input_dhvc_*_run.ini
+
+# cavity 앱 런 산출물 (stats/<Ra>/, logs/) — 2026-10-05 실수로 올라간 것 제거
+apps/cavity/stats/
+apps/cavity/logs/

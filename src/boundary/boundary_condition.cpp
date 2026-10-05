@@ -65,8 +65,15 @@ FaceBc parse_face_override(const std::string& text) {
 
 BoundaryCondition make_boundary_condition(
     const std::array<std::string, 3>& axis_kind_text,
-    const std::string (&override_text)[kFieldCount][3][2]) {
+    const std::string (&override_text)[kFieldCount][3][2],
+    const std::string& velocity_ghost_text) {
   BoundaryCondition bc;
+  {
+    const std::string v = lower(velocity_ghost_text);
+    if (v == "value") bc.velocity_ghost = VelocityGhost::Value;
+    else if (v == "mirror") bc.velocity_ghost = VelocityGhost::Mirror;
+    else fail("unknown velocity_ghost '" + velocity_ghost_text + "' (value | mirror)");
+  }
   // ① 축 kind → 필드별 기본값
   for (int a = 0; a < 3; ++a) {
     bc.axis[a] = parse_axis_kind(axis_kind_text[a]);
@@ -126,6 +133,8 @@ void BoundaryCondition::validate() const {
 
 std::string format_boundary_condition(const BoundaryCondition& bc) {
   std::ostringstream os;
+  os << "  velocity_ghost: " << (bc.velocity_ghost == VelocityGhost::Mirror ? "mirror" : "value")
+     << "\n";
   for (int a = 0; a < 3; ++a) {
     os << "  " << kAxisName[a] << ": " << axis_kind_name(bc.axis[a]);
     if (bc.axis[a] != AxisKind::Periodic) {

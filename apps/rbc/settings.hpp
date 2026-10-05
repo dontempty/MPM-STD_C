@@ -76,6 +76,7 @@ struct Boundary {  // [boundary] — 문법·기본값은 boundary/boundary_cond
   // 축 kind (periodic | wall | dirichlet | neumann). 섹션이 없으면 RBC 관례
   // (x·y 주기, z 벽) 그대로 — 기존 rbc/rbc_nob/dhvc 덱은 수정 없이 동작.
   std::string axis_kind[3] = {"periodic", "periodic", "wall"};
+  std::string velocity_ghost = "value";  // value | mirror (boundary_condition.hpp VelocityGhost)
   // 면 override 원문 [field u v w p t][axis][side minus plus]; "" = 지정 안 함
   std::string override_text[mpmstd::boundary::kFieldCount][3][2];
   mpmstd::boundary::BoundaryCondition condition;  // 전개된 결과 (make_settings 가 채움)

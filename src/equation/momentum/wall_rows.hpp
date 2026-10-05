@@ -22,6 +22,11 @@ namespace mpmstd::equation::momentum {
 // δghost = 0 (ZeroGhost Dirichlet) 의 fold: minus 벽 행 A = 0, plus 벽 행 C = 0. B 불변.
 void fold_wall_value(real_t* A, real_t* B, real_t* C, const parallel::Subdomain& sub,
                      int axis, int nsys, int nrow);
+// 일반 닫기: δghost = closure · δq₁ 소거 — minus 행 B += closure_minus·A, A = 0;
+// plus 행 B += closure_plus·C, C = 0.  closure 0 = fold_wall_value(비트 동일),
+// −1 = 거울 ghost(velocity_ghost = mirror) 일치, +1 = 영구배 ghost(slip) 일치.
+void fold_wall(real_t* A, real_t* B, real_t* C, const parallel::Subdomain& sub, int axis,
+               int nsys, int nrow, real_t closure_minus, real_t closure_plus);
 // 스윕 축 = own 축 성분(U 의 x 스윕 등) 전용: minus 벽면(내부 행 0)을 항등행으로
 // (그 벽 소유 랭크에서만).
 void pin_minus_wall_face_row(real_t* A, real_t* B, real_t* C, real_t* D,

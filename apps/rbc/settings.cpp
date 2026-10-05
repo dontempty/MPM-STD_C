@@ -63,6 +63,7 @@ std::vector<Binding> make_bindings(Settings& s) {
   static const char* const kSide[] = {"minus", "plus"};
   static std::string key_storage[3 + mpmstd::boundary::kFieldCount * 3 * 2];
   int n = 0;
+  b.push_back({"boundary", "velocity_ghost", &s.boundary.velocity_ghost, false});
   for (int a = 0; a < 3; ++a) {
     key_storage[n] = kAxis[a];
     b.push_back({"boundary", key_storage[n++].c_str(), &s.boundary.axis_kind[a], false});
@@ -129,7 +130,7 @@ Settings make_settings(const IniFile& ini) {
   try {
     s.boundary.condition = mpmstd::boundary::make_boundary_condition(
         {s.boundary.axis_kind[0], s.boundary.axis_kind[1], s.boundary.axis_kind[2]},
-        s.boundary.override_text);
+        s.boundary.override_text, s.boundary.velocity_ghost);
   } catch (const std::exception& e) {
     throw std::runtime_error(ini.name() + ": [boundary] " + e.what());
   }
@@ -207,6 +208,7 @@ std::string format_settings(const Settings& s) {
     static const char* const kAxis[] = {"x", "y", "z"};
     static const char* const kSide[] = {"minus", "plus"};
     for (int a = 0; a < 3; ++a) add(std::string(kAxis[a]) + " = " + s.boundary.axis_kind[a]);
+    add("velocity_ghost = " + s.boundary.velocity_ghost);
     for (int f = 0; f < mpmstd::boundary::kFieldCount; ++f)
       for (int a = 0; a < 3; ++a)
         for (int side = 0; side < 2; ++side) {
