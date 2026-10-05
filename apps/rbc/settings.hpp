@@ -58,7 +58,8 @@ struct Time {              // [time]
 
 struct Initial {          // [initial] — 대류 세포를 깨우는 섭동 (참조 main 1:1)
   double perturb = 0.02;   // W 다중모드 섭동 진폭
-  std::string restart_from = "";  // 체크포인트 경로 — 비어 있으면 냉시작
+  std::string restart_from = "";  // 체크포인트 경로(같은 격자) — 비어 있으면 냉시작
+  std::string warmstart_from = "";  // 체크포인트 경로(다른 격자 → trilinear 보간)
 };
 
 struct Output {                      // [output]

@@ -25,14 +25,20 @@
 // 읽기는 이름·순서가 쓸 때와 같아야 한다 (다르면 예외 — 같은 앱이 쓰고 읽는 전제).
 
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "common/types.hpp"
 #include "field/field.hpp"
+#include "grid/grid.hpp"
 #include "parallel/subdomain/subdomain.hpp"
 
 namespace mpmstd::post {
+
+// 격자 교차 warm-start 에서 각 장의 엇갈린격자(staggered) 위치 — 샘플이 놓인
+// 물리 좌표를 결정한다. Center = 셀중심(T,P), FaceX/Y/Z = 그 축의 면(U,V,W).
+enum class Stagger { Center, FaceX, FaceY, FaceZ };
 
 void write_checkpoint(const std::string& path, long step, double time,
                       const std::vector<std::pair<std::string, const field::Field*>>& fields,
@@ -43,5 +49,18 @@ void read_checkpoint(const std::string& path, long& step, double& time,
                      const std::vector<std::pair<std::string, field::Field*>>& fields,
                      const std::vector<std::pair<std::string, double*>>& scalars,
                      const parallel::Subdomain& sub);
+
+// 격자 교차 warm-start (DHVC Ra 사다리) — 다른 격자의 체크포인트를 읽어 이 런의
+// 격자에 **엇갈린격자-인지 trilinear 보간**해 채운다. x·y 주기(랩), z 벽(clamp),
+// **같은 박스·같은 스트레칭 법칙** 전제 (소스 격자 수만 헤더에서 읽어 복원).
+// 루트가 전역 소스장을 fread 후 Bcast (NFS MPI-IO 데드락 회피), 각 랭크는 자기
+// 내부만 보간. ghost 는 호출자 sync 가 재구축. 장마다 Stagger 를 줘야 한다.
+// 스칼라(mean_dPdx 등)는 그대로 복원. box/gamma_z 는 이 런의 값(소스와 동일 가정).
+void read_checkpoint_interpolated(
+    const std::string& path, long& step, double& time,
+    const std::vector<std::tuple<std::string, field::Field*, Stagger>>& fields,
+    const std::vector<std::pair<std::string, double*>>& scalars,
+    const grid::Grid& grid, const parallel::Subdomain& sub, double lx, double ly,
+    double lz, bool uniform_z, double gamma_z);
 
 }  // namespace mpmstd::post

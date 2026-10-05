@@ -34,3 +34,4 @@ apps/dhvc/stats_smoke/
 apps/dhvc/restart_*/
 apps/dhvc/logs/
 apps/dhvc/plot/*.png
+apps/dhvc/input_dhvc_*_run.ini

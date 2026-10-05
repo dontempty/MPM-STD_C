@@ -42,6 +42,7 @@ std::vector<Binding> make_bindings(Settings& s) {
 
       {"initial", "perturb", &s.initial.perturb, false},
       {"initial", "restart_from", &s.initial.restart_from, false},
+      {"initial", "warmstart_from", &s.initial.warmstart_from, false},
 
       {"time", "end_time", &s.time.end_time, true},
       {"time", "dt_max", &s.time.dt_max, false},
@@ -129,6 +130,11 @@ Settings load_settings(const std::string& path) {
     if (rs.is_relative()) rs = std::filesystem::path(path).parent_path() / rs;
     s.initial.restart_from = rs.lexically_normal().string();
   }
+  if (!s.initial.warmstart_from.empty()) {
+    std::filesystem::path rs(s.initial.warmstart_from);
+    if (rs.is_relative()) rs = std::filesystem::path(path).parent_path() / rs;
+    s.initial.warmstart_from = rs.lexically_normal().string();
+  }
   return s;
 }
 
@@ -167,6 +173,7 @@ std::string format_settings(const Settings& s) {
   add("[initial]");
   add("perturb = " + format_number(s.initial.perturb));
   add("restart_from = \"" + s.initial.restart_from + "\"");
+  add("warmstart_from = \"" + s.initial.warmstart_from + "\"");
   add("");
   add("[time]");
   add("end_time = " + format_number(s.time.end_time));

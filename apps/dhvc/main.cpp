@@ -44,6 +44,7 @@
 #include "physics/buoyancy.hpp"
 #include "physics/channel_forcing.hpp"
 #include "post/checkpoint.hpp"
+#include <tuple>
 #include "post/statistics.hpp"
 #include "rbc/settings.hpp"
 #include "time/time_step.hpp"
@@ -197,7 +198,23 @@ int main(int argc, char** argv) {
 
     long restart_step = 0;
     double restart_time = 0;
-    if (!s.initial.restart_from.empty()) {
+    if (!s.initial.warmstart_from.empty()) {
+      // 격자 교차 warm-start — 하위 Ra 의 restart 를 이 격자에 trilinear 보간.
+      using mpmstd::post::Stagger;
+      mpmstd::post::read_checkpoint_interpolated(
+          s.initial.warmstart_from, restart_step, restart_time,
+          {std::make_tuple(std::string("U"), &U, Stagger::FaceX),
+           std::make_tuple(std::string("V"), &V, Stagger::FaceY),
+           std::make_tuple(std::string("W"), &W, Stagger::FaceZ),
+           std::make_tuple(std::string("T"), &T, Stagger::Center),
+           std::make_tuple(std::string("P"), &P, Stagger::Center)},
+          {{"mean_dPdx", &mean_dPdx}}, grid, sub, s.domain.lx, s.domain.ly,
+          s.domain.lz, s.stretch.uniform_z, s.stretch.gamma_z);
+      restart_step = 0;     // 새 격자에서 스텝/통계는 새로 시작 (시간만 이어감)
+      if (mpi.is_root())
+        std::printf("# warm-start(격자보간): %s (t=%.4f)\n",
+                    s.initial.warmstart_from.c_str(), restart_time);
+    } else if (!s.initial.restart_from.empty()) {
       mpmstd::post::read_checkpoint(s.initial.restart_from, restart_step, restart_time,
                                     {{"U", &U}, {"V", &V}, {"W", &W}, {"T", &T},
                                      {"P", &P}},
