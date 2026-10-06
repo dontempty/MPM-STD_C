@@ -1,10 +1,11 @@
 # ══════════════════════════════════════════════════════════════════════════
-# MPM-STD 빌드 — CPU 전용 (GPU 는 모듈별 CPU 스모크 뒤 추가; docs/Plan §5.3)
+# MPM-STD 빌드 — CPU(build/) 와 GPU(GPU=1 → build_gpu/; .cu 쌍둥이 TU 대체)
 #
 # 규칙 하나: 실행파일은 전부 apps/<이름>/main.cpp 다. 테스트도 앱이다
 # (apps/test_*/main.cpp). 그래서 아래가 전부 성립한다:
 #
-#   make              전체 빌드
+#   make              전체 빌드 (CPU → build/bin/*)
+#   make GPU=1        전체 GPU 빌드 (→ build_gpu/bin/*; GPU 노드에서)
 #   make <이름>       개별 앱 빌드   (예: make rbc, make test_grid)
 #   make test         test_* 앱 전부 실행 (하나라도 실패하면 exit 1)
 #   make clean
@@ -17,7 +18,16 @@
 include Makefile.inc
 INC := -Isrc -Iapps $(EXT_INC)
 
+# 정본 빌드 디렉터리 (2026-10-06 사용자 결정): CPU = build/, GPU = build_gpu/ —
+# obj 는 항상 최신 소스, bin 에는 모든 앱 실행파일. src obj 는 앱들이 공유하고
+# 앱별로 다른 것은 obj/apps/<앱>/ 과 bin/<앱> 뿐이다. CPU/GPU 는 같은 .o 경로에
+# 다른 플래그의 오브젝트를 섞으면 안 되므로 디렉터리를 분리한다 (BUILD= 로 덮어쓰기
+# 가능하지만 돌고 있는 잡의 바이너리를 보존할 때 말고는 쓰지 말 것).
+ifdef GPU
+BUILD ?= build_gpu
+else
 BUILD ?= build
+endif
 
 # CPU 빌드 = 모든 .cpp. GPU 빌드(GPU=1) = "같은 이름의 .cu 쌍둥이가 있는 .cpp 는
 # .cu 로 대체"하고 나머지 .cpp 는 그대로 — 같은 헤더 API 를 백엔드별 TU 가
