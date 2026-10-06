@@ -321,9 +321,10 @@ int main(int argc, char** argv) {
       sync_velocity(U, V, W, sub);
 
       // ── 증분 투영 + NOB ExtraTerm/보정 (상수계수 Poisson 은 그대로) ──
-      // ⚠ 알려진 보류 수정: 원본은 여기서 물성을 Tⁿ⁺¹ 로 재갱신한다 —
-      //    docs/Debug/20261005_rbc_nob_projection_properties.patch (사용자
-      //    결정으로 캠페인 일관성 위해 보류, A/B 검증은 완료).
+      // ── 투영 직전 물성 재갱신 (Tⁿ⁺¹) — 참조 GPU 경로 1:1 (MPM-STD_C
+      //    apps/rbc/main.cpp:307 "Update CPU properties for pressure"). 2026-10-06 적용
+      //    (A/B: div max 4.9e-6 → 2.5e-13, θ_c 차 0.02%; docs/Debug/20261005_rbc_nob_dt60_div_spike.md).
+      physics::update_properties(properties, T, model, sub);
       rhs_dP.fill(0);
       pressure::add_divergence(rhs_dP, U, V, W, grid, sub, dt);
       pressure::add_extra_term_variable_property(rhs_dP, pressure_predictor,

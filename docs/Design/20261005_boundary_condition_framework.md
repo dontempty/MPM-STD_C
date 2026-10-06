@@ -120,7 +120,7 @@ make_boundary_condition(axis_kind_text[3], override_text[5][3][2])  // 기본값
 |---|---|
 | 채널 스모크 md5 | `2336c4a5…` **비트 일치** |
 | rbc 스모크 | `Nu = 30.6631, theta_c = -0.00361` 동일 |
-| rbc_nob 스모크 (가변물성 스칼라 — 마스크 확장 영향권) | `theta_c = 0.01503, Nu = 46.0362` 동일 |
+| rbc_nob 스모크 (가변물성 스칼라 — 마스크 확장 영향권) | `theta_c = 0.01503, Nu = 46.0362` 동일 (※ 2026-10-06 투영 전 물성 재갱신 적용 후 기준값은 Nu 46.0360) |
 | GPU 빌드 (`build_gpu_bc/`, rbc·rbc_nob·dhvc·channel) | 성공 (경고 3건은 기존) |
 
 x 벽 자체의 물리 검증은 압력 DCT(단계 3) 없이는 불가 → 단계 4 cavity 에서 함께.
