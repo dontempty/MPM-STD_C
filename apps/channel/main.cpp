@@ -50,12 +50,17 @@ namespace pressure = mpmstd::equation::pressure;
 
 namespace {
 
-void sync_velocity(Field& U, Field& V, Field& W, const Subdomain& sub) {
+void sync_velocity(Field& U, Field& V, Field& W, const Subdomain& sub, const bool mirror) {
   sub.exchange_halo(U.data());
-  mpmstd::boundary::fill_z_wall_value(U, sub, 0.0, 0.0);
   sub.exchange_halo(V.data());
-  mpmstd::boundary::fill_z_wall_value(V, sub, 0.0, 0.0);
   sub.exchange_halo(W.data());
+  if (mirror) {  // 2차 벽: ghost = −(첫 셀) → no-slip 면이 정확히 벽면 (닫기 B−=A 와 짝)
+    mpmstd::boundary::fill_z_wall_mirror(U, sub, 0.0, 0.0);
+    mpmstd::boundary::fill_z_wall_mirror(V, sub, 0.0, 0.0);
+  } else {       // 1차 벽(참조 Fortran 관례): ghost = 0 → no-slip 면이 ghost 중심(벽 밖 dz/2)
+    mpmstd::boundary::fill_z_wall_value(U, sub, 0.0, 0.0);
+    mpmstd::boundary::fill_z_wall_value(V, sub, 0.0, 0.0);
+  }
   mpmstd::boundary::zero_z_wall_faces(W, sub);
 }
 
@@ -173,6 +178,7 @@ int main(int argc, char** argv) {
   }
   try {
     const channel::Settings s = channel::load_settings(argv[1]);
+    const bool mirror_wall = s.boundary.velocity_ghost == "mirror";
     if (mpi.is_root()) {
       std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
       std::fputs(channel::format_settings(s).c_str(), stdout);
@@ -199,9 +205,13 @@ int main(int argc, char** argv) {
     std::vector<real_t> z_center(s.mesh.nz);
     for (int q = 0; q < s.mesh.nz; ++q) z_center[q] = axis_z_global.center[q + halo_width];
     // zero-ghost 벽 전단의 자: ghost 중심 ↔ 첫/끝 내부 중심 거리 (= 벽 cell 폭)
-    const real_t dmz_bottom = axis_z_global.center_distance[halo_width];
-    const real_t dmz_top =
-        axis_z_global.center_distance[axis_z_global.n_total - halo_width];
+    // u_τ 자: value ghost 는 ghost 중심↔첫 중심(dmz, 스킴 일관), mirror 는 벽면↔첫 중심 (plan §8 14-1)
+    const real_t dmz_bottom = mirror_wall
+        ? axis_z_global.center[halo_width] - axis_z_global.face[halo_width]
+        : axis_z_global.center_distance[halo_width];
+    const real_t dmz_top = mirror_wall
+        ? axis_z_global.face[halo_width + s.mesh.nz] - axis_z_global.center[halo_width + s.mesh.nz - 1]
+        :        axis_z_global.center_distance[axis_z_global.n_total - halo_width];
 
     const real_t delta = real_t(0.5) * s.domain.lz;  // 반높이 = 길이 척도
     const real_t bulk_target = s.physics.target_bulk_velocity;
@@ -212,6 +222,10 @@ int main(int argc, char** argv) {
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"),
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
     momentum::Solver momentum_solver(sub);
+    if (mirror_wall) {  // 거울 ghost 와 짝인 음해 닫기 (δghost = −δq₁ → B −= A); value 는 기본 0 (drop)
+      momentum_solver.wall_closure[2][0] = -1;
+      momentum_solver.wall_closure[2][1] = -1;
+    }
     // ── 원본(core_momentum.f90) 충실 경로 = 상수물성 전용 커널 (plan §18-1) ──
     // OB 경로(보존형 RHS + 짝 없는 이류형 음해항)는 블록 커플링의 평균이 0 이
     // 아니어서 운동량이 dt 에 비례해 샌다 (CFR 이 벽 항력의 1.17~1.41 배로
@@ -250,7 +264,7 @@ int main(int argc, char** argv) {
       vortex_initial_condition(U, V, W, grid, sub, s.domain.ly, s.domain.lz,
                                bulk_target, s.initial.pert_amp, mpi.world_rank());
     }
-    sync_velocity(U, V, W, sub);
+    sync_velocity(U, V, W, sub, mirror_wall);
     sub.exchange_halo(P.data());
     mpmstd::boundary::fill_z_wall_zero_gradient(P, sub);
     if (mpi.is_root() && s.output.checkpoint_interval > 0)
@@ -379,7 +393,7 @@ int main(int argc, char** argv) {
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V,
                                         rhs_W, U, V, W, nu, dt);
       }
-      sync_velocity(U, V, W, sub);
+      sync_velocity(U, V, W, sub, mirror_wall);
 
       real_t bulk_after_solve = 0, tau_after = 0;
       if (budget) {
@@ -391,7 +405,7 @@ int main(int argc, char** argv) {
 
       // ── CFR: 벌크 속도 유지 (ghost 최신 상태에서 측정 — channel_forcing.hpp ⚠) ──
       mpmstd::physics::correct_bulk_velocity(U, grid, sub, bulk_target, dt, mean_dPdx);
-      sync_velocity(U, V, W, sub);
+      sync_velocity(U, V, W, sub, mirror_wall);
       const real_t bulk_after_cfr =
           budget ? mpmstd::post::bulk_velocity(U, grid, sub) : real_t(0);
 
@@ -401,7 +415,7 @@ int main(int argc, char** argv) {
       pressure::solve(pressure_solver, grid, sub, rhs_P, dP);
       pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, dt);
       pressure::accumulate(P, dP);
-      sync_velocity(U, V, W, sub);  // P 는 accumulate 가 ghost 포함이라 재교환 불요
+      sync_velocity(U, V, W, sub, mirror_wall);  // P 는 accumulate 가 ghost 포함이라 재교환 불요
 
       t += dt;
       if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval == 0)

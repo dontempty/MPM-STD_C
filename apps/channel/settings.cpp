@@ -34,6 +34,7 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"physics", "reynolds_bulk", &s.physics.reynolds_bulk, true},
       {"physics", "target_bulk_velocity", &s.physics.target_bulk_velocity, false},
 
+      {"boundary", "velocity_ghost", &s.boundary.velocity_ghost, false},
       {"les", "model", &s.les.model, false},
       {"les", "c_s", &s.les.c_s, false},
 
@@ -61,6 +62,8 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.domain.lx > 0, "'domain.lx' must be > 0");
   require(ini, s.domain.ly > 0, "'domain.ly' must be > 0");
   require(ini, s.domain.lz > 0, "'domain.lz' must be > 0");
+  require(ini, s.boundary.velocity_ghost == "value" || s.boundary.velocity_ghost == "mirror",
+          "'boundary.velocity_ghost' must be value | mirror");
   require(ini, s.les.model == "none" || s.les.model == "constant_vreman",
           "'les.model' must be none | constant_vreman");
   require(ini, s.les.c_s > 0, "'les.c_s' must be > 0");
@@ -150,6 +153,9 @@ std::string format_settings(const Settings& s) {
   add("[physics]");
   add("reynolds_bulk = " + format_number(s.physics.reynolds_bulk));
   add("target_bulk_velocity = " + format_number(s.physics.target_bulk_velocity));
+  add("");
+  add("[boundary]");
+  add("velocity_ghost = " + s.boundary.velocity_ghost);
   add("");
   add("[les]");
   add("model = " + s.les.model);

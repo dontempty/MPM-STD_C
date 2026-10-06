@@ -40,6 +40,11 @@ struct Physics {                    // [physics]
   double target_bulk_velocity = 1;  // CFR 목표 벌크 속도 U_b
 };
 
+struct Boundary {                      // [boundary] — 채널은 z 벽 고정; 접선 속도 ghost 정책만 고른다
+  std::string velocity_ghost = "value";  // value(1차: no-slip 면이 ghost 중심, u_τ 자 = dmz — 참조 Fortran 관례, 기본)
+                                         // | mirror(2차: 벽면 no-slip, 닫기 B−=A, u_τ 자 = 벽면↔첫 중심)
+};
+
 struct Les {                           // [les] — LES 와점성 (physics/LES; docs/Design/20261006_les_design.md)
   std::string model = "none";          // none | constant_vreman  (WALE 는 다음)
   double c_s = 0.12;                   // Vreman: C_v = 2.5·C_s² (참조 Fortran 0.12 → 0.036; 원논문 0.17)
@@ -74,6 +79,7 @@ struct Settings {
   Stretch stretch;
   Process process;
   Physics physics;
+  Boundary boundary;
   Les les;
   Time time;
   Initial initial;
