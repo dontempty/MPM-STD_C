@@ -77,8 +77,10 @@ make_boundary_condition(axis_kind_text[3], override_text[5][3][2])  // 기본값
   `override_text[5][3][2]`, 전개 결과 `condition`), 바인딩 33키를 루프 생성(정적
   키 저장소), `make_settings` 에서 전개(실패 시 파일명 접두), `format_settings` 에
   `[boundary]` 에코(왕복 가능 — 비어 있지 않은 override 만 출력).
-- rbc_nob / dhvc 는 `#include "../rbc/settings.cpp"` 로 자동 공유 (⚠ depfile 이
-  이 include 를 추적 못 함 → 해당 obj 수동 삭제 후 재빌드).
+- rbc_nob / dhvc 는 `#include "../rbc/settings.cpp"` 로 자동 공유. (처음엔 depfile 이
+  이 include 를 못 쫓는다고 봤으나 `.d` 에 `../rbc/settings.cpp` 가 있음을 확인 — 두 번
+  겪은 stale obj 는 수정 직후 다른 노드에서 빌드할 때의 NFS 속성 캐시 문제였다. 단계 3
+  교훈 참조.)
 
 **검증 (cpu04, np=2, `tmp_const_gate/gate_bc.sh`)**
 | 항목 | 결과 |
