@@ -76,3 +76,28 @@ Re_θ ≤ 1100, 재순환 유입 Re_θ,in ≈ 600: Lx ≈ 300 θ_in(버림) + Δ
 훅(`inflow = sem`)으로 뒤에 붙일 수 있게 설계(유입면 프로파일+섭동 공급자 인터페이스).
 비교: Re_θ 670·1000 은 Schlatter & Örlü(트립 — 평형 경계층은 유입 방식과 무관), 1100 은 Torroja(재순환)로
 교차 → 목표를 **Re_θ ≤ 1100** 으로 잡으면 두 DB 를 모두 쓴다.
+
+## 9. 단계 A — 2D 층류 Blasius ✅ (2026-10-06, CPU)
+
+**만든 것**
+- `grid::make_tanh_wall_faces` (한쪽 벽 tanh), `boundary/open.{hpp,cpp,cu}`:
+  `set_inflow`(U 면 = u(z) 프로파일, V·W ghost 거울/값), `update_outflow_convective`(∂φ/∂t + U_c∂φ/∂x = 0,
+  uⁿ 으로 명시 갱신 → 음해 스윕은 δ=0), `set_top_normal_from_continuity`, `set_top_normal_profile`,
+  `correct_outflow_flux`(∮u·n = 0, Neumann Poisson 양립). BC kind `Inflow/Outflow/Continuity/FreeStream`,
+  축 kind `inflow_outflow`, `inflow_profile = blasius`, 면 키워드 `continuity | freestream`.
+- `apps/boundary_layer/` (settings·main·blasius.hpp·`plot/blasius_check.py`), 덱 `input_bl_blasius.ini`
+  (600×1×128, Lx 600, Lz 40, γ_z 2.5, Re_δ*₀ 450 → x₀ 152, dt 0.5, t 1200 = 2 통과; CPU 1랭크 2.5 분).
+
+**★ 발견 — 자유류 상단 BC**: `∂u/∂z = 0 + w 연속식`(또는 u = U∞ 거울 Dirichlet)은 **ZPG 를 유지하지 못한다**:
+유입 상단으로 들어온 Blasius w∞(x₀) = 0.0033 이 비점성 자유류를 따라 그대로 이류되어(참값은
+0.86/√Re_x 로 감소) 질량이 과다 유출 → 자유류 1.0 → 0.977 감속(역압력구배) → θ +55%, H 2.1, C_f −6~11%.
+u = U∞ Dirichlet 은 점성 앵커일 뿐이라 무효(결과 4자리 동일). 처방 = Schlatter/SIMSON 식
+**상단 w = Blasius w∞(x) 프로파일 처방**(`w_z_plus = freestream`, 난류 단계는 U∞·dδ*/dx 공급).
+
+**결과 (`w_z_plus = freestream`, 600×128)**
+| x/Lx | Re_x | C_f err | δ* err | θ err | H |
+|---|---|---|---|---|---|
+| 0.1~0.8 | 9.5e4~2.8e5 | −0.08 … −0.01% | −0.02 … −0.01% | −0.07 … −0.02% | 2.5926 … 2.5914 (Blasius 2.5911) |
+| 0.9 / 0.95 | 3.1e5 / 3.2e5 | +0.10 / +0.60% | −0.01% | +0.04 / +0.28% | 2.590 / 2.584 (유출 영향 ≲ 마지막 10%) |
+프로파일 max|u/U∞ − f′(η)| (η<8) = 2.0~2.3e-4 (3 스테이션); 자유류 u = 1.000 ± 1.5e-4; max|div| 1e-16;
+유량 보정 −1.9e-5 (정상, Blasius w∞ 처방과 이산 유량의 상수 차). 합격 기준(≤1%) 대비 **10배 여유**.

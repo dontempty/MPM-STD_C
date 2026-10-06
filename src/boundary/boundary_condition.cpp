@@ -30,6 +30,7 @@ const char* bc_kind_name(BcKind k) {
     case BcKind::Inflow: return "inflow";
     case BcKind::Outflow: return "outflow";
     case BcKind::Continuity: return "continuity";
+    case BcKind::FreeStream: return "freestream";
   }
   return "?";
 }
@@ -62,10 +63,11 @@ FaceBc parse_face_override(const std::string& text) {
   const std::string s = lower(text);
   if (s == "adiabatic" || s == "slip" || s == "neumann") return {BcKind::Neumann, 0};
   if (s == "continuity") return {BcKind::Continuity, 0};
+  if (s == "freestream") return {BcKind::FreeStream, 0};
   char* end = nullptr;
   const double v = std::strtod(s.c_str(), &end);
   if (end == s.c_str() || *end != '\0')
-    fail("bad face override '" + text + "' (number | adiabatic | slip | continuity)");
+    fail("bad face override '" + text + "' (number | adiabatic | slip | continuity | freestream)");
   return {BcKind::Dirichlet, static_cast<real_t>(v)};
 }
 
@@ -117,8 +119,8 @@ BoundaryCondition make_boundary_condition(
             && (bc.axis[a] == AxisKind::Wall || bc.axis[a] == AxisKind::InflowOutflow))
           fail("'" + key + "': pressure on a wall/open boundary is always Neumann 0 (not overridable)");
         const FaceBc parsed = parse_face_override(text);
-        if (parsed.kind == BcKind::Continuity && f != a)
-          fail("'" + key + "': continuity is only for the wall-normal velocity component");
+        if ((parsed.kind == BcKind::Continuity || parsed.kind == BcKind::FreeStream) && f != a)
+          fail("'" + key + "': continuity/freestream is only for the wall-normal velocity component");
         bc.face[f][a][side] = parsed;
       }
   bc.validate();
@@ -141,8 +143,9 @@ void BoundaryCondition::validate() const {
           if (f == static_cast<int>(Field::P) && fb.kind != BcKind::Neumann)
             fail(where + ": wall pressure must be Neumann");
           // 벽의 법선 속도(축 a 의 성분 a)는 불투과 → Dirichlet 만
-          if (f == a && fb.kind != BcKind::Dirichlet && fb.kind != BcKind::Continuity)
-            fail(where + ": wall-normal velocity must be Dirichlet (impermeable) or continuity (free-stream)");
+          if (f == a && fb.kind != BcKind::Dirichlet && fb.kind != BcKind::Continuity
+              && fb.kind != BcKind::FreeStream)
+            fail(where + ": wall-normal velocity must be Dirichlet (impermeable), continuity or freestream");
         }
       }
 }

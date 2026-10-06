@@ -36,7 +36,7 @@ void apply_velocity_wall_ghosts(field::Field& U, field::Field& V, field::Field& 
         const FaceBc& face = bc.at(row[c], axis, side);
         // 열린 경계(유입 프로파일·유출 대류·연속식)는 boundary/open 이 앱 호출로 채운다
         if (face.kind == BcKind::Inflow || face.kind == BcKind::Outflow
-            || face.kind == BcKind::Continuity)
+            || face.kind == BcKind::Continuity || face.kind == BcKind::FreeStream)
           continue;
         if (c == axis) {
           // 법선 성분: 벽 면 자체. 불투과(0)만 지원 — validate 가 Dirichlet 은 보장.

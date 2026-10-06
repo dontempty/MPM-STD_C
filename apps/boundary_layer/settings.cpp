@@ -1,0 +1,142 @@
+#include "settings.hpp"
+
+#include <filesystem>
+#include <vector>
+
+#include "config/schema.hpp"
+
+namespace boundary_layer {
+
+using mpmstd::config::Binding;
+using mpmstd::config::IniFile;
+using mpmstd::config::format_number;
+using mpmstd::config::require;
+
+namespace {
+
+std::vector<Binding> make_bindings(Settings& s) {
+  std::vector<Binding> b = {
+      {"mesh", "nx", &s.mesh.nx, true},
+      {"mesh", "ny", &s.mesh.ny, true},
+      {"mesh", "nz", &s.mesh.nz, true},
+      {"domain", "lx", &s.domain.lx, true},
+      {"domain", "ly", &s.domain.ly, true},
+      {"domain", "lz", &s.domain.lz, true},
+      {"stretch", "uniform_z", &s.stretch.uniform_z, false},
+      {"stretch", "gamma_z", &s.stretch.gamma_z, false},
+      {"process", "npx", &s.process.npx, false},
+      {"process", "npy", &s.process.npy, false},
+      {"process", "npz", &s.process.npz, false},
+      {"physics", "u_infinity", &s.physics.u_infinity, false},
+      {"physics", "reynolds_delta_star", &s.physics.reynolds_delta_star, true},
+      {"physics", "convective_velocity", &s.physics.convective_velocity, false},
+      {"initial", "profile", &s.initial.profile, false},
+      {"initial", "restart_from", &s.initial.restart_from, false},
+      {"time", "end_time", &s.time.end_time, true},
+      {"time", "dt_max", &s.time.dt_max, false},
+      {"time", "max_cfl", &s.time.max_cfl, false},
+      {"time", "max_step", &s.time.max_step, false},
+      {"output", "stats_dir", &s.output.stats_dir, false},
+      {"output", "monitor_interval", &s.output.monitor_interval, false},
+      {"output", "stats_interval", &s.output.stats_interval, false},
+      {"output", "checkpoint_interval", &s.output.checkpoint_interval, false},
+      {"output", "checkpoint_dir", &s.output.checkpoint_dir, false},
+  };
+  mpmstd::boundary::append_bindings(b, s.boundary);
+  return b;
+}
+
+void validate(const IniFile& ini, const Settings& s) {
+  require(ini, s.mesh.nx > 0 && s.mesh.ny > 0 && s.mesh.nz > 0, "'mesh.*' must be > 0");
+  require(ini, s.domain.lx > 0 && s.domain.ly > 0 && s.domain.lz > 0, "'domain.*' must be > 0");
+  require(ini, s.stretch.uniform_z || s.stretch.gamma_z > 0, "'stretch.gamma_z' must be > 0");
+  require(ini, s.physics.u_infinity > 0, "'physics.u_infinity' must be > 0");
+  require(ini, s.physics.reynolds_delta_star > 0, "'physics.reynolds_delta_star' must be > 0");
+  require(ini, s.physics.convective_velocity >= 0, "'physics.convective_velocity' must be >= 0");
+  require(ini, s.initial.profile == "blasius" || s.initial.profile == "uniform",
+          "'initial.profile' must be blasius | uniform");
+  require(ini, s.time.end_time > 0, "'time.end_time' must be > 0");
+  require(ini, s.time.dt_max > 0 && s.time.max_cfl > 0, "'time.dt_max'/'max_cfl' must be > 0");
+  require(ini, s.output.monitor_interval > 0, "'output.monitor_interval' must be > 0");
+  using mpmstd::boundary::AxisKind;
+  require(ini, s.boundary.condition.axis[0] == AxisKind::InflowOutflow,
+          "[boundary] x must be inflow_outflow for the boundary layer");
+  require(ini, s.boundary.condition.axis[1] == AxisKind::Periodic, "[boundary] y must be periodic");
+  require(ini, s.boundary.condition.axis[2] == AxisKind::Wall, "[boundary] z must be wall");
+  require(ini, s.boundary.inflow_profile == "blasius",
+          "[boundary] inflow_profile: only 'blasius' is implemented");
+}
+
+}  // namespace
+
+Settings make_settings(const IniFile& ini) {
+  Settings s;
+  mpmstd::config::apply_bindings(ini, make_bindings(s));
+  mpmstd::boundary::build(s.boundary, ini);
+  validate(ini, s);
+  return s;
+}
+
+Settings load_settings(const std::string& path) {
+  Settings s = make_settings(IniFile::load(path));
+  const auto resolve = [&](std::string& p) {
+    if (p.empty()) return;
+    std::filesystem::path q(p);
+    if (q.is_relative()) q = std::filesystem::path(path).parent_path() / q;
+    p = q.lexically_normal().string();
+    while (p.size() > 1 && p.back() == '/') p.pop_back();
+  };
+  resolve(s.output.stats_dir);
+  resolve(s.output.checkpoint_dir);
+  resolve(s.initial.restart_from);
+  return s;
+}
+
+std::string format_settings(const Settings& s) {
+  std::string out;
+  const auto add = [&out](const std::string& line) { out += line; out += '\n'; };
+  add("[mesh]");
+  add("nx = " + std::to_string(s.mesh.nx));
+  add("ny = " + std::to_string(s.mesh.ny));
+  add("nz = " + std::to_string(s.mesh.nz));
+  add("");
+  add("[domain]");
+  add("lx = " + format_number(s.domain.lx));
+  add("ly = " + format_number(s.domain.ly));
+  add("lz = " + format_number(s.domain.lz));
+  add("");
+  add("[stretch]");
+  add(std::string("uniform_z = ") + (s.stretch.uniform_z ? "true" : "false"));
+  if (!s.stretch.uniform_z) add("gamma_z = " + format_number(s.stretch.gamma_z));
+  add("");
+  add("[process]");
+  add("npx = " + std::to_string(s.process.npx));
+  add("npy = " + std::to_string(s.process.npy));
+  add("npz = " + std::to_string(s.process.npz));
+  add("");
+  add("[physics]");
+  add("u_infinity = " + format_number(s.physics.u_infinity));
+  add("reynolds_delta_star = " + format_number(s.physics.reynolds_delta_star));
+  add("convective_velocity = " + format_number(s.physics.convective_velocity));
+  add("");
+  add("[initial]");
+  add("profile = " + s.initial.profile);
+  add("restart_from = \"" + s.initial.restart_from + "\"");
+  add("");
+  mpmstd::boundary::format(s.boundary, out);
+  add("[time]");
+  add("end_time = " + format_number(s.time.end_time));
+  add("dt_max = " + format_number(s.time.dt_max));
+  add("max_cfl = " + format_number(s.time.max_cfl));
+  add("max_step = " + std::to_string(s.time.max_step));
+  add("");
+  add("[output]");
+  add("stats_dir = \"" + s.output.stats_dir + "\"");
+  add("monitor_interval = " + std::to_string(s.output.monitor_interval));
+  add("stats_interval = " + format_number(s.output.stats_interval));
+  add("checkpoint_interval = " + std::to_string(s.output.checkpoint_interval));
+  add("checkpoint_dir = \"" + s.output.checkpoint_dir + "\"");
+  return out;
+}
+
+}  // namespace boundary_layer

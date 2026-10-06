@@ -1,0 +1,321 @@
+// MPM-STD boundary_layer 드라이버 — ZPG 평판 경계층 (단계 A: 2D 층류 Blasius 검증).
+//   docs/Design/20261006_boundary_layer_validation.md
+//
+// 축: x 유동(x− 유입 Blasius 프로파일, x+ 대류 유출), y 스팬(주기; ny=1 이면 2D),
+//     z 벽수직(z=0 no-slip, z+ 자유류: ∂u/∂z=∂v/∂z=0, w 는 연속식).
+// 무차원: δ*₀ = 1, U∞ = 1, ν = U∞/Re_δ*₀. 유입면 물리 위치 x₀ = (δ*₀/1.7208)² U∞/ν.
+//
+// 한 스텝: [CFL dt] → [유출면 대류 갱신(uⁿ)] → [운동량 rhs(상수 ν) − ∇Pⁿ → solve]
+//   → [동기화: halo·벽 ghost·유입·상단 연속식] → [유출 유량 보정(∮u·n=0)] → [증분 투영]
+//   → [P 누적·동기화]. 압력은 x-DCT(Neumann 양끝)·y FFT·z TDMA (기존 솔버 그대로).
+#include <mpi.h>
+#ifdef MPMSTD_GPU
+#include <cuda_runtime.h>
+#endif
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <exception>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "blasius.hpp"
+#include "boundary/apply.hpp"
+#include "boundary/open.hpp"
+#include "equation/momentum/rhs/rhs.hpp"
+#include "equation/momentum/solve.hpp"
+#include "equation/pressure/correction.hpp"
+#include "equation/pressure/rhs/rhs.hpp"
+#include "equation/pressure/solve.hpp"
+#include "field/field.hpp"
+#include "grid/grid.hpp"
+#include "grid/stretching.hpp"
+#include "parallel/mpi_context.hpp"
+#include "parallel/subdomain/subdomain.hpp"
+#include "parallel/topology/topology.hpp"
+#include "post/checkpoint.hpp"
+#include "post/statistics.hpp"
+#include "settings.hpp"
+#include "time/time_step.hpp"
+
+using mpmstd::halo_width;
+using mpmstd::real_t;
+using mpmstd::boundary::BoundaryCondition;
+using mpmstd::field::Field;
+using mpmstd::parallel::Subdomain;
+using mpmstd::parallel::Topology;
+namespace boundary = mpmstd::boundary;
+namespace momentum = mpmstd::equation::momentum;
+namespace pressure = mpmstd::equation::pressure;
+
+namespace {
+
+constexpr double kBlasiusDisplacement = 1.7208;  // δ* = 1.7208 √(νx/U∞)
+
+struct Flow {
+  double u_inf, nu, x0;
+  boundary_layer::Blasius blasius;
+  double eta(double z, double x) const { return z * std::sqrt(u_inf / (nu * x)); }
+  double u(double z, double x) const { return u_inf * blasius.f_prime(eta(z, x)); }
+  double w(double z, double x) const {
+    const double e = eta(z, x);
+    return 0.5 * std::sqrt(nu * u_inf / x) * (e * blasius.f_prime(e) - blasius.f_value(e));
+  }
+};
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  mpmstd::parallel::MpiContext mpi(&argc, &argv);
+#ifdef MPMSTD_GPU
+  {
+    int n_devices = 0;
+    cudaGetDeviceCount(&n_devices);
+    if (n_devices > 0) cudaSetDevice(mpi.node_rank() % n_devices);
+  }
+#endif
+  if (argc < 2) {
+    if (mpi.is_root()) std::fprintf(stderr, "usage: %s <input.ini>\n", argv[0]);
+    return 1;
+  }
+  try {
+    const boundary_layer::Settings s = boundary_layer::load_settings(argv[1]);
+    const BoundaryCondition& bc = s.boundary.condition;
+    if (mpi.is_root()) {
+      std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
+      std::fputs(boundary_layer::format_settings(s).c_str(), stdout);
+      std::printf("# boundary condition table:\n%s", boundary::format_boundary_condition(bc).c_str());
+      std::filesystem::create_directories(s.output.stats_dir);
+    }
+
+    const Topology topo(mpi, s.process.npx, s.process.npy, s.process.npz,
+                        bc.is_periodic(0), bc.is_periodic(1), bc.is_periodic(2));
+    const Subdomain sub(topo, s.mesh.nx, s.mesh.ny, s.mesh.nz);
+    const auto faces_x = mpmstd::grid::make_uniform_faces(s.mesh.nx, s.domain.lx);
+    const auto faces_y = mpmstd::grid::make_uniform_faces(s.mesh.ny, s.domain.ly);
+    const auto faces_z = s.stretch.uniform_z
+                             ? mpmstd::grid::make_uniform_faces(s.mesh.nz, s.domain.lz)
+                             : mpmstd::grid::make_tanh_wall_faces(s.mesh.nz, s.domain.lz,
+                                                                  s.stretch.gamma_z);
+    const mpmstd::grid::Grid grid{
+        mpmstd::grid::make_axis(faces_x, {sub.x().n_global, sub.x().offset, sub.x().n_local}, "x"),
+        mpmstd::grid::make_axis(faces_y, {sub.y().n_global, sub.y().offset, sub.y().n_local}, "y"),
+        mpmstd::grid::make_axis(faces_z, {sub.z().n_global, sub.z().offset, sub.z().n_local}, "z"),
+    };
+
+    Flow flow;
+    flow.u_inf = s.physics.u_infinity;
+    flow.nu = s.physics.u_infinity / s.physics.reynolds_delta_star;  // δ*₀ = 1
+    flow.x0 = std::pow(1.0 / kBlasiusDisplacement, 2) * flow.u_inf / flow.nu;
+    flow.blasius = boundary_layer::Blasius::solve();
+    const real_t convective_velocity =
+        s.physics.convective_velocity > 0 ? s.physics.convective_velocity : flow.u_inf;
+
+    const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
+    Field U(nx, ny, nz, "U"), V(nx, ny, nz, "V"), W(nx, ny, nz, "W"), P(nx, ny, nz, "P");
+    Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"), rhs_W(nx, ny, nz, "rhs_W"),
+        rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
+    momentum::Solver momentum_solver(sub);
+    momentum::set_wall_closure(momentum_solver, bc);
+    pressure::Solver pressure_solver(grid, sub);
+
+    // 유입 프로파일 (로컬 z, ghost 포함): U 는 z 중심, W 는 z 면
+    boundary::InflowProfile inflow;
+    inflow.u.resize(nz); inflow.v.assign(nz, 0.0); inflow.w.resize(nz);
+    for (int k = 0; k < nz; ++k) {
+      inflow.u[k] = flow.u(std::max(0.0, double(grid.z.center[k])), flow.x0);
+      inflow.w[k] = flow.w(std::max(0.0, double(grid.z.face[k])), flow.x0);
+    }
+
+    // 자유류 상단 w∞(x) (FreeStream kind): 층류 Blasius 0.8604 U∞/√Re_x = U∞ dδ*/dx
+    const bool top_freestream = bc.at(boundary::Field::W, 2, 1).kind == boundary::BcKind::FreeStream;
+    std::vector<real_t> w_top(nx, 0.0);
+    for (int i = 0; i < nx; ++i) {
+      const double x = flow.x0 + std::max(0.0, double(grid.x.center[i]));
+      w_top[i] = 0.8604 * std::sqrt(flow.nu * flow.u_inf / x);
+    }
+    const auto sync_velocity = [&]() {
+      sub.exchange_halo(U.data());
+      sub.exchange_halo(V.data());
+      sub.exchange_halo(W.data());
+      boundary::apply_velocity_wall_ghosts(U, V, W, bc, sub);
+      boundary::set_inflow(U, V, W, inflow, bc.velocity_ghost, sub);
+      if (top_freestream) boundary::set_top_normal_profile(W, w_top, sub);
+      else boundary::set_top_normal_from_continuity(W, U, V, grid, sub);
+    };
+    const auto sync_pressure = [&]() {
+      sub.exchange_halo(P.data());
+      boundary::apply_pressure_wall_ghosts(P, bc, sub);
+    };
+
+    long restart_step = 0;
+    double restart_time = 0;
+    if (!s.initial.restart_from.empty()) {
+      mpmstd::post::read_checkpoint(s.initial.restart_from, restart_step, restart_time,
+                                    {{"U", &U}, {"V", &V}, {"W", &W}, {"P", &P}}, {}, sub);
+      if (mpi.is_root())
+        std::printf("# restart: %s (step=%ld, t=%.4f)\n", s.initial.restart_from.c_str(),
+                    restart_step, restart_time);
+    } else {
+      // IC: 각 x 위치의 Blasius (또는 균일 U∞)
+      std::vector<real_t> hu(U.size(), 0.0), hw(W.size(), 0.0);
+      const auto at = [&](int i, int j, int k) {
+        return (static_cast<std::size_t>(i) * ny + j) * nz + k;
+      };
+      for (int i = 0; i < nx; ++i)
+        for (int j = 0; j < ny; ++j)
+          for (int k = 0; k < nz; ++k) {
+            const double xf = flow.x0 + std::max(0.0, double(grid.x.face[i]));
+            const double xc = flow.x0 + std::max(0.0, double(grid.x.center[i]));
+            const double zc = std::max(0.0, double(grid.z.center[k]));
+            const double zf = std::max(0.0, double(grid.z.face[k]));
+            hu[at(i, j, k)] = s.initial.profile == "blasius" ? flow.u(zc, xf) : flow.u_inf;
+            hw[at(i, j, k)] = s.initial.profile == "blasius" ? flow.w(zf, xc) : 0.0;
+          }
+      U.upload(hu);
+      W.upload(hw);
+    }
+    sync_velocity();
+    sync_pressure();
+    if (mpi.is_root() && s.output.checkpoint_interval > 0)
+      std::filesystem::create_directories(s.output.checkpoint_dir);
+
+    // IC 발산 청소 (유출 유량 보정 → Neumann Poisson 양립)
+    boundary::correct_outflow_flux(U, W, grid, sub);
+    rhs_P.fill(0);
+    pressure::add_divergence(rhs_P, U, V, W, grid, sub, real_t(1));
+    pressure::solve(pressure_solver, grid, sub, rhs_P, dP);
+    pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, real_t(1));
+    pressure::accumulate(P, dP);
+    sync_velocity();
+    sync_pressure();
+
+    if (mpi.is_root()) {
+      std::printf("# boundary layer: Re_dstar0=%g nu=%.6e x0=%.4f  f''(0)=%.6f | %dx%dx%d\n",
+                  s.physics.reynolds_delta_star, flow.nu, flow.x0, flow.blasius.shear,
+                  s.mesh.nx, s.mesh.ny, s.mesh.nz);
+      std::printf("# step      time        dt     max|div|   dU_out      Cf(x=Lx/2)  Cf_blasius   sec/step\n");
+    }
+
+    // 장 덤프 (2D: j = h 평면; U x면·W z면) — 후처리 plot/blasius_check.py
+    const auto write_field_dump = [&](long step_now, double t_now) {
+      if (!mpi.is_root() || sub.topology().z().nprocs != 1) return;
+      const int h = halo_width;
+      std::vector<real_t> u, w;
+      U.download(u);
+      W.download(w);
+      const auto at = [&](int i, int j, int k) {
+        return (static_cast<std::size_t>(i) * ny + j) * nz + k;
+      };
+      char path[512];
+      std::snprintf(path, sizeof(path), "%s/bl_field_%08ld.dat", s.output.stats_dir.c_str(), step_now);
+      std::FILE* f = std::fopen(path, "w");
+      if (!f) return;
+      std::fprintf(f, "# bl field dump  step=%ld t=%.6f nu=%.10e u_inf=%g x0=%.8f nx=%d nz=%d lx=%g lz=%g\n",
+                   step_now, t_now, flow.nu, flow.u_inf, flow.x0, s.mesh.nx, s.mesh.nz,
+                   s.domain.lx, s.domain.lz);
+      std::fprintf(f, "# block U: (nx+1) x nz rows of  x_face z_center U\n");
+      for (int i = h; i <= nx - h; ++i)
+        for (int k = h; k < nz - h; ++k)
+          std::fprintf(f, "%.10f %.10f %.12e\n", grid.x.face[i], grid.z.center[k], u[at(i, h, k)]);
+      std::fprintf(f, "# block W: nx x (nz+1) rows of  x_center z_face W\n");
+      for (int i = h; i < nx - h; ++i)
+        for (int k = h; k <= nz - h; ++k)
+          std::fprintf(f, "%.10f %.10f %.12e\n", grid.x.center[i], grid.z.face[k], w[at(i, h, k)]);
+      std::fclose(f);
+      std::printf("# field dump written: %s\n", path);
+    };
+    const auto write_checkpoint = [&](long step_now, double t_now) {
+      if (s.output.checkpoint_interval <= 0) return;
+      char ck[512];
+      std::snprintf(ck, sizeof(ck), "%s/bl_ck_%08ld.bin", s.output.checkpoint_dir.c_str(), step_now);
+      mpmstd::post::write_checkpoint(ck, step_now, t_now,
+                                     {{"U", &U}, {"V", &V}, {"W", &W}, {"P", &P}}, {}, sub);
+      if (mpi.is_root()) std::printf("# checkpoint written: %s (t=%.4f)\n", ck, t_now);
+    };
+    // 모니터용 C_f(x = Lx/2): 벽 두 셀 2점 Lagrange 편측 미분 (루트 랭크가 하단 벽 소유 시)
+    const auto skin_friction_mid = [&]() -> real_t {
+      if (sub.topology().z().minus_neighbor != MPI_PROC_NULL) return 0;
+      const int h = halo_width;
+      std::vector<real_t> u;
+      U.download(u);
+      const int i = h + s.mesh.nx / 2;
+      const auto at = [&](int ii, int j, int k) {
+        return (static_cast<std::size_t>(ii) * ny + j) * nz + k;
+      };
+      const double z1 = grid.z.center[h], z2 = grid.z.center[h + 1];
+      const double u1 = u[at(i, h, h)], u2 = u[at(i, h, h + 1)];
+      const double dudz = u1 * z2 / (z1 * (z2 - z1)) - u2 * z1 / (z2 * (z2 - z1));
+      return static_cast<real_t>(2 * flow.nu * dudz / (flow.u_inf * flow.u_inf));
+    };
+    const double x_mid = flow.x0 + grid.x.face[halo_width + s.mesh.nx / 2];
+    const double cf_blasius_mid = 0.664 / std::sqrt(flow.u_inf * x_mid / flow.nu);
+
+    real_t t = static_cast<real_t>(restart_time);
+    long step = restart_step;
+    double next_dump = s.output.stats_interval > 0 ? s.output.stats_interval : 0;
+    while (next_dump > 0 && next_dump <= t) next_dump += s.output.stats_interval;
+    double wall_prev = MPI_Wtime();
+
+    while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {
+      const real_t dt = mpmstd::time_integration::compute_cfl_dt(U, V, W, grid, sub,
+                                                                   s.time.max_cfl, s.time.dt_max);
+      // 유출면 대류 갱신 (uⁿ) — 음해 스윕은 이 값을 고정(δ=0)으로 본다
+      boundary::update_outflow_convective(U, V, W, convective_velocity, dt, grid, sub);
+
+      rhs_U.fill(0); rhs_V.fill(0); rhs_W.fill(0);
+      momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, flow.nu, dt);
+      momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, flow.nu, dt);
+      momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, flow.nu, dt);
+      pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+      momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
+                                        flow.nu, dt);
+      sync_velocity();
+      const real_t du_out = boundary::correct_outflow_flux(U, W, grid, sub);
+
+      rhs_P.fill(0);
+      pressure::add_divergence(rhs_P, U, V, W, grid, sub, dt);
+      pressure::solve(pressure_solver, grid, sub, rhs_P, dP);
+      pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, dt);
+      pressure::accumulate(P, dP);
+      sync_velocity();
+      sync_pressure();
+
+      t += dt;
+      ++step;
+      if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval == 0)
+        write_checkpoint(step, t);
+      if (next_dump > 0 && t >= next_dump) {
+        write_field_dump(step, t);
+        next_dump += s.output.stats_interval;
+      }
+      if (step % s.output.monitor_interval == 0 || step == 1) {
+        const real_t div = mpmstd::post::max_divergence(U, V, W, grid, sub);
+        const real_t cf = skin_friction_mid();
+        const double wall_now = MPI_Wtime();
+        if (mpi.is_root()) {
+          std::printf("%7ld %9.3f %9.5f %10.2e %10.2e %11.6f %11.6f %8.4f\n", step, t, dt, div,
+                      du_out, cf, cf_blasius_mid,
+                      (wall_now - wall_prev) / s.output.monitor_interval);
+          std::fflush(stdout);
+        }
+        wall_prev = wall_now;
+        if (!(div == div) || div > 1e3) throw std::runtime_error("divergence blew up — aborting");
+      }
+    }
+    write_field_dump(step, t);
+    if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval != 0)
+      write_checkpoint(step, t);
+    if (mpi.is_root())
+      std::printf("# FINAL: Cf(x=Lx/2) = %.6f (Blasius %.6f, %+.2f%%)  t = %.1f step = %ld\n",
+                  skin_friction_mid(), cf_blasius_mid,
+                  100 * (skin_friction_mid() / cf_blasius_mid - 1), t, step);
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "error (rank %d): %s\n", mpi.world_rank(), e.what());
+    MPI_Abort(MPI_COMM_WORLD, 1);
+    return 1;
+  }
+  return 0;
+}

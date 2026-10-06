@@ -12,7 +12,8 @@
 //       숫자      → 그 면 Dirichlet(그 값)   예: t_x_minus = 0.5, u_z_plus = 1.0 (lid)
 //       adiabatic → 그 면 Neumann 0 (온도: 단열)
 //       slip      → 그 면 Neumann 0 (접선 속도: free-slip)   adiabatic/slip/neumann 은 동의어
-//       continuity→ 벽 법선 속도만: 연속식으로 결정 (자유류 상단 w_z_plus = continuity)
+//       continuity→ 벽 법선 속도만: 연속식으로 결정 (w_z_plus = continuity)
+//       freestream→ 벽 법선 속도만: 앱이 주는 자유류 w∞(x) 프로파일 (w_z_plus = freestream)
 //   inflow_profile = blasius | file:<경로>                 x = inflow_outflow 일 때 필수
 //
 // ── 축 kind → 필드별 기본값 (MPM-STD_C 관례) ─────────────────────────────────
@@ -39,8 +40,11 @@ namespace mpmstd::boundary {
 // Inflow/Outflow/Continuity 는 "열린 경계"(2026-10-06 경계층): 값은 앱이 매 스텝 공급한다
 //   Inflow     : 법선 성분 = 프로파일 Dirichlet(공간 가변), 접선은 Dirichlet(0 또는 프로파일)
 //   Outflow    : 대류 BC ∂φ/∂t + U_c ∂φ/∂x = 0 (앱이 명시 갱신; 음해 닫기는 δ=0)
-//   Continuity : 법선 성분을 연속식으로 (자유류 상단: ∂w/∂z = −∂u/∂x − ∂v/∂y)
-enum class BcKind { Periodic, Dirichlet, Neumann, Inflow, Outflow, Continuity };
+//   Continuity : 법선 성분을 연속식으로 (∂w/∂z = −∂u/∂x − ∂v/∂y). ⚠ ZPG 경계층 상단엔 부적합
+//                (자유류 w 가 유입값으로 이류되어 과다 유출 → 자유류 감속, 2026-10-06 실측)
+//   FreeStream : 법선 성분 = 앱이 주는 x 프로파일 (층류: Blasius w∞ = 0.8604 U∞/√Re_x,
+//                난류: U∞·dδ*/dx) — Schlatter/SIMSON 의 상단 처리
+enum class BcKind { Periodic, Dirichlet, Neumann, Inflow, Outflow, Continuity, FreeStream };
 // InflowOutflow: minus 면 유입(법선 Inflow, 접선 Dirichlet 0, P Neumann), plus 면 유출
 //   (속도 전부 Outflow, P Neumann, T Neumann). 경계층 x 축.
 enum class AxisKind { Periodic, Wall, Dirichlet, Neumann, InflowOutflow };

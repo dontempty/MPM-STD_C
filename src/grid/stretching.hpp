@@ -20,4 +20,9 @@ std::vector<real_t> make_uniform_faces(int n_cells, real_t length);
 // 양 끝점은 0 과 length 로 강제해 부동소수 드리프트를 막는다.
 std::vector<real_t> make_tanh_faces(int n_cells, real_t length, real_t gamma);
 
+// 한쪽(z = 0)만 조밀한 tanh — 경계층(벽 하나 + 자유류 상단) 용 (2026-10-06).
+//   z(ξ) = L·[1 − tanh(γ(1−ξ))/tanh γ],  ξ = i/n.  γ 가 클수록 벽에 몰린다
+//   (γ=2.5, n=128, L=40 → 첫 셀 0.016 L/40, 상단 셀 ≈ 2.5/tanh γ · L/n).
+std::vector<real_t> make_tanh_wall_faces(int n_cells, real_t length, real_t gamma);
+
 }  // namespace mpmstd::grid

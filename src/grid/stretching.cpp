@@ -48,4 +48,20 @@ std::vector<real_t> make_tanh_faces(int n_cells, real_t length, real_t gamma) {
   return faces;
 }
 
+std::vector<real_t> make_tanh_wall_faces(int n_cells, real_t length, real_t gamma) {
+  check_common("make_tanh_wall_faces", n_cells, length);
+  if (!(gamma > 0))
+    throw std::invalid_argument("make_tanh_wall_faces: gamma must be > 0, got "
+                                + std::to_string(gamma));
+  const real_t denom = std::tanh(gamma);
+  std::vector<real_t> faces(n_cells + 1);
+  for (int i = 0; i <= n_cells; ++i) {
+    const real_t xi = static_cast<real_t>(i) / static_cast<real_t>(n_cells);
+    faces[i] = length * (real_t{1} - std::tanh(gamma * (real_t{1} - xi)) / denom);
+  }
+  faces.front() = 0;
+  faces.back() = length;
+  return faces;
+}
+
 }  // namespace mpmstd::grid
