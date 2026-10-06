@@ -65,3 +65,18 @@
 ## 6. 미결(사용자 확인)
 1. 모델: **WALE 1차 + Vreman 2차**(참조 Fortran 상수) 로 가도 되는가.  2. 채널 격자/Re 계획 §4 적정 여부.
 3. Fortran MPM-STD 로 같은 격자 Const-Vreman 채널 LES 를 돌려 코드 간 비교를 할지 (GPU 여유 생기면).
+
+## 7. 구현 1단계 (2026-10-06) — Const-Vreman, 채널 검증 런 진행
+- 디렉터리 관리(사용자 결정): `src/physics/LES/les.hpp`(공통 계약·ghost 동기화) / `constant_vreman/`
+  (`vreman_stencil.hpp` 식 정본 + `vreman.{cpp,cu}` 쌍둥이) / `WALE/`(다음).
+- 이름: ν_t 계산은 `calculate_eddy_viscosity_constant_vreman`(시스템을 풀지 않으니 solve_ 아님; 축약
+  금지 규칙으로 cal_ 대신 calculate_), 운동량 변형은 (후속) `solve_variable_viscosity`.
+- 참조 Fortran `LES_const_vreman_cuda` 1:1: 대각 = 면 차분, 비대각 = own 축 체적가중 중심보간 → 스윕 축
+  면 보간 → 차분; β_mn = Σ Δ_l² α_lm α_ln(방향별 Δ), B_β, α_mnα_mn < 1e-14 → 0, C_v = 2.5 C_s², damping ≡ 1.
+  축 대응 Fortran (x1,x2 벽,x3) → 우리 (x, z, y) — 식이 대칭이라 (i,j,k)=(x,y,z) 그대로.
+- 결합: μ̂ = 1 + ν_t/ν 를 **가변물성 커널**(`*_variable_property`, C_μ = ν) 의 viscosity 로, 1/ρ̂ 는 1 로 채운
+  배열(1단계). 벽 ghost μ̂ = 1. 투영은 상수판 그대로(밀도 상수). 참조 Fortran 과 같은 "스텝 시작 ν_t(uⁿ),
+  음해 밴드 lag".
+- 채널 `[les] model = none | constant_vreman, c_s`; 통계에 ⟨ν_t⟩/ν 열 추가.
+- 검증 런(잡 35681, gpu02 CPU 12코어, 64³ 4π×2π×2 γ_z 3, Re_b 2857, 15000 스텝 = 60 통과, 통계 6000~):
+  `input_channel_re180_les64_{none,vreman012,vreman017}.ini`. 판정은 §4.

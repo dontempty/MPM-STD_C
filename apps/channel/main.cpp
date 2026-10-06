@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
@@ -33,6 +34,8 @@
 #include "parallel/topology/topology.hpp"
 #include "physics/channel_forcing.hpp"
 #include "post/checkpoint.hpp"
+#include "physics/LES/constant_vreman/vreman.hpp"
+#include "physics/LES/les.hpp"
 #include "post/statistics.hpp"
 #include "settings.hpp"
 #include "time/time_step.hpp"
@@ -217,6 +220,19 @@ int main(int argc, char** argv) {
     // 참조하지도 않는다** — "가변 + μ̂≡1 배열" 과 비트 일치 검증됨.
     pressure::Solver pressure_solver(grid, sub);
     real_t mean_dPdx = 0;
+    // ── LES (와점성): μ̂ = 1 + ν_t/ν 를 가변물성 운동량 커널의 viscosity 자리에, 1/ρ̂ ≡ 1 ──
+    //    (1단계: 가변 경로 + 단위 1/ρ̂ 배열. 단위 배열을 컴파일 타임에 접는 *_variable_viscosity
+    //     판은 후속 — 비트 일치 게이트로 교체 예정)
+    const bool les = s.les.model != "none";
+    const real_t c_vreman = 2.5 * s.les.c_s * s.les.c_s;
+    std::unique_ptr<Field> mu_hat, unit_inverse_density;
+    if (les) {
+      mu_hat = std::make_unique<Field>(nx, ny, nz, "mu_hat");
+      unit_inverse_density = std::make_unique<Field>(nx, ny, nz, "unit_inverse_density");
+      mu_hat->fill(1.0);
+      unit_inverse_density->fill(1.0);
+    }
+    std::vector<double> sum_nut(s.mesh.nz, 0.0);  // ⟨ν_t⟩/ν 프로파일 (LES 통계)
 
     // ── 냉시작 vs 재시작 (M11) — 상태장 4장 + mean_dPdx. dP 는 매 스텝
     //    재계산이라 상태가 아니다. ghost 는 아래 sync 가 재구축한다.
@@ -269,7 +285,8 @@ int main(int argc, char** argv) {
       std::fprintf(f, "# channel statistics  step=%ld samples=%ld\n", step, samples);
       std::fprintf(f, "# Re_b=%g nu=%.8e u_tau=%.8f Re_tau=%.3f mean_dPdx=%.8e\n",
                    s.physics.reynolds_bulk, nu, u_tau, re_tau, mean_dPdx);
-      std::fprintf(f, "# z  z_plus  U_mean  U_plus  u_rms  v_rms  w_rms  uw_fluct\n");
+      std::fprintf(f, "# les=%s c_s=%g\n", s.les.model.c_str(), s.les.c_s);
+      std::fprintf(f, "# z  z_plus  U_mean  U_plus  u_rms  v_rms  w_rms  uw_fluct  nut_over_nu\n");
       for (int q = 0; q < s.mesh.nz; ++q) {
         const real_t z_wall = std::min(z_center[q], s.domain.lz - z_center[q]);
         const real_t mean = sum_u[q] / samples;
@@ -277,9 +294,9 @@ int main(int argc, char** argv) {
         const real_t vv = std::sqrt(std::max(real_t(0), sum_vv[q] / samples));
         const real_t ww = std::sqrt(std::max(real_t(0), sum_ww[q] / samples));
         // ⟨u'w'⟩ = ⟨uw⟩ − ⟨u⟩⟨w⟩ ≈ ⟨uw⟩ − 0 (⟨W⟩=0) — 총전단 선형성 검사용
-        std::fprintf(f, "%12.8f %10.4f %12.8f %10.4f %12.8f %12.8f %12.8f %14.8e\n",
+        std::fprintf(f, "%12.8f %10.4f %12.8f %10.4f %12.8f %12.8f %12.8f %14.8e %14.8e\n",
                      z_center[q], z_wall * u_tau / nu, mean, mean / u_tau, uu, vv, ww,
-                     sum_uw[q] / samples);
+                     sum_uw[q] / samples, les ? sum_nut[q] / samples : 0.0);
       }
       std::fclose(f);
       std::printf("# stats written: %s  (u_tau=%.5f, Re_tau=%.2f)\n", path, u_tau, re_tau);
@@ -335,6 +352,22 @@ int main(int argc, char** argv) {
       rhs_U.fill(0);
       rhs_V.fill(0);
       rhs_W.fill(0);
+      if (les) {
+        // ν_t(uⁿ) → μ̂ (참조 Fortran: 스텝 시작에 한 번, 음해 밴드엔 lag)
+        mpmstd::physics::les::calculate_eddy_viscosity_constant_vreman(*mu_hat, U, V, W, grid, sub,
+                                                                       nu, c_vreman);
+        mpmstd::physics::les::synchronize_viscosity_ratio(*mu_hat, sub);
+        momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W, *mu_hat,
+                                                              *unit_inverse_density, grid, sub, nu, dt);
+        momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W, *mu_hat,
+                                                              *unit_inverse_density, grid, sub, nu, dt);
+        momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W, *mu_hat,
+                                                              *unit_inverse_density, grid, sub, nu, dt);
+        pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+        mpmstd::physics::add_mean_pressure_gradient(rhs_U, sub, mean_dPdx, dt);
+        momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
+                                          *mu_hat, *unit_inverse_density, nu, dt);
+      } else {
       momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid,
                                                              sub, nu, dt);
       momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid,
@@ -345,6 +378,7 @@ int main(int argc, char** argv) {
       mpmstd::physics::add_mean_pressure_gradient(rhs_U, sub, mean_dPdx, dt);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V,
                                         rhs_W, U, V, W, nu, dt);
+      }
       sync_velocity(U, V, W, sub);
 
       real_t bulk_after_solve = 0, tau_after = 0;
@@ -396,12 +430,18 @@ int main(int argc, char** argv) {
         const auto vv = mpmstd::post::plane_average_square(V, sub);
         const auto ww = mpmstd::post::plane_average_square(W, sub);
         const auto uw = mpmstd::post::plane_average_product(U, W, sub);
+        std::vector<real_t> nut_bar;
+        if (les) {
+          nut_bar = mpmstd::post::plane_average(*mu_hat, sub);
+          for (real_t& v : nut_bar) v -= 1;
+        }
         for (int q = 0; q < s.mesh.nz; ++q) {
           sum_u[q] += u_bar[q];
           sum_uu[q] += uu[q];
           sum_vv[q] += vv[q] - 0;  // ⟨V⟩≈0 — rms 는 ⟨V²⟩ 로 충분
           sum_ww[q] += ww[q];
           sum_uw[q] += uw[q];      // 레이놀즈 전단 ⟨uw⟩ (⟨W⟩≈0 — 평균 몫 생략)
+          if (les) sum_nut[q] += nut_bar[q];  // ⟨ν_t⟩/ν = ⟨μ̂⟩ − 1
         }
         ++samples;
         if ((step - s.output.stats_start_step) % s.output.stats_write_interval == 0

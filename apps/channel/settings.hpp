@@ -40,6 +40,11 @@ struct Physics {                    // [physics]
   double target_bulk_velocity = 1;  // CFR 목표 벌크 속도 U_b
 };
 
+struct Les {                           // [les] — LES 와점성 (physics/LES; docs/Design/20261006_les_design.md)
+  std::string model = "none";          // none | constant_vreman  (WALE 는 다음)
+  double c_s = 0.12;                   // Vreman: C_v = 2.5·C_s² (참조 Fortran 0.12 → 0.036; 원논문 0.17)
+};
+
 struct Time {              // [time]
   double dt_max = 0.05;    // dt 상한 (channel_gpu 의 dtStart 에 해당)
   double max_cfl = 1.0;
@@ -69,6 +74,7 @@ struct Settings {
   Stretch stretch;
   Process process;
   Physics physics;
+  Les les;
   Time time;
   Initial initial;
   Output output;
