@@ -15,7 +15,7 @@
 
 #include <string>
 
-#include "boundary/boundary_condition.hpp"
+#include "boundary/boundary_settings.hpp"
 #include "config/ini_parser.hpp"
 
 namespace rbc {
@@ -72,15 +72,7 @@ struct Output {                      // [output]
   std::string checkpoint_dir = "checkpoints";  // 체크포인트 디렉터리
 };
 
-struct Boundary {  // [boundary] — 문법·기본값은 boundary/boundary_condition.hpp 머리말
-  // 축 kind (periodic | wall | dirichlet | neumann). 섹션이 없으면 RBC 관례
-  // (x·y 주기, z 벽) 그대로 — 기존 rbc/rbc_nob/dhvc 덱은 수정 없이 동작.
-  std::string axis_kind[3] = {"periodic", "periodic", "wall"};
-  std::string velocity_ghost = "value";  // value | mirror (boundary_condition.hpp VelocityGhost)
-  // 면 override 원문 [field u v w p t][axis][side minus plus]; "" = 지정 안 함
-  std::string override_text[mpmstd::boundary::kFieldCount][3][2];
-  mpmstd::boundary::BoundaryCondition condition;  // 전개된 결과 (make_settings 가 채움)
-};
+// [boundary] 는 공용 조각 boundary/boundary_settings.hpp (경계층 앱과 공유).
 
 struct Settings {
   Mesh mesh;
@@ -91,7 +83,7 @@ struct Settings {
   Time time;
   Initial initial;
   Output output;
-  Boundary boundary;
+  mpmstd::boundary::BoundarySettings boundary;
 };
 
 // 파일 → Settings. 파싱·검증 실패는 전부 std::runtime_error (위치 포함).

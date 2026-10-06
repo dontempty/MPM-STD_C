@@ -34,6 +34,10 @@ void apply_velocity_wall_ghosts(field::Field& U, field::Field& V, field::Field& 
     for (int side = 0; side < 2; ++side)
       for (int c = 0; c < 3; ++c) {
         const FaceBc& face = bc.at(row[c], axis, side);
+        // 열린 경계(유입 프로파일·유출 대류·연속식)는 boundary/open 이 앱 호출로 채운다
+        if (face.kind == BcKind::Inflow || face.kind == BcKind::Outflow
+            || face.kind == BcKind::Continuity)
+          continue;
         if (c == axis) {
           // 법선 성분: 벽 면 자체. 불투과(0)만 지원 — validate 가 Dirichlet 은 보장.
           if (face.value != 0)
@@ -56,9 +60,13 @@ void apply_scalar_wall_ghosts(field::Field& f, const Field which,
                               const BoundaryCondition& bc, const parallel::Subdomain& sub) {
   for (int axis = 0; axis < 3; ++axis) {
     if (bc.is_periodic(axis)) continue;
-    for (int side = 0; side < 2; ++side)
-      fill_cell_centered_face(f, bc.at(which, axis, side), axis, side, sub,
-                              /*dirichlet_as_mirror=*/true);
+    for (int side = 0; side < 2; ++side) {
+      const FaceBc& face = bc.at(which, axis, side);
+      if (face.kind == BcKind::Inflow || face.kind == BcKind::Outflow
+          || face.kind == BcKind::Continuity)
+        continue;  // 열린 경계는 앱이 (boundary/open)
+      fill_cell_centered_face(f, face, axis, side, sub, /*dirichlet_as_mirror=*/true);
+    }
   }
 }
 

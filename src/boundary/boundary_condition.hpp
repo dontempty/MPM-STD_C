@@ -5,13 +5,15 @@
 // (2026-10-05 설계; MPM-STD_C problem_loader 의 topology+override 모델 1:1)
 //
 // ── 입력 ([boundary]) ──────────────────────────────────────────────────────
-//   x = periodic | wall | dirichlet | neumann        축 kind (y, z 동일)
+//   x = periodic | wall | dirichlet | neumann | inflow_outflow   축 kind (y, z 동일)
 //   velocity_ghost = value | mirror                  접선 속도 ghost 정책 (아래 enum)
 //   <field>_<axis>_<side> = <숫자> | adiabatic | slip  면별 오버라이드
 //       field ∈ u v w p t,  axis ∈ x y z,  side ∈ minus plus
 //       숫자      → 그 면 Dirichlet(그 값)   예: t_x_minus = 0.5, u_z_plus = 1.0 (lid)
 //       adiabatic → 그 면 Neumann 0 (온도: 단열)
 //       slip      → 그 면 Neumann 0 (접선 속도: free-slip)   adiabatic/slip/neumann 은 동의어
+//       continuity→ 벽 법선 속도만: 연속식으로 결정 (자유류 상단 w_z_plus = continuity)
+//   inflow_profile = blasius | file:<경로>                 x = inflow_outflow 일 때 필수
 //
 // ── 축 kind → 필드별 기본값 (MPM-STD_C 관례) ─────────────────────────────────
 //   periodic : 전 필드 Periodic (override 무시)
@@ -34,8 +36,14 @@
 
 namespace mpmstd::boundary {
 
-enum class BcKind { Periodic, Dirichlet, Neumann };
-enum class AxisKind { Periodic, Wall, Dirichlet, Neumann };
+// Inflow/Outflow/Continuity 는 "열린 경계"(2026-10-06 경계층): 값은 앱이 매 스텝 공급한다
+//   Inflow     : 법선 성분 = 프로파일 Dirichlet(공간 가변), 접선은 Dirichlet(0 또는 프로파일)
+//   Outflow    : 대류 BC ∂φ/∂t + U_c ∂φ/∂x = 0 (앱이 명시 갱신; 음해 닫기는 δ=0)
+//   Continuity : 법선 성분을 연속식으로 (자유류 상단: ∂w/∂z = −∂u/∂x − ∂v/∂y)
+enum class BcKind { Periodic, Dirichlet, Neumann, Inflow, Outflow, Continuity };
+// InflowOutflow: minus 면 유입(법선 Inflow, 접선 Dirichlet 0, P Neumann), plus 면 유출
+//   (속도 전부 Outflow, P Neumann, T Neumann). 경계층 x 축.
+enum class AxisKind { Periodic, Wall, Dirichlet, Neumann, InflowOutflow };
 enum class Field : int { U = 0, V = 1, W = 2, P = 3, T = 4 };
 constexpr int kFieldCount = 5;
 

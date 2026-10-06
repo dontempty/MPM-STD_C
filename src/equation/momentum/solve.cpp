@@ -151,9 +151,12 @@ void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc) {
                 "momentum::set_wall_closure: tangential velocity components on one wall "
                 "must share the BC kind (axis " + std::to_string(axis) + ")");
         }
+        // Dirichlet(유입 접선 포함) → ghost 정책 짝, Neumann(slip) → +1,
+        // Outflow(유출: 값이 명시 갱신되는 Dirichlet) → 0 (δ_ghost = 0)
         if (kind == BcKind::Neumann) closure = 1;
         else if (kind == BcKind::Dirichlet)
           closure = bc.velocity_ghost == boundary::VelocityGhost::Mirror ? real_t(-1) : 0;
+        else closure = 0;
       }
       solver.wall_closure[axis][side] = closure;
     }

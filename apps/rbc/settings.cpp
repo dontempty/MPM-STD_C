@@ -56,25 +56,7 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"output", "checkpoint_interval", &s.output.checkpoint_interval, false},
       {"output", "checkpoint_dir", &s.output.checkpoint_dir, false},
   };
-  // [boundary] — 축 kind 3개 + 면 override 30개(u v w p t × x y z × minus plus),
-  // 전부 옵션. 키 이름은 boundary_condition.hpp 머리말의 문법과 1:1.
-  static const char* const kField[] = {"u", "v", "w", "p", "t"};
-  static const char* const kAxis[] = {"x", "y", "z"};
-  static const char* const kSide[] = {"minus", "plus"};
-  static std::string key_storage[3 + mpmstd::boundary::kFieldCount * 3 * 2];
-  int n = 0;
-  b.push_back({"boundary", "velocity_ghost", &s.boundary.velocity_ghost, false});
-  for (int a = 0; a < 3; ++a) {
-    key_storage[n] = kAxis[a];
-    b.push_back({"boundary", key_storage[n++].c_str(), &s.boundary.axis_kind[a], false});
-  }
-  for (int f = 0; f < mpmstd::boundary::kFieldCount; ++f)
-    for (int a = 0; a < 3; ++a)
-      for (int side = 0; side < 2; ++side) {
-        key_storage[n] = std::string(kField[f]) + "_" + kAxis[a] + "_" + kSide[side];
-        b.push_back({"boundary", key_storage[n++].c_str(),
-                     &s.boundary.override_text[f][a][side], false});
-      }
+  mpmstd::boundary::append_bindings(b, s.boundary);  // [boundary] — 공용 조각
   return b;
 }
 
@@ -127,13 +109,7 @@ void validate(const IniFile& ini, const Settings& s) {
 Settings make_settings(const IniFile& ini) {
   Settings s;
   mpmstd::config::apply_bindings(ini, make_bindings(s));
-  try {
-    s.boundary.condition = mpmstd::boundary::make_boundary_condition(
-        {s.boundary.axis_kind[0], s.boundary.axis_kind[1], s.boundary.axis_kind[2]},
-        s.boundary.override_text, s.boundary.velocity_ghost);
-  } catch (const std::exception& e) {
-    throw std::runtime_error(ini.name() + ": [boundary] " + e.what());
-  }
+  mpmstd::boundary::build(s.boundary, ini);
   validate(ini, s);
   return s;
 }
@@ -202,22 +178,7 @@ std::string format_settings(const Settings& s) {
   add("restart_from = \"" + s.initial.restart_from + "\"");
   add("warmstart_from = \"" + s.initial.warmstart_from + "\"");
   add("");
-  add("[boundary]");
-  {
-    static const char* const kField[] = {"u", "v", "w", "p", "t"};
-    static const char* const kAxis[] = {"x", "y", "z"};
-    static const char* const kSide[] = {"minus", "plus"};
-    for (int a = 0; a < 3; ++a) add(std::string(kAxis[a]) + " = " + s.boundary.axis_kind[a]);
-    add("velocity_ghost = " + s.boundary.velocity_ghost);
-    for (int f = 0; f < mpmstd::boundary::kFieldCount; ++f)
-      for (int a = 0; a < 3; ++a)
-        for (int side = 0; side < 2; ++side) {
-          const std::string& t = s.boundary.override_text[f][a][side];
-          if (!t.empty())
-            add(std::string(kField[f]) + "_" + kAxis[a] + "_" + kSide[side] + " = " + t);
-        }
-  }
-  add("");
+  mpmstd::boundary::format(s.boundary, out);
   add("[time]");
   add("end_time = " + format_number(s.time.end_time));
   add("dt_max = " + format_number(s.time.dt_max));

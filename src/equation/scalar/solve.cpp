@@ -43,7 +43,7 @@ void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc,
   for (int a = 0; a < 3; ++a)
     for (int side = 0; side < 2; ++side) {
       const boundary::BcKind kind = bc.at(which, a, side).kind;
-      solver.wall_closure[a][side] =
+      solver.wall_closure[a][side] =  // Inflow/Outflow/Continuity/Periodic → 0 (δ_ghost = 0)
           kind == boundary::BcKind::Dirichlet ? real_t(-1)
           : kind == boundary::BcKind::Neumann ? real_t(1) : real_t(0);
     }

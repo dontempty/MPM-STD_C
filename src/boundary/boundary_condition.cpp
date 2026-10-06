@@ -27,6 +27,9 @@ const char* bc_kind_name(BcKind k) {
     case BcKind::Periodic: return "periodic";
     case BcKind::Dirichlet: return "dirichlet";
     case BcKind::Neumann: return "neumann";
+    case BcKind::Inflow: return "inflow";
+    case BcKind::Outflow: return "outflow";
+    case BcKind::Continuity: return "continuity";
   }
   return "?";
 }
@@ -39,7 +42,8 @@ AxisKind parse_axis_kind(const std::string& text) {
   if (s == "wall") return AxisKind::Wall;
   if (s == "dirichlet") return AxisKind::Dirichlet;
   if (s == "neumann") return AxisKind::Neumann;
-  fail("unknown axis kind '" + text + "' (periodic | wall | dirichlet | neumann)");
+  if (s == "inflow_outflow") return AxisKind::InflowOutflow;
+  fail("unknown axis kind '" + text + "' (periodic | wall | dirichlet | neumann | inflow_outflow)");
   return AxisKind::Periodic;
 }
 
@@ -49,6 +53,7 @@ const char* axis_kind_name(AxisKind kind) {
     case AxisKind::Wall: return "wall";
     case AxisKind::Dirichlet: return "dirichlet";
     case AxisKind::Neumann: return "neumann";
+    case AxisKind::InflowOutflow: return "inflow_outflow";
   }
   return "?";
 }
@@ -56,10 +61,11 @@ const char* axis_kind_name(AxisKind kind) {
 FaceBc parse_face_override(const std::string& text) {
   const std::string s = lower(text);
   if (s == "adiabatic" || s == "slip" || s == "neumann") return {BcKind::Neumann, 0};
+  if (s == "continuity") return {BcKind::Continuity, 0};
   char* end = nullptr;
   const double v = std::strtod(s.c_str(), &end);
   if (end == s.c_str() || *end != '\0')
-    fail("bad face override '" + text + "' (number | adiabatic | slip)");
+    fail("bad face override '" + text + "' (number | adiabatic | slip | continuity)");
   return {BcKind::Dirichlet, static_cast<real_t>(v)};
 }
 
@@ -88,6 +94,12 @@ BoundaryCondition make_boundary_condition(
             break;
           case AxisKind::Dirichlet: fb = {BcKind::Dirichlet, 0}; break;
           case AxisKind::Neumann: fb = {BcKind::Neumann, 0}; break;
+          case AxisKind::InflowOutflow:
+            if (f == static_cast<int>(Field::P)) fb = {BcKind::Neumann, 0};
+            else if (side == 0) fb = (f == a) ? FaceBc{BcKind::Inflow, 0} : FaceBc{BcKind::Dirichlet, 0};
+            else fb = (f == static_cast<int>(Field::T)) ? FaceBc{BcKind::Neumann, 0}
+                                                        : FaceBc{BcKind::Outflow, 0};
+            break;
         }
       }
   }
@@ -101,9 +113,13 @@ BoundaryCondition make_boundary_condition(
                                 kSideName[side];
         if (bc.axis[a] == AxisKind::Periodic)
           fail("'" + key + "' given but axis " + kAxisName[a] + " is periodic");
-        if (f == static_cast<int>(Field::P) && bc.axis[a] == AxisKind::Wall)
-          fail("'" + key + "': pressure on a wall is always Neumann 0 (not overridable)");
-        bc.face[f][a][side] = parse_face_override(text);
+        if (f == static_cast<int>(Field::P)
+            && (bc.axis[a] == AxisKind::Wall || bc.axis[a] == AxisKind::InflowOutflow))
+          fail("'" + key + "': pressure on a wall/open boundary is always Neumann 0 (not overridable)");
+        const FaceBc parsed = parse_face_override(text);
+        if (parsed.kind == BcKind::Continuity && f != a)
+          fail("'" + key + "': continuity is only for the wall-normal velocity component");
+        bc.face[f][a][side] = parsed;
       }
   bc.validate();
   return bc;
@@ -125,8 +141,8 @@ void BoundaryCondition::validate() const {
           if (f == static_cast<int>(Field::P) && fb.kind != BcKind::Neumann)
             fail(where + ": wall pressure must be Neumann");
           // 벽의 법선 속도(축 a 의 성분 a)는 불투과 → Dirichlet 만
-          if (f == a && fb.kind != BcKind::Dirichlet)
-            fail(where + ": wall-normal velocity must be Dirichlet (impermeable)");
+          if (f == a && fb.kind != BcKind::Dirichlet && fb.kind != BcKind::Continuity)
+            fail(where + ": wall-normal velocity must be Dirichlet (impermeable) or continuity (free-stream)");
         }
       }
 }
@@ -143,6 +159,7 @@ std::string format_boundary_condition(const BoundaryCondition& bc) {
           const FaceBc& fb = bc.face[f][a][side];
           os << "  " << kFieldName[f] << (side ? "+" : "-") << "=" << bc_kind_name(fb.kind);
           if (fb.kind == BcKind::Dirichlet) os << "(" << fb.value << ")";
+          if (fb.kind == BcKind::Inflow) os << "(profile)";
         }
     }
     os << "\n";
