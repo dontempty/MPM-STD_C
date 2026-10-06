@@ -1,7 +1,0 @@
-# [보류 중인 수정] rbc_nob: 투영 직전 물성 재갱신 (원본 MPM-STD_C main.cpp:307 1:1)
-# A/B 검증 완료 (docs/Debug/20261005_rbc_nob_dt60_div_spike.md):
-#   미수정 div max 4.9e-6 (>1e-6 12%) → 수정 2.5e-13 (0%), theta_c 차 0.02%
-# 적용: apps/rbc_nob/main.cpp 의 "── 증분 투영" 블록 바로 앞에 아래 블록 삽입.
-      // ── 투영 직전 물성 재갱신 (Tⁿ⁺¹) — 참조 GPU 경로 1:1 (MPM-STD_C
-      //    apps/rbc/main.cpp:307 "Update CPU properties for pressure").
-      physics::update_properties(properties, T, model, sub);
