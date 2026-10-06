@@ -14,16 +14,19 @@
 #endif
 
 #include <algorithm>
+#include <memory>
 #include <cmath>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <random>
 #include <string>
 #include <vector>
 
 #include "blasius.hpp"
 #include "boundary/apply.hpp"
 #include "boundary/open.hpp"
+#include "boundary/recycling.hpp"
 #include "equation/momentum/rhs/rhs.hpp"
 #include "equation/momentum/solve.hpp"
 #include "equation/pressure/correction.hpp"
@@ -107,7 +110,7 @@ int main(int argc, char** argv) {
 
     Flow flow;
     flow.u_inf = s.physics.u_infinity;
-    flow.nu = s.physics.u_infinity / s.physics.reynolds_delta_star;  // δ*₀ = 1
+    flow.nu = s.physics.u_infinity / s.physics.reynolds;  // 단위길이 1 (δ*₀ 또는 δ99,in)
     flow.x0 = std::pow(1.0 / kBlasiusDisplacement, 2) * flow.u_inf / flow.nu;
     flow.blasius = boundary_layer::Blasius::solve();
     const real_t convective_velocity =
@@ -121,20 +124,38 @@ int main(int argc, char** argv) {
     momentum::set_wall_closure(momentum_solver, bc);
     pressure::Solver pressure_solver(grid, sub);
 
-    // 유입 프로파일 (로컬 z, ghost 포함): U 는 z 중심, W 는 z 면
-    boundary::InflowProfile inflow;
-    inflow.u.resize(nz); inflow.v.assign(nz, 0.0); inflow.w.resize(nz);
-    for (int k = 0; k < nz; ++k) {
-      inflow.u[k] = flow.u(std::max(0.0, double(grid.z.center[k])), flow.x0);
-      inflow.w[k] = flow.w(std::max(0.0, double(grid.z.face[k])), flow.x0);
+    // 유입 평면 (로컬 (y,z), ghost 포함): blasius = z 프로파일 복제, recycling = 매 스텝 갱신
+    const bool recycling = s.inflow.method == "recycling";
+    boundary::InflowPlane inflow;
+    {
+      std::vector<real_t> pu(nz), pv(nz, 0.0), pw(nz);
+      for (int k = 0; k < nz; ++k) {
+        pu[k] = flow.u(std::max(0.0, double(grid.z.center[k])), flow.x0);
+        pw[k] = flow.w(std::max(0.0, double(grid.z.face[k])), flow.x0);
+      }
+      inflow = boundary::InflowPlane::from_profile(pu, pv, pw, ny);
     }
+    // 재순환: 전역 z 좌표(ghost 제외)와 재순환면 로컬 i
+    std::vector<real_t> z_center_global(s.mesh.nz), z_face_global(s.mesh.nz + 1);
+    for (int k = 0; k <= s.mesh.nz; ++k) z_face_global[k] = faces_z[k];
+    for (int k = 0; k < s.mesh.nz; ++k) z_center_global[k] = 0.5 * (faces_z[k] + faces_z[k + 1]);
+    const double recycle_x = s.inflow.recycle_x > 0 ? s.inflow.recycle_x : 0.75 * s.domain.lx;
+    int i_recycle = halo_width;
+    for (int i = halo_width; i < nx - halo_width; ++i)
+      if (grid.x.face[i] <= recycle_x) i_recycle = i;
+    std::unique_ptr<boundary::Recycling> recycler;
+    if (recycling)
+      recycler = std::make_unique<boundary::Recycling>(
+          grid, sub, z_center_global, z_face_global, i_recycle, flow.u_inf, flow.nu,
+          s.inflow.delta99, s.inflow.relaxation_time);
 
     // 자유류 상단 w∞(x) (FreeStream kind): 층류 Blasius 0.8604 U∞/√Re_x = U∞ dδ*/dx
     const bool top_freestream = bc.at(boundary::Field::W, 2, 1).kind == boundary::BcKind::FreeStream;
     std::vector<real_t> w_top(nx, 0.0);
     for (int i = 0; i < nx; ++i) {
       const double x = flow.x0 + std::max(0.0, double(grid.x.center[i]));
-      w_top[i] = 0.8604 * std::sqrt(flow.nu * flow.u_inf / x);
+      // 층류: Blasius w∞. 재순환(난류): 단계 ② 에서 U∞ dδ*/dx 로 교체 — 지금은 0 (작동 확인용)
+      w_top[i] = recycling ? 0.0 : 0.8604 * std::sqrt(flow.nu * flow.u_inf / x);
     }
     const auto sync_velocity = [&]() {
       sub.exchange_halo(U.data());
@@ -164,6 +185,11 @@ int main(int argc, char** argv) {
       const auto at = [&](int i, int j, int k) {
         return (static_cast<std::size_t>(i) * ny + j) * nz + k;
       };
+      std::vector<real_t> hv(V.size(), 0.0);
+      std::mt19937 rng(12345u + 7919u * static_cast<unsigned>(mpi.world_rank()));
+      std::uniform_real_distribution<double> uni(-1.0, 1.0);
+      // 재순환 IC: 1/7 멱법칙 평균 (δ(x) = δ_in ((x_v+x)/x_v)^0.8) + 경계층 안 백색 섭동
+      const double x_virtual = std::pow(s.inflow.delta99 / 0.37, 1.25) * std::pow(flow.u_inf / flow.nu, 0.25);
       for (int i = 0; i < nx; ++i)
         for (int j = 0; j < ny; ++j)
           for (int k = 0; k < nz; ++k) {
@@ -171,13 +197,29 @@ int main(int argc, char** argv) {
             const double xc = flow.x0 + std::max(0.0, double(grid.x.center[i]));
             const double zc = std::max(0.0, double(grid.z.center[k]));
             const double zf = std::max(0.0, double(grid.z.face[k]));
-            hu[at(i, j, k)] = s.initial.profile == "blasius" ? flow.u(zc, xf) : flow.u_inf;
-            hw[at(i, j, k)] = s.initial.profile == "blasius" ? flow.w(zf, xc) : 0.0;
+            if (recycling) {
+              const double xl = std::max(0.0, double(grid.x.face[i]));
+              const double delta = s.inflow.delta99 * std::pow((x_virtual + xl) / x_virtual, 0.8);
+              const double um = flow.u_inf * std::min(1.0, std::pow(zc / delta, 1.0 / 7.0));
+              const double inside = zc < delta ? 1.0 : 0.0;
+              hu[at(i, j, k)] = um + s.inflow.noise * flow.u_inf * inside * uni(rng);
+              hv[at(i, j, k)] = s.inflow.noise * flow.u_inf * inside * uni(rng);
+              hw[at(i, j, k)] = s.inflow.noise * flow.u_inf * (zf < delta ? 1.0 : 0.0) * uni(rng);
+            } else {
+              hu[at(i, j, k)] = s.initial.profile == "blasius" ? flow.u(zc, xf) : flow.u_inf;
+              hw[at(i, j, k)] = s.initial.profile == "blasius" ? flow.w(zf, xc) : 0.0;
+            }
           }
       U.upload(hu);
+      V.upload(hv);
       W.upload(hw);
     }
     sync_velocity();
+    if (recycler) {
+      recycler->initialize_running_mean(U, W);
+      inflow = recycler->make_inflow_plane(U, V, W, real_t(0));
+      sync_velocity();
+    }
     sync_pressure();
     if (mpi.is_root() && s.output.checkpoint_interval > 0)
       std::filesystem::create_directories(s.output.checkpoint_dir);
@@ -194,7 +236,7 @@ int main(int argc, char** argv) {
 
     if (mpi.is_root()) {
       std::printf("# boundary layer: Re_dstar0=%g nu=%.6e x0=%.4f  f''(0)=%.6f | %dx%dx%d\n",
-                  s.physics.reynolds_delta_star, flow.nu, flow.x0, flow.blasius.shear,
+                  s.physics.reynolds, flow.nu, flow.x0, flow.blasius.shear,
                   s.mesh.nx, s.mesh.ny, s.mesh.nz);
       std::printf("# step      time        dt     max|div|   dU_out      Cf(x=Lx/2)  Cf_blasius   sec/step\n");
     }
@@ -264,6 +306,11 @@ int main(int argc, char** argv) {
                                                                    s.time.max_cfl, s.time.dt_max);
       // 유출면 대류 갱신 (uⁿ) — 음해 스윕은 이 값을 고정(δ=0)으로 본다
       boundary::update_outflow_convective(U, V, W, convective_velocity, dt, grid, sub);
+      // 재순환 유입: 재순환면(uⁿ) → 재스케일 → 유입 평면 (유입면 값은 이 스텝 동안 고정)
+      if (recycler) {
+        inflow = recycler->make_inflow_plane(U, V, W, dt);
+        boundary::set_inflow(U, V, W, inflow, bc.velocity_ghost, sub);
+      }
 
       rhs_U.fill(0); rhs_V.fill(0); rhs_W.fill(0);
       momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, flow.nu, dt);
@@ -299,6 +346,13 @@ int main(int argc, char** argv) {
           std::printf("%7ld %9.3f %9.5f %10.2e %10.2e %11.6f %11.6f %8.4f\n", step, t, dt, div,
                       du_out, cf, cf_blasius_mid,
                       (wall_now - wall_prev) / s.output.monitor_interval);
+          if (recycler) {
+            const auto& sc = recycler->scales();
+            std::printf("#   recycle: u_tau_r %.5f  delta99_r %.4f  theta_r %.4f  gamma %.4f | inflow: u_tau %.5f  Re_theta %.1f (Re_theta_r %.1f)\n",
+                        sc.u_tau_recycle, sc.delta99_recycle, sc.theta_recycle, sc.gamma,
+                        sc.u_tau_inflow, flow.u_inf * sc.theta_inflow / flow.nu,
+                        flow.u_inf * sc.theta_recycle / flow.nu);
+          }
           std::fflush(stdout);
         }
         wall_prev = wall_now;

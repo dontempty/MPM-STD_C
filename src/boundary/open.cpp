@@ -15,25 +15,51 @@ bool owns_plus(const parallel::Subdomain& sub, int axis) {
 }
 }  // namespace
 
-void set_inflow(field::Field& U, field::Field& V, field::Field& W, const InflowProfile& p,
+InflowPlane InflowPlane::from_profile(const std::vector<real_t>& u_z, const std::vector<real_t>& v_z,
+                                      const std::vector<real_t>& w_z, const int ny) {
+  InflowPlane p;
+  p.ny_total = ny;
+  p.nz_total = static_cast<int>(u_z.size());
+  const std::size_t n = static_cast<std::size_t>(ny) * p.nz_total;
+  p.u.resize(n); p.v.resize(n); p.w.resize(n);
+  for (int j = 0; j < ny; ++j)
+    for (int k = 0; k < p.nz_total; ++k) {
+      p.at(p.u, j, k) = u_z[k];
+      p.at(p.v, j, k) = v_z[k];
+      p.at(p.w, j, k) = w_z[k];
+    }
+  return p;
+}
+
+void set_inflow(field::Field& U, field::Field& V, field::Field& W, const InflowPlane& p,
                 const VelocityGhost ghost, const parallel::Subdomain& sub) {
   if (!owns_minus(sub, 0)) return;
   const int h = halo_width;
   const int ny = sub.y().n_total, nz = sub.z().n_total;
-  if (static_cast<int>(p.u.size()) != nz)
-    throw std::invalid_argument("set_inflow: profile size must be nz_total");
+  if (p.ny_total != ny || p.nz_total != nz)
+    throw std::invalid_argument("set_inflow: plane size must be ny_total x nz_total");
   const field::View u = U.view(), v = V.view(), w = W.view();
   for (int j = 0; j < ny; ++j)
     for (int k = 0; k < nz; ++k) {
-      u(h, j, k) = p.u[k];  // 유입면 = 내부 슬롯 h (conventions §3)
+      const std::size_t q = static_cast<std::size_t>(j) * nz + k;
+      u(h, j, k) = p.u[q];  // 유입면 = 내부 슬롯 h (conventions §3)
       if (ghost == VelocityGhost::Mirror) {
-        v(0, j, k) = 2 * p.v[k] - v(h, j, k);
-        w(0, j, k) = 2 * p.w[k] - w(h, j, k);
+        v(0, j, k) = 2 * p.v[q] - v(h, j, k);
+        w(0, j, k) = 2 * p.w[q] - w(h, j, k);
       } else {
-        v(0, j, k) = p.v[k];
-        w(0, j, k) = p.w[k];
+        v(0, j, k) = p.v[q];
+        w(0, j, k) = p.w[q];
       }
     }
+}
+
+void extract_x_plane(const field::Field& F, const int i, std::vector<real_t>& out,
+                     const parallel::Subdomain& sub) {
+  const int ny = sub.y().n_total, nz = sub.z().n_total;
+  out.resize(static_cast<std::size_t>(ny) * nz);
+  const field::ConstView f = F.view();
+  for (int j = 0; j < ny; ++j)
+    for (int k = 0; k < nz; ++k) out[static_cast<std::size_t>(j) * nz + k] = f(i, j, k);
 }
 
 void update_outflow_convective(field::Field& U, field::Field& V, field::Field& W,

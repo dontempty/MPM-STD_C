@@ -26,17 +26,24 @@ bool owns_plus(const parallel::Subdomain& sub, int axis) {
 __global__ void inflow_kernel(const field::View u, const field::View v, const field::View w,
                               const real_t* pu, const real_t* pv, const real_t* pw,
                               const int h, const int ny, const int nz, const bool mirror) {
-  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;  // = j·nz + k (평면 색인과 동일)
   if (idx >= ny * nz) return;
   const int j = idx / nz, k = idx % nz;
-  u(h, j, k) = pu[k];
+  u(h, j, k) = pu[idx];
   if (mirror) {
-    v(0, j, k) = 2 * pv[k] - v(h, j, k);
-    w(0, j, k) = 2 * pw[k] - w(h, j, k);
+    v(0, j, k) = 2 * pv[idx] - v(h, j, k);
+    w(0, j, k) = 2 * pw[idx] - w(h, j, k);
   } else {
-    v(0, j, k) = pv[k];
-    w(0, j, k) = pw[k];
+    v(0, j, k) = pv[idx];
+    w(0, j, k) = pw[idx];
   }
+}
+
+__global__ void extract_plane_kernel(const field::ConstView f, const int i, real_t* out,
+                                     const int ny, const int nz) {
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= ny * nz) return;
+  out[idx] = f(i, idx / nz, idx % nz);
 }
 
 __global__ void outflow_kernel(const field::View u, const field::View v, const field::View w,
@@ -102,27 +109,57 @@ __global__ void add_face_kernel(const field::View u, const int i, const int h, c
 
 }  // namespace
 
-void set_inflow(field::Field& U, field::Field& V, field::Field& W, const InflowProfile& p,
+InflowPlane InflowPlane::from_profile(const std::vector<real_t>& u_z, const std::vector<real_t>& v_z,
+                                      const std::vector<real_t>& w_z, const int ny) {
+  InflowPlane p;
+  p.ny_total = ny;
+  p.nz_total = static_cast<int>(u_z.size());
+  const std::size_t n = static_cast<std::size_t>(ny) * p.nz_total;
+  p.u.resize(n); p.v.resize(n); p.w.resize(n);
+  for (int j = 0; j < ny; ++j)
+    for (int k = 0; k < p.nz_total; ++k) {
+      p.at(p.u, j, k) = u_z[k];
+      p.at(p.v, j, k) = v_z[k];
+      p.at(p.w, j, k) = w_z[k];
+    }
+  return p;
+}
+
+void set_inflow(field::Field& U, field::Field& V, field::Field& W, const InflowPlane& p,
                 const VelocityGhost ghost, const parallel::Subdomain& sub) {
   if (!owns_minus(sub, 0)) return;
   const int h = halo_width;
   const int ny = sub.y().n_total, nz = sub.z().n_total;
-  if (static_cast<int>(p.u.size()) != nz)
-    throw std::invalid_argument("set_inflow: profile size must be nz_total");
+  if (p.ny_total != ny || p.nz_total != nz)
+    throw std::invalid_argument("set_inflow: plane size must be ny_total x nz_total");
+  const std::size_t n = static_cast<std::size_t>(ny) * nz;
   real_t *du = nullptr, *dv = nullptr, *dw = nullptr;
-  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&du), nz * sizeof(real_t)));
-  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dv), nz * sizeof(real_t)));
-  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dw), nz * sizeof(real_t)));
-  MPMSTD_CUDA_CHECK(cudaMemcpy(du, p.u.data(), nz * sizeof(real_t), cudaMemcpyHostToDevice));
-  MPMSTD_CUDA_CHECK(cudaMemcpy(dv, p.v.data(), nz * sizeof(real_t), cudaMemcpyHostToDevice));
-  MPMSTD_CUDA_CHECK(cudaMemcpy(dw, p.w.data(), nz * sizeof(real_t), cudaMemcpyHostToDevice));
-  inflow_kernel<<<blocks_for(ny * nz), kThreads>>>(U.view(), V.view(), W.view(), du, dv, dw, h,
-                                                   ny, nz, ghost == VelocityGhost::Mirror);
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&du), n * sizeof(real_t)));
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dv), n * sizeof(real_t)));
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dw), n * sizeof(real_t)));
+  MPMSTD_CUDA_CHECK(cudaMemcpy(du, p.u.data(), n * sizeof(real_t), cudaMemcpyHostToDevice));
+  MPMSTD_CUDA_CHECK(cudaMemcpy(dv, p.v.data(), n * sizeof(real_t), cudaMemcpyHostToDevice));
+  MPMSTD_CUDA_CHECK(cudaMemcpy(dw, p.w.data(), n * sizeof(real_t), cudaMemcpyHostToDevice));
+  inflow_kernel<<<blocks_for(n), kThreads>>>(U.view(), V.view(), W.view(), du, dv, dw, h, ny, nz,
+                                             ghost == VelocityGhost::Mirror);
   MPMSTD_CUDA_CHECK_LAUNCH();
   MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
   cudaFree(du);
   cudaFree(dv);
   cudaFree(dw);
+}
+
+void extract_x_plane(const field::Field& F, const int i, std::vector<real_t>& out,
+                     const parallel::Subdomain& sub) {
+  const int ny = sub.y().n_total, nz = sub.z().n_total;
+  const std::size_t n = static_cast<std::size_t>(ny) * nz;
+  out.resize(n);
+  real_t* d = nullptr;
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d), n * sizeof(real_t)));
+  extract_plane_kernel<<<blocks_for(n), kThreads>>>(F.view(), i, d, ny, nz);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+  MPMSTD_CUDA_CHECK(cudaMemcpy(out.data(), d, n * sizeof(real_t), cudaMemcpyDeviceToHost));
+  cudaFree(d);
 }
 
 void update_outflow_convective(field::Field& U, field::Field& V, field::Field& W,

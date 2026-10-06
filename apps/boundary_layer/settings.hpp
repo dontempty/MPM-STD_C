@@ -24,8 +24,15 @@ struct Process {
 };
 struct Physics {                      // [physics]
   double u_infinity = 1.0;
-  double reynolds_delta_star = 450;   // Re_δ*₀ = U∞ δ*₀/ν (Schlatter & Örlü 유입과 동일)
+  double reynolds = 450;              // Re = U∞·L/ν, L = 단위길이 1 (blasius: δ*₀ / recycling: δ99,in)
   double convective_velocity = 0;     // 유출 대류 속도 U_c (0 → U∞)
+};
+struct Inflow {                       // [inflow] — 유입 생성 방식 (boundary/recycling.hpp)
+  std::string method = "blasius";     // blasius | recycling
+  double recycle_x = 0;               // 재순환면 x (0 → 0.75 Lx)
+  double delta99 = 1.0;               // 재순환: 유입 목표 δ99 (단위길이)
+  double relaxation_time = 20;        // 재순환: ⟨Ū_r⟩ 완화 시간 (δ/U∞)
+  double noise = 0.1;                 // 재순환 IC 섭동 진폭 (U∞ 배)
 };
 struct Initial {                      // [initial]
   std::string profile = "blasius";    // blasius | uniform
@@ -51,6 +58,7 @@ struct Settings {
   Stretch stretch;
   Process process;
   Physics physics;
+  Inflow inflow;
   Initial initial;
   Time time;
   Output output;

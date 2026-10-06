@@ -28,7 +28,12 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"process", "npy", &s.process.npy, false},
       {"process", "npz", &s.process.npz, false},
       {"physics", "u_infinity", &s.physics.u_infinity, false},
-      {"physics", "reynolds_delta_star", &s.physics.reynolds_delta_star, true},
+      {"physics", "reynolds", &s.physics.reynolds, true},
+      {"inflow", "method", &s.inflow.method, false},
+      {"inflow", "recycle_x", &s.inflow.recycle_x, false},
+      {"inflow", "delta99", &s.inflow.delta99, false},
+      {"inflow", "relaxation_time", &s.inflow.relaxation_time, false},
+      {"inflow", "noise", &s.inflow.noise, false},
       {"physics", "convective_velocity", &s.physics.convective_velocity, false},
       {"initial", "profile", &s.initial.profile, false},
       {"initial", "restart_from", &s.initial.restart_from, false},
@@ -51,7 +56,11 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.domain.lx > 0 && s.domain.ly > 0 && s.domain.lz > 0, "'domain.*' must be > 0");
   require(ini, s.stretch.uniform_z || s.stretch.gamma_z > 0, "'stretch.gamma_z' must be > 0");
   require(ini, s.physics.u_infinity > 0, "'physics.u_infinity' must be > 0");
-  require(ini, s.physics.reynolds_delta_star > 0, "'physics.reynolds_delta_star' must be > 0");
+  require(ini, s.physics.reynolds > 0, "'physics.reynolds' must be > 0");
+  require(ini, s.inflow.method == "blasius" || s.inflow.method == "recycling",
+          "'inflow.method' must be blasius | recycling");
+  require(ini, s.inflow.delta99 > 0 && s.inflow.relaxation_time > 0 && s.inflow.noise >= 0,
+          "'inflow.delta99'/'relaxation_time' must be > 0, 'noise' >= 0");
   require(ini, s.physics.convective_velocity >= 0, "'physics.convective_velocity' must be >= 0");
   require(ini, s.initial.profile == "blasius" || s.initial.profile == "uniform",
           "'initial.profile' must be blasius | uniform");
@@ -63,8 +72,10 @@ void validate(const IniFile& ini, const Settings& s) {
           "[boundary] x must be inflow_outflow for the boundary layer");
   require(ini, s.boundary.condition.axis[1] == AxisKind::Periodic, "[boundary] y must be periodic");
   require(ini, s.boundary.condition.axis[2] == AxisKind::Wall, "[boundary] z must be wall");
-  require(ini, s.boundary.inflow_profile == "blasius",
-          "[boundary] inflow_profile: only 'blasius' is implemented");
+  require(ini, s.boundary.inflow_profile == "blasius" || s.boundary.inflow_profile == "recycling",
+          "[boundary] inflow_profile must be blasius | recycling (= [inflow] method)");
+  require(ini, s.boundary.inflow_profile == s.inflow.method,
+          "[boundary] inflow_profile and [inflow] method must agree");
 }
 
 }  // namespace
@@ -116,8 +127,15 @@ std::string format_settings(const Settings& s) {
   add("");
   add("[physics]");
   add("u_infinity = " + format_number(s.physics.u_infinity));
-  add("reynolds_delta_star = " + format_number(s.physics.reynolds_delta_star));
+  add("reynolds = " + format_number(s.physics.reynolds));
   add("convective_velocity = " + format_number(s.physics.convective_velocity));
+  add("");
+  add("[inflow]");
+  add("method = " + s.inflow.method);
+  add("recycle_x = " + format_number(s.inflow.recycle_x));
+  add("delta99 = " + format_number(s.inflow.delta99));
+  add("relaxation_time = " + format_number(s.inflow.relaxation_time));
+  add("noise = " + format_number(s.inflow.noise));
   add("");
   add("[initial]");
   add("profile = " + s.initial.profile);

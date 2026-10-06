@@ -107,3 +107,13 @@ u = U∞ Dirichlet 은 점성 앵커일 뿐이라 무효(결과 4자리 동일).
   엄밀 EOC 는 `test_pressure_wall` 류 제조해로만 의미가 있다.
 - np = 2 (z 분할): FINAL C_f(Lx/2) 동일(−0.04%) — 열린 경계 함수의 랭크 소유 판정·Allreduce 정상.
   (장 덤프는 npz = 1 전제라 np=2 에선 생략 — 단계 B 통계 모듈이 대체.)
+
+## 10. 단계 B-① 재순환-재스케일 유입 (2026-10-06, CPU 작동 확인)
+- `boundary/recycling.{hpp,cpp}`: Lund 1998 — 재순환면 평면 Allgatherv(z 분할) → 스팬 평균/변동 →
+  완화 시간평균 ⟨Ū_r⟩ 로 u_τ,r·δ_r·θ_r → γ = (δ_r/δ_in)^{1/8} → 내부(γz)/외부(z δ_r/δ_in) 재배치 + W(η) 혼합
+  → 유입 평면. `open.*` 의 유입이 z 프로파일 → **(y,z) 평면**(`InflowPlane`)으로 일반화, `extract_x_plane`.
+- 설정 `[inflow] method = blasius | recycling, recycle_x, delta99, relaxation_time, noise`; `[physics] reynolds`
+  (단위길이 1 = blasius 면 δ*₀, recycling 이면 δ99,in). 재순환 IC = 1/7 멱법칙 + 경계층 안 백색 섭동.
+- 작동 확인 (`input_bl_recycling_cpu.ini`, 192×32×64, Re_δ99 2000 ≈ Re_θ 230, np=2, 0.16 s/step):
+  안정(div 1e-14, 유량 보정 1e-5), 스케일 산출 정상(u_τ,r·δ_r·θ_r·γ·Re_θ 모니터). 저Re 라 층류화(γ→1)
+  — 물리 검증은 GPU 급(Re_θ,in ≈ 600, Δx⁺ 10) 에서. ⚠ 재순환 모드의 상단 w_top 은 아직 0 (단계 ②).
