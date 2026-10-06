@@ -20,7 +20,7 @@ u_max(z), w_max(x), sec/step, T_center. 프로파일 `stats/<Ra>/cavity_stats_<s
 (section 1: 연직 중앙선 u·T, 2: 수평 중앙선 w·T, 3: hot 벽 첫 셀 열 진단).
 시각화: `plot/plot_cavity.ipynb`.
 
-## 벤치마크 (de Vahl Davis 1983 Table V, Richardson 외삽값; 논문 `apps/Ref [4].pdf`)
+## 벤치마크 (de Vahl Davis 1983 Table V, Richardson 외삽값; 논문 `apps/cavity/Ref [4].pdf`)
 | Ra | \|ψ\|_mid | \|ψ\|_max (x,z) | u_max (z) | w_max (x) | Nu̅ | Nu_½ | Nu_0 | Nu_max (z) | Nu_min (z=1) |
 |---|---|---|---|---|---|---|---|---|---|
 | 1e3 | 1.174 | — | 3.649 (0.813) | 3.697 (0.178) | 1.118 | 1.118 | 1.117 | 1.505 (0.092) | 0.692 |

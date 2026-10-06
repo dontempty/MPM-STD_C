@@ -203,7 +203,7 @@ max|div| 3.6e-15 (DCT 투영 정확), Nu_hot = Nu_cold 전 자리 일치(중심 
 경계층이 가속되는 것. 증거: ① 1e5 를 256² 로 가면 Nu 오차 4.6% → 2.3% (정확히 반감 =
 1차), ② 논문 자체의 2차 노드 스킴은 h=0.0125 에서 ±0.5% 이내(Table III).
 
-### 단계 4b — 논문(de Vahl Davis 1983, `apps/Ref [4].pdf`) Table V 10개 항목 전수 검증 ✅
+### 단계 4b — 논문(de Vahl Davis 1983, `apps/cavity/Ref [4].pdf`) Table V 10개 항목 전수 검증 ✅
 
 사용자 지시 "논문 읽고 검증 수치 선정 → 검증". 선정: Table V 전부 — |ψ|_mid, |ψ|_max(x,z),
 u_max(z), w_max(x), Nu̅(공동 평균), Nu_½(연직 중앙면), Nu_0(hot 벽), Nu_max(z), Nu_min(z).
