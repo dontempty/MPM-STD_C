@@ -59,3 +59,9 @@ t_z_plus  = adiabatic
 Ra=1e3 128² 에서 Nu 가 1e5 까지 치솟는 것으로 드러남). RBC/DHVC 는 확산수 ≪ 1 이라
 무해했다. cavity 는 `scalar::set_wall_closure(solver, bc, Field::T)` 로 ghost 정책과
 일치하는 닫기(Dirichlet −1 / Neumann +1)를 쓴다 — 기존 앱은 기본 0 (비트 불변).
+
+## BC 조합 커버리지 (2026-10-06, `sbatch_cavity_extra.sh`)
+- lid-driven Re=100 mirror (`input_lid_re100.ini`): Marchi 2009 1024² 대비 ≤0.17% (비영 접선 Dirichlet).
+- 축 교대 (`input_cavity_<Ra>_rot.ini`, 중력 x·hot/cold z 벽): `plot/benchmark.py --swap-xz` 가 비교대와 4자리 동일.
+- 혼합 면(x− Dirichlet/x+ adiabatic) 강성 전도: 안정, T → 0.5.
+지원 범위: 조건은 면 단위(한 면 안은 균일 상수), 접선 성분끼리 같은 종류, 법선 속도 0, P Neumann 고정, y 벽 미지원.

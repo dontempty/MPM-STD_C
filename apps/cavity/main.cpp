@@ -224,8 +224,8 @@ int main(int argc, char** argv) {
   try {
     const rbc::Settings s = rbc::load_settings(argv[1]);
     const BoundaryCondition& bc = s.boundary.condition;
-    if (s.physics.gravity_axis != 2)
-      throw std::runtime_error("cavity: gravity_axis must be 2 (z, 연직)");
+    if (s.physics.gravity_axis != 2 && s.physics.gravity_axis != 0)
+      throw std::runtime_error("cavity: gravity_axis must be 2 (z 연직) or 0 (x 연직 — 축 교대 검증용)");
     if (s.physics.delta_temperature != 0)
       throw std::runtime_error("cavity: delta_temperature must be 0 (상수물성 OB)");
     if (!bc.is_periodic(1))
@@ -419,7 +419,8 @@ int main(int argc, char** argv) {
       momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, nu, dt);
       momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, nu, dt);
       momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, nu, dt);
-      physics::add_buoyancy_z_constant_property(rhs_W, T, grid, sub, dt);
+      if (s.physics.gravity_axis == 2) physics::add_buoyancy_z_constant_property(rhs_W, T, grid, sub, dt);
+      else physics::add_buoyancy_x_constant_property(rhs_U, T, grid, sub, dt);  // 축 교대 검증
       pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W,
                                         U, V, W, nu, dt);

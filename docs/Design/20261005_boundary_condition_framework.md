@@ -241,3 +241,24 @@ Table V 전 항목이 벤치마크의 자체 정확도("1% 이내") 안**에 들
 (−1.4%)·Nu_min(−1.0%) 뿐이며 둘 다 논문이 가장 불확실하다고 적은 벽 국소 극값. 극값 위치는
 전 Ra 에서 3자리 일치. value(1차 벽)는 +1~8% 로 Ra 와 함께 악화하고 256² 에서 정확히
 반감(1차 수렴) — 벤치마크엔 mirror 필수, 채널/RBC 는 참조 충실성 때문에 value 유지.
+
+### 단계 4c — BC 조합 커버리지 추가 검증 (2026-10-06, 사용자 질문 "Dirichlet/Neumann 다 검증된 건가")
+
+cavity 가 밟은 조합(no-slip 0·T Dirichlet x·T Neumann z·P Neumann)만으로는 부족해 세 가지를 더 돌렸다
+(`sbatch_cavity_extra.sh`, 전부 CPU 1랭크, 각 2~3분):
+
+| 시험 | 덮는 조합 | 결과 |
+|---|---|---|
+| lid-driven Re=100, 128², `velocity_ghost = mirror` (`input_lid_re100.ini`) | 접선 속도 **비영 Dirichlet**(u_z_plus = 1), T 전부 단열(부력 0) | u_min −0.2137 @z0.4581, w_max 0.1793 @x0.2370, w_min −0.2536 @x0.8106 vs Marchi·Suero·Araki 2009 (1024², Richardson) −0.2140 @0.4581 / 0.1796 @0.2370 / −0.2538 @0.8104 → **≤0.17%**. (Ghia 1982 −0.2109/0.1753/−0.2453 는 그 자체가 현대 벤치 대비 1.5~3% 벗어남; value ghost 시절의 −0.203/−0.244 는 진짜 1차 오차 4~5% 였다.) |
+| 축 교대 cavity (`input_cavity_{1e3,1e4}_rot.ini`: 중력 x, hot/cold = **z 벽**, x 단열) | T **Dirichlet-z / Neumann-x**, 부력_x(dhvc 커널), x-DCT ↔ z-TDMA 역할 교대 | `benchmark.py --swap-xz` 10항목이 비교대 런과 **소수 4자리까지 동일** (1.1752/3.6502/3.6982/1.1179/…; 1e4 5.0751/16.1834/19.6311/2.2463/…) → 구현이 축 대칭, 두 압력 경로 모두 정확 |
+| 양쪽 종류 혼합 전도 (x− Dirichlet 0.5, x+ adiabatic, z 단열, Ra=1, dt 0.005 → 확산수 α·dt/dx² ≈ 97) | 한 축의 두 면이 **다른 종류**(닫기 −1/+1 혼재), 강성 극한 | 안정, T → 0.5 전역 (t=3 에서 4.99956e-1, 벽 셀 0.4999996), Nu_hot → 2e-4 |
+
+**지원 범위 (현재 정확한 상태)**
+- 조건은 **면(축×방향) 단위**로 다를 수 있다 (예: x− Dirichlet, x+ Neumann — 위 혼합 시험). 축 kind
+  (periodic/wall)만 축 단위.
+- 한 면 안에서는 **공간 균일·시간 불변 상수값**만 (분포 벽값·v(t) 미지원; conventions §6).
+- 접선 속도 두 성분은 같은 면에서 **같은 종류**여야 한다 (`momentum::set_wall_closure` 가 throw) —
+  값은 성분별로 달라도 된다(lid 처럼).
+- 법선 속도 = 0 고정(불투과; 분사/흡입 throw). 압력 = 벽에서 Neumann 고정(Dirichlet P / DST 미구현 →
+  `dirichlet` 축 kind 는 apply_pressure 가 throw). 사실상 쓰는 kind 는 `periodic | wall` + 면 override.
+- y 벽 미지원(압력 생성자 throw). GPU 는 빌드만.

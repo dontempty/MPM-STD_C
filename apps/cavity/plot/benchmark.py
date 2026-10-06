@@ -31,7 +31,7 @@ BENCH = {  # Table V
 }
 
 
-def read_dump(path):
+def read_dump(path, swap_xz=False):
     head = open(path).readline()
     meta = dict(kv.split("=") for kv in head.replace("#", "").split()[3:])
     nx, nz = int(meta["nx"]), int(meta["nz"])
@@ -46,6 +46,12 @@ def read_dump(path):
     xc = data[n_u:n_u + n_w, 0].reshape(nx, nz + 1)[:, 0]
     zf = data[n_u:n_u + n_w, 1].reshape(nx, nz + 1)[0, :]
     scale = np.sqrt(ra * pr)
+    if swap_xz:
+        # 축 교대 런(중력 x, hot/cold 가 z 벽): (x,z,U,W) → (z,x,W,U) 로 바꿔 논문 좌표계로
+        U, W = W.T, U.T          # U' (nz+1 x nx) = 옛 W 전치, W' (nz x nx+1) = 옛 U 전치
+        T = T.T
+        xf, zc, xc, zf = zf, xc, zc, xf
+        nx, nz = nz, nx
     return dict(nx=nx, nz=nz, ra=ra, pr=pr, U=U * scale, W=W * scale, T=T, xf=xf, zc=zc, xc=xc,
                 zf=zf, t=float(meta["t"]))
 
@@ -125,8 +131,8 @@ def analyze(d):
     return out
 
 
-def report(path):
-    d = read_dump(path)
+def report(path, swap_xz=False):
+    d = read_dump(path, swap_xz)
     r = analyze(d)
     b = BENCH[d["ra"]]
     print(f"\n=== {path}  Ra={d['ra']:g} {d['nx']}x{d['nz']} t={d['t']:.1f}  (psi top residual {r['psi_top_residual']:.2e})")
@@ -152,5 +158,6 @@ def report(path):
 
 
 if __name__ == "__main__":
-    for p in sys.argv[1:]:
-        report(p)
+    args = [a for a in sys.argv[1:] if a != "--swap-xz"]
+    for p in args:
+        report(p, swap_xz="--swap-xz" in sys.argv)
