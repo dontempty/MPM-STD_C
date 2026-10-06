@@ -102,7 +102,7 @@
 사용자 지적 "viscous sublayer 가 안 맞음": 64³ LES 세 케이스 **모두(no-model 포함)** 첫 셀 U⁺/z⁺ = 2.0.
 원인 = 채널의 zero-ghost(value) 벽 BC: no-slip 면이 벽면이 아니라 ghost 중심(벽 밖 dz/2)에 있고 u_τ 자(dmz)도 그에
 맞춰 첫 셀에서 U⁺ = 2z⁺ 가 된다(DNS 256³ 도 첫 셀 0.427/0.214 = 2.0 — z⁺₁ 0.2 라 안 보였을 뿐). cavity 의 "value
-ghost = 1차 벽(마찰 절반)" 과 같은 기전. 처방 = 채널에도 (ghost = −q₁, 닫기 B−=A,
+ghost = 1차 벽(마찰 절반)" 과 같은 기전. 처방 = 채널에도 `[boundary] velocity_ghost = mirror`(ghost = −q₁, 닫기 B−=A,
 u_τ 자 = 벽면↔첫 중심). 기본은 value 유지(참조 Fortran 관례·기존 결과 보존) — 게이트: 기본 경로 수치 비트 동일
 (통계 파일은 헤더 1줄 + nut_over_nu 열이 늘어 md5 가 2336c4a5 → af189881db3e3dee1d5d65e13047b09f 로 바뀜, 수치 8열 동일).
-재실행:  (잡 35722).
+재실행: `input_channel_re180_les64_{none,vreman012}_mirror.ini` (잡 35722).
