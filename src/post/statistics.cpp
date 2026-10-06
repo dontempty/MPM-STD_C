@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 
 namespace mpmstd::post {
@@ -78,6 +79,32 @@ std::vector<real_t> plane_average_product(const field::Field& F,
       static_cast<real_t>(sub.x().n_global) * sub.y().n_global;
   for (real_t& v : profile) v /= plane_count;
   return profile;
+}
+
+void span_average_center_moments(const field::Field& U, const field::Field& V,
+                                 const field::Field& W, std::vector<real_t>& out,
+                                 const parallel::Subdomain& sub) {
+  if (sub.topology().y().nprocs != 1)
+    throw std::invalid_argument("span_average_center_moments: npy must be 1");
+  const int h = halo_width;
+  const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
+  const int nxl = sub.x().n_local, nzl = sub.z().n_local, nyl = sub.y().n_local;
+  const std::size_t n = static_cast<std::size_t>(nxl) * nzl;
+  out.assign(7 * n, 0.0);
+  const field::ConstView u = U.view(), v = V.view(), w = W.view();
+  for (int i = h; i < nx - h; ++i)
+    for (int k = h; k < nz - h; ++k) {
+      real_t s[7] = {0, 0, 0, 0, 0, 0, 0};
+      for (int j = h; j < ny - h; ++j) {
+        const real_t uc = real_t(0.5) * (u(i, j, k) + u(i + 1, j, k));
+        const real_t vc = real_t(0.5) * (v(i, j, k) + v(i, j + 1, k));
+        const real_t wc = real_t(0.5) * (w(i, j, k) + w(i, j, k + 1));
+        s[0] += uc; s[1] += vc; s[2] += wc;
+        s[3] += uc * uc; s[4] += vc * vc; s[5] += wc * wc; s[6] += uc * wc;
+      }
+      const std::size_t q = static_cast<std::size_t>(i - h) * nzl + (k - h);
+      for (int m = 0; m < 7; ++m) out[m * n + q] = s[m] / nyl;
+    }
 }
 
 real_t bulk_velocity(const field::Field& U, const grid::Grid& grid,

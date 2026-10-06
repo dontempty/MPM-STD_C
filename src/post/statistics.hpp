@@ -31,6 +31,14 @@ std::vector<real_t> plane_average_product(const field::Field& F,
 
 // 체적가중 벌크 속도: (1/V)∫ u dV — u 는 셀 중심으로 2점 보간한 U (x-면 변수).
 // 채널 CFR 강제와 모니터링이 쓴다.
+// 스팬(y) 평균 — 셀중심 보간 속도의 7개 모멘트 ⟨uc⟩⟨vc⟩⟨wc⟩⟨uc²⟩⟨vc²⟩⟨wc²⟩⟨uc·wc⟩ 를
+// 로컬 (i,k) 내부 격자마다 (uc = ½(U_i + U_{i+1}) 등). out 크기 = 7 × nx_local × nz_local,
+// 색인 m·n + (i_local·nz_local + k_local). 공간 발달 통계(post/spatial_statistics)의 재료.
+// npy = 1 전제 (y 가 랭크 안에서 완결) — 어기면 throw.
+void span_average_center_moments(const field::Field& U, const field::Field& V,
+                                 const field::Field& W, std::vector<real_t>& out,
+                                 const parallel::Subdomain& sub);
+
 real_t bulk_velocity(const field::Field& U, const grid::Grid& grid,
                      const parallel::Subdomain& sub);
 

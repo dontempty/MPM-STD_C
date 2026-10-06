@@ -47,7 +47,9 @@ struct Time {                         // [time]
 struct Output {                       // [output]
   std::string stats_dir = "stats/";
   int monitor_interval = 100;
-  double stats_interval = 0;          // 장 덤프 간격 (물리시간, 0 = 끝에만)
+  double stats_interval = 0;          // 통계/장 덤프 간격 (물리시간, 0 = 끝에만)
+  double stats_start_time = 0;        // 통계 누적 시작 (물리시간)
+  std::string stations = "";          // 프로파일 스테이션 목표 Re_θ 목록 "670,1000,1100"
   long checkpoint_interval = 0;
   std::string checkpoint_dir = "checkpoints";
 };

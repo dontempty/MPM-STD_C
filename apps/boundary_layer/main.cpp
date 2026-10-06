@@ -20,6 +20,7 @@
 #include <exception>
 #include <filesystem>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,7 @@
 #include "parallel/subdomain/subdomain.hpp"
 #include "parallel/topology/topology.hpp"
 #include "post/checkpoint.hpp"
+#include "post/spatial_statistics.hpp"
 #include "post/statistics.hpp"
 #include "settings.hpp"
 #include "time/time_step.hpp"
@@ -143,6 +145,15 @@ int main(int argc, char** argv) {
     int i_recycle = halo_width;
     for (int i = halo_width; i < nx - halo_width; ++i)
       if (grid.x.face[i] <= recycle_x) i_recycle = i;
+    // 공간 발달 통계 (relaxed 평균은 상단 w 공급에도 쓴다)
+    mpmstd::post::SpatialStatistics stats(grid, sub, z_center_global, z_face_global, flow.u_inf,
+                                          flow.nu, s.inflow.relaxation_time);
+    std::vector<real_t> station_re_theta;
+    {
+      std::stringstream ss(s.output.stations);
+      std::string tok;
+      while (std::getline(ss, tok, ',')) if (!tok.empty()) station_re_theta.push_back(std::stod(tok));
+    }
     std::unique_ptr<boundary::Recycling> recycler;
     if (recycling)
       recycler = std::make_unique<boundary::Recycling>(
@@ -332,10 +343,21 @@ int main(int argc, char** argv) {
 
       t += dt;
       ++step;
+      stats.sample(U, V, W, dt, t >= s.output.stats_start_time);
+      if (recycling && step % s.output.monitor_interval == 0) {
+        // 상단 자유류 w(x) = U∞ dδ*/dx — relaxed 평균의 δ*(x) 2차 적합에서 (단계 ②)
+        w_top = stats.free_stream_w(stats.integrals(/*from_relaxed=*/true));
+      }
       if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval == 0)
         write_checkpoint(step, t);
       if (next_dump > 0 && t >= next_dump) {
-        write_field_dump(step, t);
+        if (s.mesh.ny == 1) write_field_dump(step, t);
+        if (stats.accumulated_time() > 0) {
+          char sp[512];
+          std::snprintf(sp, sizeof(sp), "%s/bl_stats_%08ld.dat", s.output.stats_dir.c_str(), step);
+          stats.write(sp, step, t, station_re_theta);
+          if (mpi.is_root()) std::printf("# stats written: %s (T_avg=%.2f)\n", sp, stats.accumulated_time());
+        }
         next_dump += s.output.stats_interval;
       }
       if (step % s.output.monitor_interval == 0 || step == 1) {
@@ -347,6 +369,9 @@ int main(int argc, char** argv) {
                       du_out, cf, cf_blasius_mid,
                       (wall_now - wall_prev) / s.output.monitor_interval);
           if (recycler) {
+            real_t wmax = 0;
+            for (const real_t v : w_top) wmax = std::max(wmax, v);
+            std::printf("#   top w_max %.3e\n", wmax);
             const auto& sc = recycler->scales();
             std::printf("#   recycle: u_tau_r %.5f  delta99_r %.4f  theta_r %.4f  gamma %.4f | inflow: u_tau %.5f  Re_theta %.1f (Re_theta_r %.1f)\n",
                         sc.u_tau_recycle, sc.delta99_recycle, sc.theta_recycle, sc.gamma,
@@ -359,7 +384,13 @@ int main(int argc, char** argv) {
         if (!(div == div) || div > 1e3) throw std::runtime_error("divergence blew up — aborting");
       }
     }
-    write_field_dump(step, t);
+    if (s.mesh.ny == 1) write_field_dump(step, t);
+    if (stats.accumulated_time() > 0) {
+      char sp[512];
+      std::snprintf(sp, sizeof(sp), "%s/bl_stats_%08ld.dat", s.output.stats_dir.c_str(), step);
+      stats.write(sp, step, t, station_re_theta);
+      if (mpi.is_root()) std::printf("# stats written: %s (T_avg=%.2f)\n", sp, stats.accumulated_time());
+    }
     if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval != 0)
       write_checkpoint(step, t);
     if (mpi.is_root())

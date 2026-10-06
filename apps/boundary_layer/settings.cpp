@@ -44,6 +44,8 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"output", "stats_dir", &s.output.stats_dir, false},
       {"output", "monitor_interval", &s.output.monitor_interval, false},
       {"output", "stats_interval", &s.output.stats_interval, false},
+      {"output", "stats_start_time", &s.output.stats_start_time, false},
+      {"output", "stations", &s.output.stations, false},
       {"output", "checkpoint_interval", &s.output.checkpoint_interval, false},
       {"output", "checkpoint_dir", &s.output.checkpoint_dir, false},
   };
@@ -152,6 +154,8 @@ std::string format_settings(const Settings& s) {
   add("stats_dir = \"" + s.output.stats_dir + "\"");
   add("monitor_interval = " + std::to_string(s.output.monitor_interval));
   add("stats_interval = " + format_number(s.output.stats_interval));
+  add("stats_start_time = " + format_number(s.output.stats_start_time));
+  add("stations = \"" + s.output.stations + "\"");
   add("checkpoint_interval = " + std::to_string(s.output.checkpoint_interval));
   add("checkpoint_dir = \"" + s.output.checkpoint_dir + "\"");
   return out;

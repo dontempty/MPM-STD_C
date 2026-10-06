@@ -117,3 +117,12 @@ u = U∞ Dirichlet 은 점성 앵커일 뿐이라 무효(결과 4자리 동일).
 - 작동 확인 (`input_bl_recycling_cpu.ini`, 192×32×64, Re_δ99 2000 ≈ Re_θ 230, np=2, 0.16 s/step):
   안정(div 1e-14, 유량 보정 1e-5), 스케일 산출 정상(u_τ,r·δ_r·θ_r·γ·Re_θ 모니터). 저Re 라 층류화(γ→1)
   — 물리 검증은 GPU 급(Re_θ,in ≈ 600, Δx⁺ 10) 에서. ⚠ 재순환 모드의 상단 w_top 은 아직 0 (단계 ②).
+
+## 11. 단계 B-②③ 상단 자유류 w + 공간 발달 통계 (2026-10-06, CPU 작동 확인)
+- `post/statistics`: `span_average_center_moments` (셀중심 보간 uc·vc·wc 의 7 모멘트, 스팬 평균; CPU/GPU,
+  (i,k) 당 1 스레드라 비결정 없음). `post/spatial_statistics`: relaxed 평균(τ) + dt 가중 누적, z Allgatherv
+  로 전역 (x,z) 장을 만들어 C_f·δ99·δ*·θ·H·Re_θ·Re_τ(x) 와 스테이션(목표 Re_θ 최근접 i) U⁺·rms⁺·uw⁺ 를 쓴다
+  (`bl_stats_<step>.dat`: section 1 적분량, section 2 스테이션). `[output] stats_start_time, stations`.
+- ② 상단 w(x) = U∞ dδ*/dx: relaxed δ*(x) 를 0.1~0.9 Lx 2차 최소제곱 → 도함수(음수 0 클램프), 모니터 간격 갱신
+  (`free_stream_w`). 재순환 모드에서만; blasius 모드는 해석 w∞.
+- 소형 CPU 케이스에서 파일 생성·z 분할 gather·스테이션 선택 확인 (저Re 라 물리 의미 없음).
