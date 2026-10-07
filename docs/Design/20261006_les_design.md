@@ -140,3 +140,17 @@ value 벽 3종(§Vreman 2004 재현, 잡 35718)에 mirror 벽 2종(no-model, C_s
   c_f +1.6% ↔ 우리 Vreman 0.12 mirror +3.6% (논문 상수 0.17 은 value 벽에서 −2.2% 였고 mirror 재실행은 미실시).
 - ν_t 벽 멱지수 1.00 = Vreman 이론 y¹ 그대로(value 0.83). 2차 통계는 벽 처리와 무관(u +7%, v/w −9~10%) = 격자.
 - 판정: Re_τ 180 과 같은 결론 — **mirror + C_s 0.12 가 표준**, 거친 격자의 +3.6% 는 해상도 문제로 §11(96³ 민감도)에서 본다.
+
+## 11. WALE 구현 (2026-10-07, 커밋 참조 git log "les: WALE model")
+`src/physics/LES/WALE/{wale_stencil.hpp, wale.hpp, wale.cpp, wale.cu}` — Nicoud & Ducros (1999) Flow Turbul. Combust. 62:183.
+  g_ij = ∂u_i/∂x_j, S_ij = ½(g_ij+g_ji), g²_ij = g_ik g_kj, S^d_ij = ½(g²_ij+g²_ji) − ⅓δ_ij g²_kk,
+  ν_t = (C_w Δ)² (S^d:S^d)^{3/2} / [(S:S)^{5/2} + (S^d:S^d)^{5/4}], Δ = (ΔxΔyΔz)^{1/3}, C_w = 0.5(기본, `[les] c_w`).
+  분모 0(정지 유체)이면 ν_t = 0. 순수 전단에서 S^d = 0 → 벽 근처 ν_t ∝ y³ (감쇠함수·벽거리 불요 = IBM 호환 근거).
+- 속도구배 텐서는 Vreman 스텐실에서 **그대로 뽑아** `physics/LES/velocity_gradient.hpp` 로 공유(a_mn = ∂u_n/∂x_m, WALE 는 전치).
+  **게이트**: 32³ mirror Vreman 스모크(120 스텝, np=2) 통계 수치 before/after **비트 동일**(헤더만 c_w 추가).
+- 채널: `[les] model = none | constant_vreman | wale`, `c_w`; 통계 헤더 `# les=… c_s=… c_w=…`. CPU/GPU 쌍둥이.
+- 스모크(32³, 120 스텝): 정상 종료·NaN 없음. ν_t/ν 첫 셀 6.4e-3(Vreman 0.11) → 벽 감쇠가 훨씬 강함, 최대 4.6(Vreman 1.3; 과도기 값).
+- 검증 런: `input_channel_re180_les64_wale_mirror.ini` (64³ mirror, C_w 0.5, 비교 짝 none_mirror·vreman012_mirror 잡 35722),
+  `sbatch_channel_les64_wale.sh` (gpu02 유휴 4코어). 판정 항목 = §9 표 + **ν_t 벽 멱지수 ≈ 3**.
+- 96³ 격자 민감도(§9 의 다음 항목): `input_channel_re180_les96_{none,vreman012}_mirror.ini`(γ_z 3.0 유지, 수평만 1.5배,
+  22500 스텝 = 64³ 와 같은 물리시간), `sbatch_channel_les96_mirror.sh`(32 코어, 노드 미지정) — 잡 35901 큐 대기.
