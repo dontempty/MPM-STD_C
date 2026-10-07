@@ -1,0 +1,15 @@
+# Ng, Ooi, Lohse & Chung (2017) J. Fluid Mech. 825, 550-572 — vertical natural convection DNS, Pr 0.709, 8H x 4H x H, Ra 1e5~1e9
+# quantity = prefactor * Ra^exponent, 유효 범위 ra_min~ra_max (논문 최소제곱 "effective power law"). source: text = 본문 수치, fig = 그림 디지타이즈(±3%)
+# Re_dstar = U delta*/nu, U = max(u_mean), delta* = int_0^{z(U)} (1 - u/U) dz  — 우리 dhvc 의 Re_dstar 정의와 동일 (overall, fig.10 black)
+# Re_dstar_low_Rif = 같은 정의를 low-|Ri_f| (높은 전단, 줄무늬) 영역만 조건평균 (fig.10 blue) — 참고용, 우리 통계와 직접 비교 불가
+# Nu = f_w H/(Delta kappa) overall (지수 0.32 는 본문; 접두계수는 fig.8a 검은 점 디지타이즈에 지수 고정 피팅)
+# Re_rms = U_rms H/nu, U_rms = sqrt(<u'u'>) at z = delta_max (지수 0.46 본문; 접두계수 fig.8b 피팅)
+quantity,prefactor,exponent,ra_min,ra_max,source,note
+Re_dstar,0.23,0.28,1e5,1e9,text,"overall shear Reynolds number (fig.10 black line); Re_dstar=200 -> Ra~3.8e10"
+Re_dstar_low_Rif,1.3,0.20,1e5,1e9,text,"low-|Ri_f| conditional shear Reynolds number (fig.10 blue line); Re=200 -> Ra~1.5e11"
+Nu,0.0772,0.32,1e5,1e9,text+fig,"overall Nu ~ Ra^0.32 (Ng et al. 2015); prefactor from digitised fig.8a with exponent fixed (free fit: 0.0804 Ra^0.317)"
+Re_rms,0.6455,0.46,1e5,1e9,text+fig,"overall Re ~ Ra^0.46; prefactor from digitised fig.8b with exponent fixed (free fit: 0.606 Ra^0.464)"
+Nu_low_Rif_exponent,,0.37,1e5,1e9,text,"Nu_l ~ Ra^0.37 (exponent only)"
+Nu_high_Rif_exponent,,0.34,1e5,1e9,text,"Nu_h ~ Ra^0.34 (exponent only)"
+Re_low_Rif_exponent,,0.41,1e5,1e9,text,"Re_l ~ Ra^0.41 (exponent only)"
+Re_high_Rif_exponent,,0.50,1e5,1e9,text,"Re_h ~ Ra^0.50 (exponent only)"

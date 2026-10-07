@@ -1,0 +1,12 @@
+# Ng, Ooi, Lohse & Chung (2017) JFM 825 fig.10 black circles = overall shear Reynolds number Re_dstar = U delta*/nu
+#   (U = max(u_mean), delta* = int_0^{z(U)} (1 - u/U) dz — dhvc 의 Re_dstar 정의와 동일), Pr 0.709, 8H x 4H x H
+# 300 dpi 렌더 디지타이즈: Ra 1e5~5.4e6 은 원 중심(±1.5%), 2e7~1e9 는 흰 채움 파란 원에 윗부분이 가려져 아랫변에서 복원(±3%)
+# 본문 상관식 0.23·Ra^0.28 은 이 점들의 최소제곱 유효 멱법칙 (1e9 점은 상관식보다 ~23% 아래)
+Ra,Re_dstar,method
+1.0e5,5.25,centroid
+5.4e5,8.03,centroid
+2.0e6,12.83,centroid
+5.4e6,18.24,centroid
+2.0e7,29.4,bottom-edge
+1.0e8,42.6,bottom-edge
+1.0e9,58.6,bottom-edge
