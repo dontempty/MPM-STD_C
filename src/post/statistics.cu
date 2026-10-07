@@ -2,6 +2,8 @@
 
 #include <mpi.h>
 
+#include <stdexcept>
+
 #include "common/cuda_check.hpp"
 
 // GPU 백엔드 — statistics.cpp 의 쌍둥이. 프로파일은 디바이스 누적(atomicAdd —
@@ -242,6 +244,82 @@ real_t max_divergence(const field::Field& U, const field::Field& V,
   real_t global = 0;
   MPI_Allreduce(&worst, &global, 1, MPI_DOUBLE, MPI_MAX, sub.topology().cart_comm());
   return global;
+}
+
+
+// ── 열 가중 평면 평균 (2026-10-07; CPU 쌍둥이 statistics.cpp 와 1:1) ─────────────────────────
+namespace {
+
+__global__ void weighted_profile_kernel(const field::ConstView f, const field::ConstView g,
+                                        const bool use_g, const real_t* w, const int h,
+                                        const int i1, const int i2, const int i3,
+                                        const int z_offset, const bool squared,
+                                        real_t* profile) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(i1) * i2 * i3) return;
+  const int k = h + static_cast<int>(idx % i3);
+  const int jj = static_cast<int>((idx / i3) % i2);
+  const int ii = static_cast<int>(idx / (static_cast<long long>(i3) * i2));
+  const real_t wij = w[static_cast<std::size_t>(ii) * i2 + jj];
+  if (wij == 0) return;
+  const int i = h + ii, j = h + jj;
+  const real_t value = squared ? f(i, j, k) * f(i, j, k)
+                               : (use_g ? f(i, j, k) * g(i, j, k) : f(i, j, k));
+  atomicAdd(&profile[z_offset + (k - h)], wij * value);
+}
+
+std::vector<real_t> weighted_profile_impl(const field::Field& F, const field::Field* G,
+                                          const field::Buffer& weights,
+                                          const parallel::Subdomain& sub, const bool squared) {
+  const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
+  const int nz_global = sub.z().n_global;
+  if (weights.size() != static_cast<std::size_t>(i1) * i2)
+    throw std::invalid_argument("plane_weighted_average: weights size != nx_local*ny_local");
+  real_t* device_profile = nullptr;
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_profile),
+                               nz_global * sizeof(real_t)));
+  MPMSTD_CUDA_CHECK(cudaMemset(device_profile, 0, nz_global * sizeof(real_t)));
+  const long long n = static_cast<long long>(i1) * i2 * i3;
+  weighted_profile_kernel<<<blocks_for(n), kThreads>>>(
+      F.view(), G ? G->view() : F.view(), G != nullptr, weights.data(), halo_width, i1, i2,
+      i3, sub.z().offset, squared, device_profile);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+  std::vector<real_t> profile(nz_global);
+  MPMSTD_CUDA_CHECK(cudaMemcpy(profile.data(), device_profile, nz_global * sizeof(real_t),
+                               cudaMemcpyDeviceToHost));
+  cudaFree(device_profile);
+  MPI_Allreduce(MPI_IN_PLACE, profile.data(), nz_global, MPI_DOUBLE, MPI_SUM,
+                sub.topology().cart_comm());
+  std::vector<real_t> host_weights;
+  weights.download(host_weights);
+  real_t weight_sum = 0;
+  for (const real_t v : host_weights) weight_sum += v;
+  MPI_Allreduce(MPI_IN_PLACE, &weight_sum, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+  weight_sum /= static_cast<real_t>(sub.topology().z().nprocs);
+  if (weight_sum > 0)
+    for (real_t& v : profile) v /= weight_sum;
+  else
+    for (real_t& v : profile) v = 0;
+  return profile;
+}
+
+}  // namespace
+
+std::vector<real_t> plane_weighted_average(const field::Field& F, const field::Buffer& weights,
+                                           const parallel::Subdomain& sub) {
+  return weighted_profile_impl(F, nullptr, weights, sub, /*squared=*/false);
+}
+
+std::vector<real_t> plane_weighted_average_square(const field::Field& F,
+                                                  const field::Buffer& weights,
+                                                  const parallel::Subdomain& sub) {
+  return weighted_profile_impl(F, nullptr, weights, sub, /*squared=*/true);
+}
+
+std::vector<real_t> plane_weighted_average_product(const field::Field& F, const field::Field& G,
+                                                   const field::Buffer& weights,
+                                                   const parallel::Subdomain& sub) {
+  return weighted_profile_impl(F, &G, weights, sub, /*squared=*/false);
 }
 
 }  // namespace mpmstd::post

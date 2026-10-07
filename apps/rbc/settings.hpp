@@ -70,6 +70,12 @@ struct Output {                      // [output]
   double stats_interval = 0;         // 프로파일 파일 출력 간격 (물리시간, 0 = 안 씀)
   long checkpoint_interval = 0;      // 재시작 체크포인트 간격 (스텝, 0 = 끔)
   std::string checkpoint_dir = "checkpoints";  // 체크포인트 디렉터리
+  // ── dhvc 확장 통계 (apps/dhvc/statistics.hpp; rbc 는 읽기만 하고 안 쓴다) ──
+  int stats_sample_interval = 1;     // 평면 프로파일 표본 간격 (스텝; 간격 안 dt 합이 가중)
+  int conditional_interval = 0;      // 조건평균(|Ri_f| 분류) 표본 간격 (스텝, 0 = stats_sample_interval)
+  int spectra_interval = 0;          // u 스펙트럼 표본 간격 (스텝, 0 = 끔)
+  double richardson_threshold = 0.1; // low-|Ri_f| 상한 (Ng 2017: 0.1)
+  double richardson_z_plus = 15;     // |Ri_f| 정의의 z⁺ (Ng 2017: 15)
 };
 
 // [boundary] 는 공용 조각 boundary/boundary_settings.hpp (경계층 앱과 공유).

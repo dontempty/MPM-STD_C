@@ -55,6 +55,11 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"output", "stats_interval", &s.output.stats_interval, false},
       {"output", "checkpoint_interval", &s.output.checkpoint_interval, false},
       {"output", "checkpoint_dir", &s.output.checkpoint_dir, false},
+      {"output", "stats_sample_interval", &s.output.stats_sample_interval, false},
+      {"output", "conditional_interval", &s.output.conditional_interval, false},
+      {"output", "spectra_interval", &s.output.spectra_interval, false},
+      {"output", "richardson_threshold", &s.output.richardson_threshold, false},
+      {"output", "richardson_z_plus", &s.output.richardson_z_plus, false},
   };
   mpmstd::boundary::append_bindings(b, s.boundary);  // [boundary] — 공용 조각
   return b;
@@ -102,6 +107,11 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.output.stats_interval >= 0, "'output.stats_interval' must be >= 0");
   require(ini, s.output.checkpoint_interval >= 0,
           "'output.checkpoint_interval' must be >= 0");
+  require(ini, s.output.stats_sample_interval > 0, "'output.stats_sample_interval' must be > 0");
+  require(ini, s.output.conditional_interval >= 0, "'output.conditional_interval' must be >= 0");
+  require(ini, s.output.spectra_interval >= 0, "'output.spectra_interval' must be >= 0");
+  require(ini, s.output.richardson_threshold > 0, "'output.richardson_threshold' must be > 0");
+  require(ini, s.output.richardson_z_plus > 0, "'output.richardson_z_plus' must be > 0");
 }
 
 }  // namespace
@@ -193,6 +203,11 @@ std::string format_settings(const Settings& s) {
   add("stats_interval = " + format_number(s.output.stats_interval));
   add("checkpoint_interval = " + std::to_string(s.output.checkpoint_interval));
   add("checkpoint_dir = \"" + s.output.checkpoint_dir + "\"");
+  add("stats_sample_interval = " + std::to_string(s.output.stats_sample_interval));
+  add("conditional_interval = " + std::to_string(s.output.conditional_interval));
+  add("spectra_interval = " + std::to_string(s.output.spectra_interval));
+  add("richardson_threshold = " + format_number(s.output.richardson_threshold));
+  add("richardson_z_plus = " + format_number(s.output.richardson_z_plus));
   return out;
 }
 

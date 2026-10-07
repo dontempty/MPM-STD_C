@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "common/types.hpp"
+#include "field/buffer.hpp"
 #include "field/field.hpp"
 #include "grid/grid.hpp"
 #include "parallel/subdomain/subdomain.hpp"
@@ -46,5 +47,18 @@ real_t bulk_velocity(const field::Field& U, const grid::Grid& grid,
 real_t max_divergence(const field::Field& U, const field::Field& V,
                       const field::Field& W, const grid::Grid& grid,
                       const parallel::Subdomain& sub);
+
+// ── 열(x,y) 가중 평면 평균 — 조건평균(국소 |Ri_f| 분류, post/wall_richardson) 용 (2026-10-07) ──
+//   weights: 내부 nx_local×ny_local (행 우선 (i−h)·ny_local + (j−h)), 백엔드 메모리(field::Buffer),
+//   0/1 지시자 또는 임의 가중. 반환 = Σ_ij w·F / Σ_ij w (둘 다 전역 Allreduce); Σw = 0 이면 전부 0.
+//   plane_average 와 같은 분할 규칙(어느 분할에서도 같은 전역 프로파일).
+std::vector<real_t> plane_weighted_average(const field::Field& F, const field::Buffer& weights,
+                                           const parallel::Subdomain& sub);
+std::vector<real_t> plane_weighted_average_square(const field::Field& F,
+                                                  const field::Buffer& weights,
+                                                  const parallel::Subdomain& sub);
+std::vector<real_t> plane_weighted_average_product(const field::Field& F, const field::Field& G,
+                                                   const field::Buffer& weights,
+                                                   const parallel::Subdomain& sub);
 
 }  // namespace mpmstd::post

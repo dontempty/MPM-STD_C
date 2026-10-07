@@ -153,4 +153,65 @@ real_t max_divergence(const field::Field& U, const field::Field& V,
   return global;
 }
 
+
+// ── 열 가중 평면 평균 (2026-10-07; GPU 쌍둥이 statistics.cu 와 1:1) ─────────────────────────
+namespace {
+
+std::vector<real_t> weighted_profile_impl(const field::Field& F, const field::Field* G,
+                                          const field::Buffer& weights,
+                                          const parallel::Subdomain& sub, const bool squared) {
+  const int h = halo_width;
+  const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
+  const int i2 = sub.y().n_local;
+  const int z_offset = sub.z().offset;
+  if (weights.size() != static_cast<std::size_t>(sub.x().n_local) * i2)
+    throw std::invalid_argument("plane_weighted_average: weights size != nx_local*ny_local");
+  std::vector<real_t> profile(sub.z().n_global, 0.0);
+  real_t* prof = profile.data();
+  const real_t* w = weights.data();
+  const field::ConstView f = F.view();
+  const field::ConstView g = G ? G->view() : F.view();
+  real_t weight_sum = 0;
+  for (int i = h; i < nx - h; ++i)
+    for (int j = h; j < ny - h; ++j) {
+      const real_t wij = w[static_cast<std::size_t>(i - h) * i2 + (j - h)];
+      weight_sum += wij;
+      if (wij == 0) continue;
+      for (int k = h; k < nz - h; ++k) {
+        const real_t value = squared ? f(i, j, k) * f(i, j, k)
+                                     : (G ? f(i, j, k) * g(i, j, k) : f(i, j, k));
+        prof[z_offset + (k - h)] += wij * value;
+      }
+    }
+  MPI_Allreduce(MPI_IN_PLACE, prof, static_cast<int>(profile.size()), MPI_DOUBLE, MPI_SUM,
+                sub.topology().cart_comm());
+  // Σw 는 평면(x,y) 분할 랭크들의 합 — z 분할은 같은 평면을 공유하므로 z 축 랭크 수로 나눈다
+  MPI_Allreduce(MPI_IN_PLACE, &weight_sum, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+  weight_sum /= static_cast<real_t>(sub.topology().z().nprocs);
+  if (weight_sum > 0)
+    for (real_t& v : profile) v /= weight_sum;
+  else
+    for (real_t& v : profile) v = 0;
+  return profile;
+}
+
+}  // namespace
+
+std::vector<real_t> plane_weighted_average(const field::Field& F, const field::Buffer& weights,
+                                           const parallel::Subdomain& sub) {
+  return weighted_profile_impl(F, nullptr, weights, sub, /*squared=*/false);
+}
+
+std::vector<real_t> plane_weighted_average_square(const field::Field& F,
+                                                  const field::Buffer& weights,
+                                                  const parallel::Subdomain& sub) {
+  return weighted_profile_impl(F, nullptr, weights, sub, /*squared=*/true);
+}
+
+std::vector<real_t> plane_weighted_average_product(const field::Field& F, const field::Field& G,
+                                                   const field::Buffer& weights,
+                                                   const parallel::Subdomain& sub) {
+  return weighted_profile_impl(F, &G, weights, sub, /*squared=*/false);
+}
+
 }  // namespace mpmstd::post
