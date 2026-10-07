@@ -46,8 +46,9 @@ struct Boundary {                      // [boundary] — 채널은 z 벽 고정;
 };
 
 struct Les {                           // [les] — LES 와점성 (physics/LES; docs/Design/20261006_les_design.md)
-  std::string model = "none";          // none | constant_vreman  (WALE 는 다음)
+  std::string model = "none";          // none | constant_vreman | wale
   double c_s = 0.12;                   // Vreman: C_v = 2.5·C_s² (참조 Fortran 0.12 → 0.036; 원논문 0.17)
+  double c_w = 0.5;                    // WALE: C_w (Nicoud & Ducros 1999 권장 0.5; C_w² ≈ 10.6·C_s²)
 };
 
 struct Time {              // [time]

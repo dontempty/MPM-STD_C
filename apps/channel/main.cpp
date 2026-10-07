@@ -34,6 +34,7 @@
 #include "parallel/topology/topology.hpp"
 #include "physics/channel_forcing.hpp"
 #include "post/checkpoint.hpp"
+#include "physics/LES/WALE/wale.hpp"
 #include "physics/LES/constant_vreman/vreman.hpp"
 #include "physics/LES/les.hpp"
 #include "post/statistics.hpp"
@@ -238,7 +239,9 @@ int main(int argc, char** argv) {
     //    (1단계: 가변 경로 + 단위 1/ρ̂ 배열. 단위 배열을 컴파일 타임에 접는 *_variable_viscosity
     //     판은 후속 — 비트 일치 게이트로 교체 예정)
     const bool les = s.les.model != "none";
+    const bool les_wale = s.les.model == "wale";   // 아니면 constant_vreman (settings 가 검증)
     const real_t c_vreman = 2.5 * s.les.c_s * s.les.c_s;
+    const real_t c_wale = s.les.c_w;
     std::unique_ptr<Field> mu_hat, unit_inverse_density;
     if (les) {
       mu_hat = std::make_unique<Field>(nx, ny, nz, "mu_hat");
@@ -299,7 +302,7 @@ int main(int argc, char** argv) {
       std::fprintf(f, "# channel statistics  step=%ld samples=%ld\n", step, samples);
       std::fprintf(f, "# Re_b=%g nu=%.8e u_tau=%.8f Re_tau=%.3f mean_dPdx=%.8e\n",
                    s.physics.reynolds_bulk, nu, u_tau, re_tau, mean_dPdx);
-      std::fprintf(f, "# les=%s c_s=%g\n", s.les.model.c_str(), s.les.c_s);
+      std::fprintf(f, "# les=%s c_s=%g c_w=%g\n", s.les.model.c_str(), s.les.c_s, s.les.c_w);
       std::fprintf(f, "# z  z_plus  U_mean  U_plus  u_rms  v_rms  w_rms  uw_fluct  nut_over_nu\n");
       for (int q = 0; q < s.mesh.nz; ++q) {
         const real_t z_wall = std::min(z_center[q], s.domain.lz - z_center[q]);
@@ -368,8 +371,12 @@ int main(int argc, char** argv) {
       rhs_W.fill(0);
       if (les) {
         // ν_t(uⁿ) → μ̂ (참조 Fortran: 스텝 시작에 한 번, 음해 밴드엔 lag)
-        mpmstd::physics::les::calculate_eddy_viscosity_constant_vreman(*mu_hat, U, V, W, grid, sub,
-                                                                       nu, c_vreman);
+        if (les_wale)
+          mpmstd::physics::les::calculate_eddy_viscosity_wale(*mu_hat, U, V, W, grid, sub, nu,
+                                                              c_wale);
+        else
+          mpmstd::physics::les::calculate_eddy_viscosity_constant_vreman(*mu_hat, U, V, W, grid,
+                                                                         sub, nu, c_vreman);
         mpmstd::physics::les::synchronize_viscosity_ratio(*mu_hat, sub);
         momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W, *mu_hat,
                                                               *unit_inverse_density, grid, sub, nu, dt);

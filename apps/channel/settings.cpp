@@ -37,6 +37,7 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"boundary", "velocity_ghost", &s.boundary.velocity_ghost, false},
       {"les", "model", &s.les.model, false},
       {"les", "c_s", &s.les.c_s, false},
+      {"les", "c_w", &s.les.c_w, false},
 
       {"time", "dt_max", &s.time.dt_max, false},
       {"time", "max_cfl", &s.time.max_cfl, false},
@@ -64,9 +65,10 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.domain.lz > 0, "'domain.lz' must be > 0");
   require(ini, s.boundary.velocity_ghost == "value" || s.boundary.velocity_ghost == "mirror",
           "'boundary.velocity_ghost' must be value | mirror");
-  require(ini, s.les.model == "none" || s.les.model == "constant_vreman",
-          "'les.model' must be none | constant_vreman");
+  require(ini, s.les.model == "none" || s.les.model == "constant_vreman" || s.les.model == "wale",
+          "'les.model' must be none | constant_vreman | wale");
   require(ini, s.les.c_s > 0, "'les.c_s' must be > 0");
+  require(ini, s.les.c_w > 0, "'les.c_w' must be > 0");
   if (s.stretch.uniform_z) {
     require(ini, s.stretch.gamma_z == 0,
             "'stretch.gamma_z' is set but 'stretch.uniform_z' is true");
@@ -160,6 +162,7 @@ std::string format_settings(const Settings& s) {
   add("[les]");
   add("model = " + s.les.model);
   add("c_s = " + format_number(s.les.c_s));
+  add("c_w = " + format_number(s.les.c_w));
   add("");
   add("[time]");
   add("dt_max = " + format_number(s.time.dt_max));
