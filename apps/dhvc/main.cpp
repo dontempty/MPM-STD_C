@@ -64,12 +64,19 @@ namespace {
 constexpr real_t kWallTemperatureHot = 0.5;    // z = 0  (뜨거운 벽)
 constexpr real_t kWallTemperatureCold = -0.5;  // z = Lz (차가운 벽)
 
-void sync_velocity(Field& U, Field& V, Field& W, const Subdomain& sub) {
+// 접선 속도 벽 ghost: value(1차, 참조 PaScaL/MPM-STD_C 관례 — 기본) | mirror(2차, 벽면 no-slip;
+// 운동량 닫기 B−=A 와 짝). [boundary] velocity_ghost 로 고른다 (채널과 동일, 2026-10-07).
+void sync_velocity(Field& U, Field& V, Field& W, const Subdomain& sub, const bool mirror) {
   sub.exchange_halo(U.data());
-  mpmstd::boundary::fill_z_wall_value(U, sub, 0.0, 0.0);
   sub.exchange_halo(V.data());
-  mpmstd::boundary::fill_z_wall_value(V, sub, 0.0, 0.0);
   sub.exchange_halo(W.data());
+  if (mirror) {
+    mpmstd::boundary::fill_z_wall_mirror(U, sub, 0.0, 0.0);
+    mpmstd::boundary::fill_z_wall_mirror(V, sub, 0.0, 0.0);
+  } else {
+    mpmstd::boundary::fill_z_wall_value(U, sub, 0.0, 0.0);
+    mpmstd::boundary::fill_z_wall_value(V, sub, 0.0, 0.0);
+  }
   mpmstd::boundary::zero_z_wall_faces(W, sub);
 }
 
@@ -152,6 +159,8 @@ int main(int argc, char** argv) {
   }
   try {
     const rbc::Settings s = rbc::load_settings(argv[1]);
+    const bool mirror_wall =
+        s.boundary.condition.velocity_ghost == mpmstd::boundary::VelocityGhost::Mirror;
     if (s.physics.gravity_axis != 0)
       throw std::runtime_error("dhvc: gravity_axis must be 0 (x, 연직)");
     if (s.physics.delta_temperature != 0)
@@ -193,6 +202,12 @@ int main(int argc, char** argv) {
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
     momentum::Solver momentum_solver(sub);
     scalar::Solver scalar_solver(sub);
+    if (mirror_wall) {
+      // ghost 정책과 일치하는 음해 닫기: 속도 거울 → B−=A, 온도(거울 ghost) → B−=A.
+      // value(기본)는 drop(참조 1:1)을 유지한다.
+      momentum::set_wall_closure(momentum_solver, s.boundary.condition);
+      scalar::set_wall_closure(scalar_solver, s.boundary.condition, mpmstd::boundary::Field::T);
+    }
     pressure::Solver pressure_solver(grid, sub);
     real_t mean_dPdx = 0;  // 순 x유량 0 보정의 적립(진단) — 재시작 상태
 
@@ -227,7 +242,7 @@ int main(int argc, char** argv) {
       cold_start_initial_condition(U, V, W, T, grid, sub, s.domain.lx, s.domain.ly,
                                    s.domain.lz, nu, s.initial.perturb);
     }
-    sync_velocity(U, V, W, sub);
+    sync_velocity(U, V, W, sub, mirror_wall);
     sync_temperature(T, sub);
     sub.exchange_halo(P.data());
     mpmstd::boundary::fill_z_wall_zero_gradient(P, sub);
@@ -240,7 +255,7 @@ int main(int argc, char** argv) {
     pressure::solve(pressure_solver, grid, sub, rhs_P, dP);
     pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, real_t(1));
     pressure::accumulate(P, dP);
-    sync_velocity(U, V, W, sub);
+    sync_velocity(U, V, W, sub, mirror_wall);
 
     if (mpi.is_root()) {
       std::printf("# DHVC OB: Ra=%.3g Pr=%.3g -> nu=%.6e alpha=%.6e | %dx%dx%d\n",
@@ -319,11 +334,11 @@ int main(int argc, char** argv) {
       pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W,
                                         U, V, W, nu, dt);
-      sync_velocity(U, V, W, sub);
+      sync_velocity(U, V, W, sub, mirror_wall);
 
       // ── 순 x유량 0 (연직 가속 억제; 참조 apply_mass_flow_correction target 0) ──
       physics::correct_bulk_velocity(U, grid, sub, /*target_bulk=*/0, dt, mean_dPdx);
-      sync_velocity(U, V, W, sub);
+      sync_velocity(U, V, W, sub, mirror_wall);
 
       // ── 증분 투영 ──
       rhs_P.fill(0);
@@ -331,7 +346,7 @@ int main(int argc, char** argv) {
       pressure::solve(pressure_solver, grid, sub, rhs_P, dP);
       pressure::correct_velocity_constant_property(U, V, W, dP, grid, sub, dt);
       pressure::accumulate(P, dP);
-      sync_velocity(U, V, W, sub);
+      sync_velocity(U, V, W, sub, mirror_wall);
 
       t += dt;
       ++step;
