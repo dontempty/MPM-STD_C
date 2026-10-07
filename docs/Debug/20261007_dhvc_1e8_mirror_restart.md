@@ -35,8 +35,10 @@
 
 ## 실행
 - 잡 **35834** = `sbatch --dependency=afterany:35641 apps/dhvc/sbatch_dhvc_1e8_4gpu_mirror.sh`
-  (gpu01+gpu02, npz=4, hpcx 2노드 mpirun). 35641 은 ~4 h 뒤 t=150 완주 → value 벽 기준선
-  (`out_1e8/`)이 되므로 죽이지 않았다. 즉시 시작하려면 `scancel 35641`.
+  (gpu01+gpu02, npz=4, hpcx 2노드 mpirun). 처음엔 35641 완주(~3 h) 뒤 자동 시작으로 걸었으나
+  **사용자 결정으로 35641 을 t=136.65 에서 scancel**(2026-10-07 10:25) → 35834 즉시 시작.
+  value 벽 기준선은 t=125 스냅샷 `out_1e8/dhvc_stats_00185448.dat`(창 100~125, Re_δ* 42.33)과
+  로그의 누적값(t=136.6 에서 40.98)만 남는다. 마지막 체크포인트 `restart_1e8/dhvc_ck_00200000.bin`.
 - 예상 비용: dt ≈ 0.0006, 0.615 s/step → 110 time ≈ 1.8e5 스텝 ≈ **31 h**.
 - 재시작 경로 점검: `post::read_checkpoint` 는 루트 fread + 랭크별 Send(MPI-IO 아님) → NFS
   MPI-IO 데드락 무관. 통계 누적기는 체크포인트에 없으므로 value 런 통계가 섞이지 않는다.
