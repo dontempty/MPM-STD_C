@@ -3,7 +3,8 @@
 #SBATCH -J ch_les64
 #SBATCH -N 1
 #SBATCH -n 12
-#SBATCH -w gpu02
+#SBATCH --exclude=gpu01,gpu02
+# LES 는 CPU 노드만 (사용자 지시 2026-10-07: GPU 는 DHVC 검증 전용)
 #SBATCH --time=06:00:00
 #SBATCH -o /shared/home/wel1come1234/workspace/MPM-STD/apps/channel/log/les64_%j.log
 NVR=/opt/nvidia/hpc-sdk/Linux_x86_64/23.7

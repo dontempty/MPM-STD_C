@@ -3,7 +3,8 @@
 #SBATCH -J ch_les96m
 #SBATCH -N 1
 #SBATCH -n 32
-# 노드 미지정: 32 코어가 비는 아무 노드 (cpu04 는 상위 우선순위 잡이 선점 중, 2026-10-07)
+#SBATCH --exclude=gpu01,gpu02
+# LES 는 CPU 노드만 (사용자 지시 2026-10-07: GPU 는 DHVC 검증 전용) — 32 코어 비는 cpu 노드 아무 곳
 #SBATCH --time=12:00:00
 #SBATCH -o /shared/home/wel1come1234/workspace/MPM-STD/apps/channel/log/les96m_%j.log
 NVR=/opt/nvidia/hpc-sdk/Linux_x86_64/23.7

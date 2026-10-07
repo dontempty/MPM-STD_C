@@ -154,3 +154,7 @@ value 벽 3종(§Vreman 2004 재현, 잡 35718)에 mirror 벽 2종(no-model, C_s
   `sbatch_channel_les64_wale.sh` (gpu02 유휴 4코어). 판정 항목 = §9 표 + **ν_t 벽 멱지수 ≈ 3**.
 - 96³ 격자 민감도(§9 의 다음 항목): `input_channel_re180_les96_{none,vreman012}_mirror.ini`(γ_z 3.0 유지, 수평만 1.5배,
   22500 스텝 = 64³ 와 같은 물리시간), `sbatch_channel_les96_mirror.sh`(32 코어, 노드 미지정) — 잡 35901 큐 대기.
+
+**자원 규칙(사용자 지시 2026-10-07 저녁)**: GPU 노드는 DHVC 검증 전용, **LES 검증은 CPU 노드만**(gpu01/gpu02 유휴 코어도 금지).
+gpu02 에 올렸던 WALE 64³(35904)·96³(35901)·GPU 채널 빌드(35903)는 취소하고 `--exclude=gpu01,gpu02` 로 재투입:
+**96³ 민감도 = 잡 35925, WALE 64³ = 잡 35926**. 채널 GPU 바이너리는 WALE 포함 재빌드하지 않았다(필요 시 DHVC 와 무관하게 따로).
