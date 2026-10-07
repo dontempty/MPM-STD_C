@@ -10,6 +10,9 @@
 //   → [운동량 rhs(상수 ν) + 부력_x(Tⁿ⁺¹) − ∇Pⁿ] → [상수 운동량 solve]
 //   → [순 x유량 0 보정] → [동기화] → [증분 투영] → [P 누적] → [통계(Re_δ*)]
 //
+// 통계(2026-10-07 확장): dt 가중 면평균 — U V W T, rms(u v w T), ⟨u′w′⟩⟨u′T′⟩⟨w′T′⟩(슬롯곱),
+//   헤더에 Re_δ*·u_max·δ*·Nu_hot/cold·u_τ,hot/cold·⟨dP/dx⟩·창(t_start, sum_dt). 모니터에 순간 Nu·u_τ.
+//
 // ★ 상수물성 전용 경로 — 물성 배열(μ̂·1/ρ̂·κ̂)을 **만들지도 참조하지도 않는다**
 //   (*_constant_property; 사용자 지시 2026-10-05). 가변물성(NOB)은 rbc_nob.
 //
@@ -119,19 +122,21 @@ void cold_start_initial_condition(Field& U, Field& V, Field& W, Field& T,
   T.upload(st);
 }
 
-// Re_δ* = u_max·δ*/ν  (참조 compute_re_delta_star 1:1). U_profile = ⟨u⟩_{xy,t}.
-real_t reynolds_delta_star(const std::vector<double>& u_profile,
-                           const std::vector<real_t>& z_center, const real_t nu) {
+// u_max 와 δ* = ∫₀^{z(u_max)} (1 − U/u_max) dz  (참조 compute_re_delta_star 1:1). U_profile = ⟨u⟩_{xy,t}.
+void maximum_and_displacement_thickness(const std::vector<double>& u_profile,
+                                        const std::vector<real_t>& z_center, double& u_max,
+                                        double& dstar) {
   const int nz = static_cast<int>(u_profile.size());
   int kmax = 0;
-  double u_max = u_profile[0];
+  u_max = u_profile[0];
   for (int k = 0; k < nz; ++k)
     if (u_profile[k] > u_max) {
       u_max = u_profile[k];
       kmax = k;
     }
-  if (u_max <= 0.0) return 0.0;
-  double dstar = 0.0, z_prev = 0.0, f_prev = 1.0;  // 벽 z=0, U=0 → 1−0 = 1
+  dstar = 0.0;
+  if (u_max <= 0.0) return;
+  double z_prev = 0.0, f_prev = 1.0;  // 벽 z=0, U=0 → 1−0 = 1
   for (int k = 0; k <= kmax; ++k) {
     const double z = z_center[k];
     const double f = 1.0 - u_profile[k] / u_max;
@@ -139,6 +144,14 @@ real_t reynolds_delta_star(const std::vector<double>& u_profile,
     z_prev = z;
     f_prev = f;
   }
+}
+
+// Re_δ* = u_max·δ*/ν
+real_t reynolds_delta_star(const std::vector<double>& u_profile,
+                           const std::vector<real_t>& z_center, const real_t nu) {
+  double u_max = 0, dstar = 0;
+  maximum_and_displacement_thickness(u_profile, z_center, u_max, dstar);
+  if (u_max <= 0.0) return 0.0;
   return static_cast<real_t>(u_max * dstar / nu);
 }
 
@@ -262,12 +275,43 @@ int main(int argc, char** argv) {
                   s.physics.rayleigh, s.physics.prandtl, nu, Ct, s.mesh.nx, s.mesh.ny,
                   s.mesh.nz);
       std::printf("# step      time        dt     max|div|    Re_dstar    u_max   "
-                  "sec/step\n");
+                  "Nu_hot   Nu_cold  u_tau_hot  u_tau_cold  sec/step\n");
     }
 
     // 시간(dt 가중) 누적 U(z) 프로파일 → Re_δ*
     std::vector<double> sum_u_profile(s.mesh.nz, 0.0);
     double sum_dt = 0.0;
+    // ── 확장 통계 (2026-10-07, dt 가중·전역 z) ──
+    //   평균 V W T, 제곱 ⟨u²⟩⟨v²⟩⟨w²⟩⟨T²⟩, 상관 ⟨uw⟩⟨uT⟩⟨wT⟩ — 슬롯곱(U x-면·W z-면·T 중심,
+    //   보간 없음; RBC Nu 의 wt 관례). 운동량 수지용 ⟨dP/dx⟩ 시간평균과 창 시작 시각도 기록.
+    const int nz_global = s.mesh.nz;
+    std::vector<double> sum_v_profile(nz_global, 0.0), sum_w_profile(nz_global, 0.0),
+        sum_t_profile(nz_global, 0.0), sum_uu(nz_global, 0.0), sum_vv(nz_global, 0.0),
+        sum_ww(nz_global, 0.0), sum_tt(nz_global, 0.0), sum_uw(nz_global, 0.0),
+        sum_ut(nz_global, 0.0), sum_wt(nz_global, 0.0);
+    double sum_dpdx = 0.0;  // Σ(스텝별 적용 ∂P/∂x · dt) — 헤더 mean_dPdx = 창 평균 등가 압력구배
+    double stats_time_begin = -1.0;  // 첫 누적 스텝의 t − dt (창 시작)
+    // 벽 진단 자 — 열: T ghost 는 항상 거울(벽면이 정확) → (T_wall − T₁)/z₁.
+    //   속도: ghost 정책대로 — mirror 는 벽면↔첫 중심(z₁), value 는 ghost 중심↔첫 중심(1차, 마찰 절반).
+    const real_t z_first = z_center[0];
+    const real_t z_last_gap = static_cast<real_t>(s.domain.lz) - z_center[nz_global - 1];
+    const real_t ghost_gap_hot = z_center[0] - axis_z_global.center[halo_width - 1];
+    const real_t ghost_gap_cold =
+        axis_z_global.center[nz_global + halo_width] - z_center[nz_global - 1];
+    const real_t ruler_hot = mirror_wall ? z_first : ghost_gap_hot;
+    const real_t ruler_cold = mirror_wall ? z_last_gap : ghost_gap_cold;
+    const real_t delta_temperature_wall = kWallTemperatureHot - kWallTemperatureCold;
+    // 면평균 프로파일 → 벽 Nu (= −∂⟨T⟩/∂z·lz/ΔT) 와 u_τ (= √(ν|∂⟨u⟩/∂z|))
+    const auto wall_nusselt = [&](const auto& t_bar, double& nu_hot, double& nu_cold) {
+      nu_hot = double(kWallTemperatureHot - t_bar[0]) / z_first * s.domain.lz
+               / delta_temperature_wall;
+      nu_cold = double(t_bar[nz_global - 1] - kWallTemperatureCold) / z_last_gap * s.domain.lz
+                / delta_temperature_wall;
+    };
+    const auto wall_friction_velocity = [&](const auto& u_bar, double& ut_hot, double& ut_cold) {
+      ut_hot = std::sqrt(double(nu) * std::abs(double(u_bar[0])) / ruler_hot);
+      ut_cold = std::sqrt(double(nu) * std::abs(double(u_bar[nz_global - 1])) / ruler_cold);
+    };
     const auto running_re_delta = [&]() -> real_t {
       if (sum_dt <= 0.0) return 0;
       std::vector<double> mean(s.mesh.nz);
@@ -284,12 +328,43 @@ int main(int argc, char** argv) {
                     s.output.stats_dir.c_str(), step_now);
       std::FILE* f = std::fopen(path, "w");
       if (!f) return;
-      std::fprintf(f, "# dhvc statistics  step=%ld t=%.4f\n", step_now, t_now);
-      std::fprintf(f, "# Ra=%g Pr=%g Re_dstar=%.6f\n", s.physics.rayleigh,
-                   s.physics.prandtl, running_re_delta());
-      std::fprintf(f, "# z  U_mean\n");
-      for (int q = 0; q < s.mesh.nz; ++q)
-        std::fprintf(f, "%12.8f %14.8e\n", z_center[q], sum_u_profile[q] / sum_dt);
+      std::vector<double> u_mean(nz_global), v_mean(nz_global), w_mean(nz_global),
+          t_mean(nz_global);
+      for (int q = 0; q < nz_global; ++q) {
+        u_mean[q] = sum_u_profile[q] / sum_dt;
+        v_mean[q] = sum_v_profile[q] / sum_dt;
+        w_mean[q] = sum_w_profile[q] / sum_dt;
+        t_mean[q] = sum_t_profile[q] / sum_dt;
+      }
+      double u_max = 0, dstar = 0, nu_hot = 0, nu_cold = 0, ut_hot = 0, ut_cold = 0;
+      maximum_and_displacement_thickness(u_mean, z_center, u_max, dstar);
+      wall_nusselt(t_mean, nu_hot, nu_cold);
+      wall_friction_velocity(u_mean, ut_hot, ut_cold);
+      std::fprintf(f, "# dhvc statistics  step=%ld t=%.4f t_start=%.4f sum_dt=%.4f\n", step_now,
+                   t_now, stats_time_begin, sum_dt);
+      std::fprintf(f, "# Ra=%g Pr=%g nu=%.8e alpha=%.8e Re_dstar=%.6f u_max=%.6f delta_star=%.6e\n",
+                   s.physics.rayleigh, s.physics.prandtl, nu, Ct, running_re_delta(), u_max,
+                   dstar);
+      std::fprintf(f,
+                   "# Nu_hot=%.6f Nu_cold=%.6f u_tau_hot=%.8f u_tau_cold=%.8f mean_dPdx=%.8e "
+                   "velocity_ghost=%s\n",
+                   nu_hot, nu_cold, ut_hot, ut_cold, sum_dpdx / sum_dt,
+                   mirror_wall ? "mirror" : "value");
+      std::fprintf(f, "# columns: dt-weighted xy-plane averages; uw uT wT are slot products "
+                      "(U x-face, W z-face, T center, no interpolation) minus mean products; "
+                      "rms = sqrt(<f^2>-<f>^2)\n");
+      std::fprintf(f, "# z U V W T urms vrms wrms trms uw uT wT\n");
+      const auto rms = [&](double square_mean, double mean) {
+        return std::sqrt(std::max(0.0, square_mean - mean * mean));
+      };
+      for (int q = 0; q < nz_global; ++q)
+        std::fprintf(f, "%12.8f %14.8e %14.8e %14.8e %14.8e %14.8e %14.8e %14.8e %14.8e %14.8e %14.8e %14.8e\n",
+                     z_center[q], u_mean[q], v_mean[q], w_mean[q], t_mean[q],
+                     rms(sum_uu[q] / sum_dt, u_mean[q]), rms(sum_vv[q] / sum_dt, v_mean[q]),
+                     rms(sum_ww[q] / sum_dt, w_mean[q]), rms(sum_tt[q] / sum_dt, t_mean[q]),
+                     sum_uw[q] / sum_dt - u_mean[q] * w_mean[q],
+                     sum_ut[q] / sum_dt - u_mean[q] * t_mean[q],
+                     sum_wt[q] / sum_dt - w_mean[q] * t_mean[q]);
       std::fclose(f);
       std::printf("# stats written: %s  (Re_dstar=%.4f)\n", path, running_re_delta());
     };
@@ -337,7 +412,11 @@ int main(int argc, char** argv) {
       sync_velocity(U, V, W, sub, mirror_wall);
 
       // ── 순 x유량 0 (연직 가속 억제; 참조 apply_mass_flow_correction target 0) ──
+      const real_t mean_dPdx_before = mean_dPdx;
       physics::correct_bulk_velocity(U, grid, sub, /*target_bulk=*/0, dt, mean_dPdx);
+      // 이 스텝에 실제로 가한 등가 ∂P/∂x (shift = −dt·increment). DHVC 는 누적 mean_dPdx 를
+      // 힘으로 다시 쓰지 않으므로(채널의 add_mean_pressure_gradient 없음) 스텝별 적용분이 수지의 힘.
+      const real_t dpdx_applied = mean_dPdx - mean_dPdx_before;
       sync_velocity(U, V, W, sub, mirror_wall);
 
       // ── 증분 투영 ──
@@ -355,8 +434,32 @@ int main(int argc, char** argv) {
 
       // ── 통계 (물리시간 ≥ stats_start, dt 가중, 매 스텝) ──
       if (t >= s.output.stats_start_time) {
+        if (stats_time_begin < 0) stats_time_begin = t - dt;
         const auto u_bar = mpmstd::post::plane_average(U, sub);
-        for (int q = 0; q < s.mesh.nz; ++q) sum_u_profile[q] += double(u_bar[q]) * dt;
+        const auto v_bar = mpmstd::post::plane_average(V, sub);
+        const auto w_bar = mpmstd::post::plane_average(W, sub);
+        const auto t_bar = mpmstd::post::plane_average(T, sub);
+        const auto uu = mpmstd::post::plane_average_square(U, sub);
+        const auto vv = mpmstd::post::plane_average_square(V, sub);
+        const auto ww = mpmstd::post::plane_average_square(W, sub);
+        const auto tt = mpmstd::post::plane_average_square(T, sub);
+        const auto uw = mpmstd::post::plane_average_product(U, W, sub);
+        const auto ut = mpmstd::post::plane_average_product(U, T, sub);
+        const auto wt = mpmstd::post::plane_average_product(W, T, sub);
+        for (int q = 0; q < s.mesh.nz; ++q) {
+          sum_u_profile[q] += double(u_bar[q]) * dt;
+          sum_v_profile[q] += double(v_bar[q]) * dt;
+          sum_w_profile[q] += double(w_bar[q]) * dt;
+          sum_t_profile[q] += double(t_bar[q]) * dt;
+          sum_uu[q] += double(uu[q]) * dt;
+          sum_vv[q] += double(vv[q]) * dt;
+          sum_ww[q] += double(ww[q]) * dt;
+          sum_tt[q] += double(tt[q]) * dt;
+          sum_uw[q] += double(uw[q]) * dt;
+          sum_ut[q] += double(ut[q]) * dt;
+          sum_wt[q] += double(wt[q]) * dt;
+        }
+        sum_dpdx += double(dpdx_applied) * dt;  // 창 평균 등가 압력구배 = Σ(적용분·dt)/Σdt
         sum_dt += dt;
         if (s.output.stats_interval > 0 && t >= next_stats_write) {
           write_statistics(step, t);
@@ -367,13 +470,17 @@ int main(int argc, char** argv) {
       if (step % s.output.monitor_interval == 0 || step == 1) {
         const real_t div = mpmstd::post::max_divergence(U, V, W, grid, sub);
         const auto u_bar = mpmstd::post::plane_average(U, sub);
+        const auto t_bar = mpmstd::post::plane_average(T, sub);
         real_t u_max = 0;
         for (int q = 0; q < s.mesh.nz; ++q) u_max = std::max(u_max, u_bar[q]);
+        double nu_hot = 0, nu_cold = 0, ut_hot = 0, ut_cold = 0;  // 순간값 (면평균)
+        wall_nusselt(t_bar, nu_hot, nu_cold);
+        wall_friction_velocity(u_bar, ut_hot, ut_cold);
         const double wall_now = MPI_Wtime();
         if (mpi.is_root()) {
-          std::printf("%7ld %9.3f %9.5f %10.2e %11.4f %9.5f %8.3f\n", step, t, dt, div,
-                      running_re_delta(), u_max,
-                      (wall_now - wall_prev) / s.output.monitor_interval);
+          std::printf("%7ld %9.3f %9.5f %10.2e %11.4f %9.5f %8.3f %8.3f %10.6f %10.6f %8.3f\n",
+                      step, t, dt, div, running_re_delta(), u_max, nu_hot, nu_cold, ut_hot,
+                      ut_cold, (wall_now - wall_prev) / s.output.monitor_interval);
           std::fflush(stdout);
         }
         wall_prev = wall_now;
