@@ -1,0 +1,11 @@
+deltaT,chi_lambda_theta,chi_lambda_u,Re_E_m,Re_E_c,Re_pl_m,Re_pl_c,Nu_NOB
+# Horn, Shishkina & Wagner 2013 JFM 724, Ra = 1e6, glycerol, Gamma = 1 cylinder — values read off the printed axes (2026-10-09, +-0.05 on chi, +-5% on Re/Nu)
+# chi_lambda_theta, chi_lambda_u: fig.5(b); Re_E_m, Re_E_c, Re_pl_m, Re_pl_c: fig.12(b) (Re = U Ra^1/2 / (nu_hat Pr^1/2)); Nu_NOB: fig.15(b) (OB value 8.85, dashed line)
+10,1.15,1.55,0.056,0.056,0.24,0.24,8.15
+20,1.30,1.65,0.054,0.059,0.26,0.28,8.00
+30,1.48,2.02,0.055,0.070,0.31,0.42,8.65
+40,1.68,2.30,0.057,0.082,0.33,0.47,8.50
+50,1.78,2.58,0.059,0.100,0.39,0.67,8.18
+60,1.88,3.30,0.062,0.120,0.44,0.86,7.57
+70,2.08,4.12,0.066,0.145,0.51,1.20,7.42
+80,2.33,4.55,0.075,0.195,0.51,1.40,7.52
