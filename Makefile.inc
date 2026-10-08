@@ -53,6 +53,9 @@ MPIRUN := $(HPCX_DIR)/ompi/bin/mpirun
 CXXFLAGS := -std=c++17 -O2 -cuda -gpu=cc80,cuda12.2 -DMPMSTD_GPU -DMPMSTD_GPU_FFT
 EXT_INC := -I$(NVHPC_DIR)/math_libs/12.2/targets/x86_64-linux/include
 EXT_LIBS := -cudalib=cufft -lm
-DEPFLAGS :=                       # nvc++ 는 -MP 를 모른다
+# nvc++ 는 -MP 를 모르고, .d 의 타깃 이름을 출력 basename 으로 쓰므로 -MT 로 전체
+# 경로를 준다 (없으면 헤더 변경이 GPU 오브젝트를 재컴파일하지 못해 stale .o 로
+# segfault/unknown key — 실측 2026-10-09, rbc_nob·dhvc). 재귀 확장(=) 이라 $@ 는 레시피 때 풀린다.
+DEPFLAGS = -MMD -MT $@
 BUILD := build_gpu
 endif
