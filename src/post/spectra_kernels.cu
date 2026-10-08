@@ -18,6 +18,15 @@ __global__ void power_kernel(real_t* power, const real_t* spectrum, const int n_
   power[idx] += scale * one_sided * (re * re + im * im);
 }
 
+__global__ void gather_kernel(real_t* staging, const real_t* in, const int length,
+                              const int n_lines, const long long stride) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(n_lines) * length) return;
+  const int i = static_cast<int>(idx % length);
+  const int line = static_cast<int>(idx / length);
+  staging[idx] = in[i * stride + line];
+}
+
 }  // namespace
 
 void accumulate_line_power(real_t* power, const real_t* spectrum, const int n_lines,
@@ -31,6 +40,15 @@ void accumulate_line_power(real_t* power, const real_t* spectrum, const int n_li
 
 void zero_buffer(real_t* data, const std::size_t n) {
   MPMSTD_CUDA_CHECK(cudaMemset(data, 0, n * sizeof(real_t)));
+}
+
+void gather_lines(real_t* staging, const real_t* in, const int length, const int n_lines,
+                  const long long stride) {
+  const long long total = static_cast<long long>(n_lines) * length;
+  const int threads = 256;
+  gather_kernel<<<static_cast<int>((total + threads - 1) / threads), threads>>>(staging, in, length,
+                                                                                n_lines, stride);
+  MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 }  // namespace mpmstd::post

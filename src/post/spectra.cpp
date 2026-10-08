@@ -8,15 +8,17 @@
 
 #ifdef MPMSTD_GPU_FFT
 #include <cuda_runtime.h>
+
+#include "common/cuda_check.hpp"
 #endif
 
 #include "post/spectra_kernels.hpp"
 
 // 오케스트레이션 전용 TU — 양쪽 빌드 공용 (pressure/solve.cpp 와 같은 규칙: FFT 실행 래퍼만 ifdef,
-// 파워 누적은 spectra_kernels 쌍둥이). 라인은 필드 메모리를 strided 로 직접 읽는다:
+// 파워 누적·gather 는 spectra_kernels 쌍둥이). 라인은 필드 메모리에서 연속 배치로 모아 변환한다:
 //   x 라인(고정 j): 원소 (i,j,k) = (i·ny_t + j)·nz_t + k → i 보폭 ny_t·nz_t, 배치 k (보폭 1), 길이 nx
 //   y 라인(고정 i): j 보폭 nz_t, 배치 k (보폭 1), 길이 ny
-// 한 호출 = 고정 j(또는 i) 의 nz_local 라인 배치 → j(또는 i) 루프로 ny(nx) 번 실행.
+// 한 호출 = 고정 j(또는 i) 의 nz_local 라인 배치(gather → 연속 [line][i]) → j(또는 i) 루프로 ny(nx) 번 실행.
 
 namespace mpmstd::post {
 
@@ -25,7 +27,8 @@ namespace {
 #ifdef MPMSTD_GPU_FFT
 void check_cufft(const cufftResult status, const char* what) {
   if (status != CUFFT_SUCCESS)
-    throw std::runtime_error(std::string("cuFFT failed (spectra): ") + what);
+    throw std::runtime_error(std::string("cuFFT failed (spectra): ") + what + " (cufftResult "
+                             + std::to_string(static_cast<int>(status)) + ")");
 }
 #endif
 
@@ -43,29 +46,22 @@ LineSpectrumPlan::LineSpectrumPlan(const parallel::Subdomain& sub) {
   n_mode_y_ = ny_ / 2 + 1;
   const std::size_t n_complex = static_cast<std::size_t>(nz_local_) * std::max(n_mode_x_, n_mode_y_);
   spectrum_.assign(2 * n_complex);
+  staging_.assign(static_cast<std::size_t>(nz_local_) * std::max(nx_, ny_));
   power_x_.assign(static_cast<std::size_t>(nz_local_) * n_mode_x_);
   power_y_.assign(static_cast<std::size_t>(nz_local_) * n_mode_y_);
   int length_x = nx_, length_y = ny_;
-  const int stride_x = ny_total_ * nz_total_, stride_y = nz_total_;
+  // 연속 배치: 입력 [line][i] (간격 n), 출력 [line][m] (간격 n_mode) — 양쪽 라이브러리의 기본 레이아웃
 #ifdef MPMSTD_GPU_FFT
-  int embed_x = nx_, embed_y = ny_, embed_mx = n_mode_x_, embed_my = n_mode_y_;
-  check_cufft(cufftPlanMany(&plan_x_, 1, &length_x, &embed_x, stride_x, 1, &embed_mx, 1,
-                            n_mode_x_, CUFFT_D2Z, nz_local_),
-              "PlanMany D2Z x-lines");
-  check_cufft(cufftPlanMany(&plan_y_, 1, &length_y, &embed_y, stride_y, 1, &embed_my, 1,
-                            n_mode_y_, CUFFT_D2Z, nz_local_),
-              "PlanMany D2Z y-lines");
+  check_cufft(cufftPlan1d(&plan_x_, length_x, CUFFT_D2Z, nz_local_), "Plan1d D2Z x-lines");
+  check_cufft(cufftPlan1d(&plan_y_, length_y, CUFFT_D2Z, nz_local_), "Plan1d D2Z y-lines");
 #else
-  // 플랜은 대표 주소로 만들고 실행은 fftw_execute_dft_r2c 로 라인마다 다른 주소에 — 정렬 가정을
-  // 끄기 위해 FFTW_UNALIGNED. 입력은 보존된다(out-of-place r2c 기본).
-  std::vector<real_t> probe_in(static_cast<std::size_t>(stride_x) * nx_ + nz_local_, 0);
-  probe_in.resize(std::max(probe_in.size(), static_cast<std::size_t>(stride_y) * ny_ + nz_local_));
-  plan_x_ = fftw_plan_many_dft_r2c(1, &length_x, nz_local_, probe_in.data(), nullptr, stride_x, 1,
+  // 플랜의 입력/출력 주소 = 고정 작업 버퍼 (FFTW_ESTIMATE 는 버퍼 내용을 건드리지 않는다)
+  plan_x_ = fftw_plan_many_dft_r2c(1, &length_x, nz_local_, staging_.data(), nullptr, 1, nx_,
                                    reinterpret_cast<fftw_complex*>(spectrum_.data()), nullptr, 1,
-                                   n_mode_x_, FFTW_ESTIMATE | FFTW_UNALIGNED);
-  plan_y_ = fftw_plan_many_dft_r2c(1, &length_y, nz_local_, probe_in.data(), nullptr, stride_y, 1,
+                                   n_mode_x_, FFTW_ESTIMATE);
+  plan_y_ = fftw_plan_many_dft_r2c(1, &length_y, nz_local_, staging_.data(), nullptr, 1, ny_,
                                    reinterpret_cast<fftw_complex*>(spectrum_.data()), nullptr, 1,
-                                   n_mode_y_, FFTW_ESTIMATE | FFTW_UNALIGNED);
+                                   n_mode_y_, FFTW_ESTIMATE);
   if (!plan_x_ || !plan_y_) throw std::runtime_error("LineSpectrumPlan: FFTW plan failed");
 #endif
 }
@@ -85,30 +81,35 @@ void LineSpectrumPlan::compute(const field::Field& F, const parallel::Subdomain&
   const int h = halo_width;
   zero_buffer(power_x_.data(), power_x_.size());
   zero_buffer(power_y_.data(), power_y_.size());
-  real_t* base = const_cast<real_t*>(F.data());  // FFT 라이브러리 시그니처 때문 — 입력은 보존된다
+  const real_t* base = F.data();
+  const long long stride_x = static_cast<long long>(ny_total_) * nz_total_, stride_y = nz_total_;
   const real_t scale_x = real_t(1) / (static_cast<real_t>(nx_) * nx_ * ny_);  // 1/n² × 1/라인수
   const real_t scale_y = real_t(1) / (static_cast<real_t>(ny_) * ny_ * nx_);
   // x 라인: 고정 j, 배치 k = h..h+nz_local−1, 시작 원소 (h, j, h)
   for (int j = h; j < h + ny_; ++j) {
-    real_t* in = base + (static_cast<std::size_t>(h) * ny_total_ + j) * nz_total_ + h;
+    const real_t* in = base + (static_cast<std::size_t>(h) * ny_total_ + j) * nz_total_ + h;
+    gather_lines(staging_.data(), in, nx_, nz_local_, stride_x);
 #ifdef MPMSTD_GPU_FFT
-    check_cufft(cufftExecD2Z(plan_x_, in, reinterpret_cast<cufftDoubleComplex*>(spectrum_.data())),
+    check_cufft(cufftExecD2Z(plan_x_, staging_.data(),
+                             reinterpret_cast<cufftDoubleComplex*>(spectrum_.data())),
                 "ExecD2Z x");
-    cudaDeviceSynchronize();
+    MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
 #else
-    fftw_execute_dft_r2c(plan_x_, in, reinterpret_cast<fftw_complex*>(spectrum_.data()));
+    fftw_execute(plan_x_);
 #endif
     accumulate_line_power(power_x_.data(), spectrum_.data(), nz_local_, n_mode_x_, nx_, scale_x);
   }
   // y 라인: 고정 i, 배치 k, 시작 원소 (i, h, h)
   for (int i = h; i < h + nx_; ++i) {
-    real_t* in = base + (static_cast<std::size_t>(i) * ny_total_ + h) * nz_total_ + h;
+    const real_t* in = base + (static_cast<std::size_t>(i) * ny_total_ + h) * nz_total_ + h;
+    gather_lines(staging_.data(), in, ny_, nz_local_, stride_y);
 #ifdef MPMSTD_GPU_FFT
-    check_cufft(cufftExecD2Z(plan_y_, in, reinterpret_cast<cufftDoubleComplex*>(spectrum_.data())),
+    check_cufft(cufftExecD2Z(plan_y_, staging_.data(),
+                             reinterpret_cast<cufftDoubleComplex*>(spectrum_.data())),
                 "ExecD2Z y");
-    cudaDeviceSynchronize();
+    MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
 #else
-    fftw_execute_dft_r2c(plan_y_, in, reinterpret_cast<fftw_complex*>(spectrum_.data()));
+    fftw_execute(plan_y_);
 #endif
     accumulate_line_power(power_y_.data(), spectrum_.data(), nz_local_, n_mode_y_, ny_, scale_y);
   }

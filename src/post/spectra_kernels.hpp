@@ -11,5 +11,8 @@ namespace mpmstd::post {
 void accumulate_line_power(real_t* power, const real_t* spectrum, int n_lines, int n_mode, int n,
                            real_t scale);
 void zero_buffer(real_t* data, std::size_t n);
+// staging[line·length + i] = in[i·stride + line] — 필드 메모리의 strided 라인 n_lines 개(배치 = 인접 k)를
+// 연속 배치로 모은다 (FFT 는 연속 레이아웃만 쓴다: cuFFT 가 "원소 보폭 > 배치 간격" 레이아웃을 실행 시 거부, 2026-10-09).
+void gather_lines(real_t* staging, const real_t* in, int length, int n_lines, long long stride);
 
 }  // namespace mpmstd::post

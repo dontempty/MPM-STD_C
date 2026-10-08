@@ -3,8 +3,9 @@
 //   내부 셀의 x 라인(y·z 마다)·y 라인(x·z 마다)을 실수 FFT 해 한쪽(k ≥ 0) 파워를 라인 평균.
 //   정규화: Σ_m E[m] = 라인 평균 ⟨F²⟩ (Parseval; m = 0 칸은 평균² 포함 — 변동 스펙트럼은 m ≥ 1).
 //   k_x = 2π m/L_x, k_y = 2π m/L_y 는 노트북이 붙인다. premultiplied·u_τ² 정규화도 노트북.
-// FFT 백엔드는 pressure::Solver 와 같은 규칙(MPMSTD_GPU_FFT → cuFFT, 아니면 FFTW), 라인은 필드 메모리를
-// 그대로 strided 로 읽는다(복사 없음). 파워 누적은 spectra_kernels.{cpp,cu} 쌍둥이.
+// FFT 백엔드는 pressure::Solver 와 같은 규칙(MPMSTD_GPU_FFT → cuFFT, 아니면 FFTW). 라인은 필드 메모리에서
+// 연속 작업 버퍼로 모은 뒤(gather_lines) 연속 배치 FFT — cuFFT 는 "원소 보폭 > 배치 간격" 의 strided 입력을
+// 실행 시 거부한다(2026-10-09 1e7 런 ExecD2Z 실패). 파워 누적·gather 는 spectra_kernels.{cpp,cu} 쌍둥이.
 // npx = npy = 1 전제 (라인이 한 랭크에 완결). 결과는 전 랭크가 같은 전역 배열(z Allreduce).
 #ifdef MPMSTD_GPU_FFT
 #include <cufft.h>
@@ -40,6 +41,7 @@ class LineSpectrumPlan {
  private:
   int nx_ = 0, ny_ = 0, nz_local_ = 0, ny_total_ = 0, nz_total_ = 0;
   int n_mode_x_ = 0, n_mode_y_ = 0;
+  field::Buffer staging_;   // 연속 입력 배치 nz_local·max(nx, ny)
   field::Buffer spectrum_;  // 복소 작업 버퍼 2·nz_local·max(n_mode) (실,허 쌍)
   field::Buffer power_x_;   // [nz_local][n_mode_x] 파워 누적 (백엔드)
   field::Buffer power_y_;   // [nz_local][n_mode_y]
