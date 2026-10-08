@@ -128,7 +128,17 @@ InflowPlane Recycling::make_inflow_plane(const field::Field& U, const field::Fie
   const real_t a = std::min(real_t(1), dt / tau_);
   for (int k = 0; k < nzg; ++k) mean_u_run_[k] = (1 - a) * mean_u_run_[k] + a * mu[k];
   for (int k = 0; k <= nzg; ++k) mean_w_run_[k] = (1 - a) * mean_w_run_[k] + a * mw[k];
-  const std::vector<real_t>& Ur = mean_u_run_;
+  // ★ 자유류 정규화: 재순환면 상단 5% 셀 평균 = U_e,r → 프로파일·변동·W̄ 를 U∞/U_e,r 배 (recycling.hpp 머리말)
+  const int n_edge = std::max(1, nzg / 20);
+  real_t u_edge = 0;
+  for (int k = nzg - n_edge; k < nzg; ++k) u_edge += mean_u_run_[k];
+  u_edge /= static_cast<real_t>(n_edge);
+  const real_t normalize = u_edge > 0 ? u_inf_ / u_edge : real_t(1);
+  scales_.u_edge_recycle = u_edge;
+  std::vector<real_t> Ur(nzg);
+  for (int k = 0; k < nzg; ++k) Ur[k] = mean_u_run_[k] * normalize;
+  std::vector<real_t> Wr(nzg + 1);
+  for (int k = 0; k <= nzg; ++k) Wr[k] = mean_w_run_[k] * normalize;
   const real_t z1 = zc_[0], z2 = zc_[1];
   const real_t dudz_w = Ur[0] * z2 / (z1 * (z2 - z1)) - Ur[1] * z1 / (z2 * (z2 - z1));
   const real_t u_tau_r = std::sqrt(std::max(real_t(0), nu_ * dudz_w));
@@ -165,10 +175,11 @@ InflowPlane Recycling::make_inflow_plane(const field::Field& U, const field::Fie
   real_t theta_in = 0;
   for (int jl = 0; jl < nyl; ++jl) {
     for (int k = 0; k < nzg; ++k) {
-      fluct_u[k] = pu[static_cast<std::size_t>(jl) * nzg + k] - mu[k];
-      fluct_v[k] = pv[static_cast<std::size_t>(jl) * nzg + k];  // V̄ = 0
+      fluct_u[k] = (pu[static_cast<std::size_t>(jl) * nzg + k] - mu[k]) * normalize;
+      fluct_v[k] = pv[static_cast<std::size_t>(jl) * nzg + k] * normalize;  // V̄ = 0
     }
-    for (int k = 0; k <= nzg; ++k) fluct_w[k] = pw[static_cast<std::size_t>(jl) * (nzg + 1) + k] - mw[k];
+    for (int k = 0; k <= nzg; ++k)
+      fluct_w[k] = (pw[static_cast<std::size_t>(jl) * (nzg + 1) + k] - mw[k]) * normalize;
     for (int kl = 0; kl < sub_.z().n_local; ++kl) {
       const int kg = sub_.z().offset + kl;
       const real_t z = zc_[kg], zf = zf_[kg];
@@ -180,7 +191,7 @@ InflowPlane Recycling::make_inflow_plane(const field::Field& U, const field::Fie
       const real_t Uo = u_inf_ - gamma * (u_inf_ - interp(zc_, Ur, zo));
       const real_t ui = gamma * interp(zc_, fluct_u, zi), uo = gamma * interp(zc_, fluct_u, zo);
       const real_t vi = gamma * interp(zc_, fluct_v, zi), vo = gamma * interp(zc_, fluct_v, zo);
-      const real_t Wi = interp(zf_, mean_w_run_, zfi), Wo = interp(zf_, mean_w_run_, zfo);
+      const real_t Wi = interp(zf_, Wr, zfi), Wo = interp(zf_, Wr, zfo);
       const real_t wi = gamma * interp(zf_, fluct_w, zfi), wo = gamma * interp(zf_, fluct_w, zfo);
       const std::size_t q = static_cast<std::size_t>(jl + h) * plane.nz_total + (kl + h);
       plane.u[q] = (1 - Wb) * (Ui + ui) + Wb * (Uo + uo);

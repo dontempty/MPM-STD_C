@@ -20,7 +20,9 @@
 namespace mpmstd::post {
 
 struct BoundaryLayerIntegrals {  // 전역 x 셀중심 i (크기 nx_global)
-  std::vector<real_t> x, cf, delta99, dstar, theta, shape, re_theta, re_tau, u_tau;
+  // 적분량은 **국소 자유류 속도 u_edge(x)**(상단 5% 셀 평균)로 정규화한다 — 자유류가 U∞ 에서
+  // 조금 벗어나도(상단 BC·질량보존) C_f·δ*·θ·δ99·Re_θ 가 일관되게 정의되도록 (2026-10-08).
+  std::vector<real_t> x, cf, delta99, dstar, theta, shape, re_theta, re_tau, u_tau, u_edge;
 };
 
 class SpatialStatistics {

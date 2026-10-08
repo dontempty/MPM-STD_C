@@ -9,6 +9,9 @@
 //   ④ 내부: Ū_in(z) = γ Ū_r(γ z),  u′_in(y,z) = γ u′_r(y, γ z)          (z⁺ 보존)
 //      외부: U∞ − Ū_in(z) = γ (U∞ − Ū_r(z δ_r/δ_in)),  u′_in = γ u′_r(y, z δ_r/δ_in)   (η 보존)
 //      W̄ 는 γ 없이 위치만 재배치, 변동은 γ 배 (Lund)
+//   ★ 재순환면 프로파일은 먼저 **자기 자유류 속도 U_e,r 로 정규화**(×U∞/U_e,r)한다 — Lund 의 외부식
+//      U∞ − γ(U∞ − Ū_r) 은 U_e,r = U∞ 를 전제하는데, 상단 BC 과도·질량보존으로 자유류가 U∞ 에서 벗어나면
+//      그 편차가 유입으로 되먹임돼 자유류가 떠오른다(2026-10-08: U∞ 1.12 사고). δ_r·θ_r·u_τ,r 도 정규화 후.
 //   ⑤ 혼합 W(η) = ½[1 + tanh(α(η−b)/((1−2b)η+b))/tanh α], α = 4, b = 0.2 (η = z/δ_in)
 //      → 유입 평면 u = (1−W)·내부 + W·외부
 // 호스트 로직(평면 크기 ny×nz 뿐). 디바이스 접근은 open.hpp 의 extract_x_plane / set_inflow.
@@ -26,6 +29,7 @@ namespace mpmstd::boundary {
 struct RecyclingScales {  // 모니터용
   real_t u_tau_recycle = 0, delta99_recycle = 0, theta_recycle = 0, gamma = 1;
   real_t u_tau_inflow = 0, theta_inflow = 0;
+  real_t u_edge_recycle = 0;  // 재순환면 자유류 속도 ⟨Ū_r⟩(상단) — 유입은 이것으로 정규화돼 U∞ 를 받는다
 };
 
 class Recycling {

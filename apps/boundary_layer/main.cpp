@@ -449,8 +449,8 @@ int main(int argc, char** argv) {
             for (const real_t v : w_top) wmax = std::max(wmax, v);
             std::printf("#   top w_max %.3e\n", wmax);
             const auto& sc = recycler->scales();
-            std::printf("#   recycle: u_tau_r %.5f  delta99_r %.4f  theta_r %.4f  gamma %.4f | inflow: u_tau %.5f  Re_theta %.1f (Re_theta_r %.1f)\n",
-                        sc.u_tau_recycle, sc.delta99_recycle, sc.theta_recycle, sc.gamma,
+            std::printf("#   recycle: u_tau_r %.5f  delta99_r %.4f  theta_r %.4f  gamma %.4f  U_e_r %.4f | inflow: u_tau %.5f  Re_theta %.1f (Re_theta_r %.1f)\n",
+                        sc.u_tau_recycle, sc.delta99_recycle, sc.theta_recycle, sc.gamma, sc.u_edge_recycle,
                         sc.u_tau_inflow, flow.u_inf * sc.theta_inflow / flow.nu,
                         flow.u_inf * sc.theta_recycle / flow.nu);
           }

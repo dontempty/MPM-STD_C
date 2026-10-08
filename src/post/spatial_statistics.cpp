@@ -71,32 +71,39 @@ BoundaryLayerIntegrals SpatialStatistics::integrals_of(const std::vector<real_t>
   const int nx = nxl_;
   r.x.resize(nx); r.cf.resize(nx); r.delta99.resize(nx); r.dstar.resize(nx); r.theta.resize(nx);
   r.shape.resize(nx); r.re_theta.resize(nx); r.re_tau.resize(nx); r.u_tau.resize(nx);
+  r.u_edge.resize(nx);
   const real_t z1 = zc_[0], z2 = zc_[1];
+  const int n_edge = std::max(1, nz_global_ / 20);
   for (int i = 0; i < nx; ++i) {
     const real_t* u = &mu[static_cast<std::size_t>(i) * nz_global_];
     r.x[i] = grid_.x.center[i + h];
+    real_t u_edge = 0;  // 국소 자유류 속도 (상단 5% 셀 평균; 0 이면 U∞)
+    for (int k = nz_global_ - n_edge; k < nz_global_; ++k) u_edge += u[k];
+    u_edge /= static_cast<real_t>(n_edge);
+    if (!(u_edge > 0)) u_edge = u_inf_;
+    r.u_edge[i] = u_edge;
     const real_t dudz = u[0] * z2 / (z1 * (z2 - z1)) - u[1] * z1 / (z2 * (z2 - z1));
     const real_t u_tau = std::sqrt(std::max(real_t(0), nu_ * dudz));
     r.u_tau[i] = u_tau;
-    r.cf[i] = 2 * nu_ * dudz / (u_inf_ * u_inf_);
+    r.cf[i] = 2 * nu_ * dudz / (u_edge * u_edge);
     real_t dstar = 0, theta = 0;
     for (int k = 0; k < nz_global_; ++k) {
-      const real_t f = std::min(real_t(1), std::max(real_t(0), u[k] / u_inf_));
+      const real_t f = std::min(real_t(1), std::max(real_t(0), u[k] / u_edge));
       const real_t dz = zf_[k + 1] - zf_[k];
       dstar += (1 - f) * dz;
       theta += f * (1 - f) * dz;
     }
     real_t d99 = zc_.back();
     for (int k = 0; k < nz_global_; ++k)
-      if (u[k] >= real_t(0.99) * u_inf_) {
+      if (u[k] >= real_t(0.99) * u_edge) {
         if (k == 0) { d99 = zc_[0]; break; }
-        const real_t w = (real_t(0.99) * u_inf_ - u[k - 1]) / (u[k] - u[k - 1]);
+        const real_t w = (real_t(0.99) * u_edge - u[k - 1]) / (u[k] - u[k - 1]);
         d99 = zc_[k - 1] + w * (zc_[k] - zc_[k - 1]);
         break;
       }
     r.dstar[i] = dstar; r.theta[i] = theta; r.delta99[i] = d99;
     r.shape[i] = theta > 0 ? dstar / theta : 0;
-    r.re_theta[i] = u_inf_ * theta / nu_;
+    r.re_theta[i] = u_edge * theta / nu_;
     r.re_tau[i] = u_tau * d99 / nu_;
   }
   return r;
@@ -164,11 +171,12 @@ void SpatialStatistics::write(const std::string& path, const long step, const do
   if (!f) return;
   std::fprintf(f, "# boundary layer statistics  step=%ld t=%.6f nu=%.10e u_inf=%g accumulated_time=%.6f nx=%d nz=%d\n",
                step, time, nu_, u_inf_, time_sum_, nxl_, nz_global_);
-  std::fprintf(f, "# section 1: x  Re_x_rel(x/nu)  Cf  delta99  dstar  theta  H  Re_theta  Re_tau  u_tau\n");
+  std::fprintf(f, "# section 1: x  Re_x_rel(x/nu)  Cf  delta99  dstar  theta  H  Re_theta  Re_tau  u_tau  u_edge"
+                  "   (Cf, dstar, theta, delta99, Re_theta normalised by the local edge velocity u_edge)\n");
   for (int i = 0; i < nxl_; ++i)
-    std::fprintf(f, "%12.6f %14.6e %12.6e %12.6f %12.6f %12.6f %10.5f %12.4f %12.4f %12.6e\n",
+    std::fprintf(f, "%12.6f %14.6e %12.6e %12.6f %12.6f %12.6f %10.5f %12.4f %12.4f %12.6e %12.6f\n",
                  in.x[i], u_inf_ * in.x[i] / nu_, in.cf[i], in.delta99[i], in.dstar[i], in.theta[i],
-                 in.shape[i], in.re_theta[i], in.re_tau[i], in.u_tau[i]);
+                 in.shape[i], in.re_theta[i], in.re_tau[i], in.u_tau[i], in.u_edge[i]);
   for (const real_t target : station_re_theta) {
     int best = -1;
     for (int i = 0; i < nxl_; ++i)
@@ -176,9 +184,9 @@ void SpatialStatistics::write(const std::string& path, const long step, const do
     if (best < 0) continue;
     const real_t ut = in.u_tau[best];
     if (ut <= 0) continue;
-    std::fprintf(f, "\n\n# section 2: station target Re_theta=%g -> i=%d x=%.4f Re_theta=%.2f Re_tau=%.2f Cf=%.6e H=%.4f delta99=%.4f u_tau=%.6e\n",
+    std::fprintf(f, "\n\n# section 2: station target Re_theta=%g -> i=%d x=%.4f Re_theta=%.2f Re_tau=%.2f Cf=%.6e H=%.4f delta99=%.4f u_tau=%.6e u_edge=%.6f\n",
                  target, best, in.x[best], in.re_theta[best], in.re_tau[best], in.cf[best], in.shape[best],
-                 in.delta99[best], ut);
+                 in.delta99[best], ut, in.u_edge[best]);
     std::fprintf(f, "# z  z+  U+  urms+  vrms+  wrms+  uw+\n");
     const std::size_t b = static_cast<std::size_t>(best) * nz_global_;
     for (int k = 0; k < nz_global_; ++k) {
