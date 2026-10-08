@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 
@@ -212,6 +213,53 @@ std::vector<real_t> plane_weighted_average_product(const field::Field& F, const 
                                                    const field::Buffer& weights,
                                                    const parallel::Subdomain& sub) {
   return weighted_profile_impl(F, &G, weights, sub, /*squared=*/false);
+}
+
+
+std::vector<real_t> plane_maximum(const field::Field& F, const parallel::Subdomain& sub,
+                                  const bool absolute) {
+  const int h = halo_width;
+  const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
+  const int z_offset = sub.z().offset;
+  std::vector<real_t> profile(sub.z().n_global, -std::numeric_limits<real_t>::infinity());
+  const field::ConstView f = F.view();
+  for (int i = h; i < nx - h; ++i)
+    for (int j = h; j < ny - h; ++j)
+      for (int k = h; k < nz - h; ++k) {
+        const real_t value = absolute ? std::abs(f(i, j, k)) : f(i, j, k);
+        real_t& slot = profile[z_offset + (k - h)];
+        if (value > slot) slot = value;
+      }
+  MPI_Allreduce(MPI_IN_PLACE, profile.data(), static_cast<int>(profile.size()), MPI_DOUBLE,
+                MPI_MAX, sub.topology().cart_comm());
+  return profile;
+}
+
+
+std::vector<double> volume_histogram(const field::Field& F, const grid::Grid& grid,
+                                     const parallel::Subdomain& sub, const real_t lower,
+                                     const real_t upper, const int count) {
+  const int h = halo_width;
+  const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
+  std::vector<double> bins(count + 2, 0.0);
+  const field::ConstView f = F.view();
+  const real_t* dx = grid.x.cell_width.data();
+  const real_t* dy = grid.y.cell_width.data();
+  const real_t* dz = grid.z.cell_width.data();
+  const real_t width = (upper - lower) / count;
+  for (int i = h; i < nx - h; ++i)
+    for (int j = h; j < ny - h; ++j)
+      for (int k = h; k < nz - h; ++k) {
+        const real_t value = f(i, j, k);
+        int b;
+        if (value < lower) b = 0;
+        else if (value >= upper) b = count + 1;
+        else b = 1 + static_cast<int>((value - lower) / width);
+        bins[b] += double(dx[i]) * dy[j] * dz[k];
+      }
+  MPI_Allreduce(MPI_IN_PLACE, bins.data(), count + 2, MPI_DOUBLE, MPI_SUM,
+                sub.topology().cart_comm());
+  return bins;
 }
 
 }  // namespace mpmstd::post

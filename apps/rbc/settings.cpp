@@ -48,6 +48,7 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"time", "dt_max", &s.time.dt_max, false},
       {"time", "max_cfl", &s.time.max_cfl, false},
       {"time", "max_step", &s.time.max_step, false},
+      {"time", "viscous_coupling_number", &s.time.viscous_coupling_number, false},
 
       {"output", "stats_dir", &s.output.stats_dir, false},
       {"output", "monitor_interval", &s.output.monitor_interval, false},
@@ -101,6 +102,7 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.time.dt_max > 0, "'time.dt_max' must be > 0");
   require(ini, s.time.max_cfl > 0, "'time.max_cfl' must be > 0");
   require(ini, s.time.max_step >= 0, "'time.max_step' must be >= 0");
+  require(ini, s.time.viscous_coupling_number >= 0, "'time.viscous_coupling_number' must be >= 0");
 
   require(ini, s.output.monitor_interval > 0, "'output.monitor_interval' must be > 0");
   require(ini, s.output.stats_start_time >= 0, "'output.stats_start_time' must be >= 0");
@@ -194,6 +196,7 @@ std::string format_settings(const Settings& s) {
   add("dt_max = " + format_number(s.time.dt_max));
   add("max_cfl = " + format_number(s.time.max_cfl));
   add("max_step = " + std::to_string(s.time.max_step));
+  add("viscous_coupling_number = " + format_number(s.time.viscous_coupling_number));
   add("");
   add("[output]");
   // 경로는 항상 따옴표로 감싼다 — '#' 이나 ';' 이 들어 있어도 재파싱이 안전하다.

@@ -55,6 +55,8 @@ struct Time {              // [time]
   double dt_max = 0.02;    // dt 상한 — dt = min(max_cfl/speed, dt_max)
   double max_cfl = 0.3;    // 명시적 대류라 1.0 금지가 운용 경험칙
   long max_step = 0;       // 0 = 스텝 수 제한 없음
+  double viscous_coupling_number = 0;  // > 0 이면 dt ≤ C_v·Δ_h·Δz/(C_μ μ̂_max) (NOB 교차응력 명시
+                                       //   커플링 한계; time/viscous_time_step.hpp). 0 = 끔. rbc_nob 만 사용.
 };
 
 struct Initial {          // [initial] — 대류 세포를 깨우는 섭동 (참조 main 1:1)

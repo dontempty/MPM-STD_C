@@ -40,6 +40,8 @@
 #include "physics/buoyancy.hpp"
 #include "physics/properties.hpp"
 #include "post/checkpoint.hpp"
+#include "rbc_nob/statistics.hpp"
+#include "time/viscous_time_step.hpp"
 #include "post/statistics.hpp"
 #include "rbc/settings.hpp"
 #include "time/time_step.hpp"
@@ -213,46 +215,41 @@ int main(int argc, char** argv) {
           Cmu, Ct, density_quadratic_ratio, s.mesh.nx, s.mesh.ny, s.mesh.nz,
           faces_z[1] - faces_z[0]);
       std::printf("# step      time        dt     max|div|   theta_c      Nu      "
-                  "Tmin     Tmax   sec/step\n");
+                  "Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step\n");
     }
 
-    // ── 시간 평균 통계 (OB rbc 앱과 동일 형식 + ΔT 헤더) ──
-    std::vector<double> sum_t_z(s.mesh.nz, 0.0), sum_w2_z(s.mesh.nz, 0.0),
-        sum_wt_z(s.mesh.nz, 0.0);
-    double sum_wt_integral = 0.0, sum_theta_c = 0.0;
-    long samples = 0;
-    const int kc_low = s.mesh.nz / 2 - 1, kc_high = s.mesh.nz / 2;
-
-    const auto running_nusselt = [&]() {
-      // 무차원 ΔT = 1 (벽 ±0.5) — delta_temperature 는 물성 다항식의 차원 인자다
-      return (samples > 0) ? 1.0 + (sum_wt_integral / samples) / Ct : 0.0;
-    };
+    // ── 통계 (apps/rbc_nob/statistics.hpp: Horn 2013 전 항목) ──
+    rbc_nob::StatisticsConfig stats_config;
+    stats_config.nz = s.mesh.nz;
+    stats_config.lx = s.domain.lx;
+    stats_config.ly = s.domain.ly;
+    stats_config.lz = s.domain.lz;
+    stats_config.rayleigh = s.physics.rayleigh;
+    stats_config.prandtl = s.physics.prandtl;
+    stats_config.delta_temperature = s.physics.delta_temperature;
+    stats_config.Cmu = Cmu;
+    stats_config.Ct = Ct;
+    stats_config.model = model;
+    stats_config.z_center = z_center;
+    stats_config.dz = dz_global;
+    stats_config.wall_temperature_bottom = kWallTemperatureBottom;
+    stats_config.wall_temperature_top = kWallTemperatureTop;
+    stats_config.sample_interval = s.output.stats_sample_interval;
+    stats_config.stats_dir = s.output.stats_dir;
+    rbc_nob::Statistics statistics(stats_config, sub);
+    const auto running_nusselt = [&]() { return statistics.nusselt_volume(); };
     long stats_written_step = -1;
     const auto write_statistics = [&](long step_now, double t_now) {
-      if (!mpi.is_root() || samples == 0 || step_now == stats_written_step) return;
+      if (!statistics.started() || step_now == stats_written_step) return;
       stats_written_step = step_now;
-      char path[512];
-      std::snprintf(path, sizeof(path), "%s/rbc_nob_stats_%08ld.dat",
-                    s.output.stats_dir.c_str(), step_now);
-      std::FILE* f = std::fopen(path, "w");
-      if (!f) return;
-      std::fprintf(f, "# rbc_nob statistics  step=%ld t=%.4f samples=%ld\n", step_now,
-                   t_now, samples);
-      std::fprintf(f,
-                   "# Ra=%g Pr=%g DeltaT=%g Nu_volume=%.4f theta_c=%.5f\n",
-                   s.physics.rayleigh, s.physics.prandtl,
-                   s.physics.delta_temperature, running_nusselt(),
-                   sum_theta_c / samples);
-      std::fprintf(f, "# z  T_mean  w_rms  wT_mean\n");
-      for (int q = 0; q < s.mesh.nz; ++q)
-        std::fprintf(f, "%12.8f %12.8f %12.8f %14.8e\n", z_center[q],
-                     sum_t_z[q] / samples,
-                     std::sqrt(std::max(0.0, sum_w2_z[q] / samples)),
-                     sum_wt_z[q] / samples);
-      std::fclose(f);
-      std::printf("# stats written: %s  (theta_c=%.5f, Nu=%.4f)\n", path,
-                  sum_theta_c / samples, running_nusselt());
+      statistics.write(step_now, t_now, mpi.is_root());
     };
+    if (mpi.is_root())
+      std::printf("# kappa_wall bottom/top = %.5f / %.5f, viscous_coupling_number = %g\n",
+                  statistics.kappa_wall_bottom(), statistics.kappa_wall_top(),
+                  s.time.viscous_coupling_number);
+    // 가변 점성 dt 한계를 첫 스텝부터 쓰려면 물성이 있어야 한다
+    physics::update_properties(properties, T, model, sub);
 
     real_t t = static_cast<real_t>(restart_time);
     long step = restart_step;
@@ -284,8 +281,13 @@ int main(int argc, char** argv) {
     };
     double wall_prev = MPI_Wtime();
     while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {
-      const real_t dt = mpmstd::time_integration::compute_cfl_dt(
+      real_t dt = mpmstd::time_integration::compute_cfl_dt(
           U, V, W, grid, sub, s.time.max_cfl, s.time.dt_max);
+      // ── 가변 점성 교차응력(명시 커플링) 한계 — time/viscous_time_step.hpp ──
+      if (s.time.viscous_coupling_number > 0)
+        dt = std::min(dt, mpmstd::time_integration::compute_viscous_coupling_dt(
+                              properties.viscosity, grid, sub, Cmu,
+                              static_cast<real_t>(s.time.viscous_coupling_number)).dt);
 
       // ── 물성 갱신 (Tⁿ — ghost 포함; 참조 루프 자리) ──
       physics::update_properties(properties, T, model, sub);
@@ -349,21 +351,9 @@ int main(int argc, char** argv) {
       if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval == 0)
         write_restart_checkpoint(step, t);
 
-      // ── 통계 (물리시간 기준 시작, 매 스텝 표본) ──
+      // ── 통계 (물리시간 기준 시작; 표본 간격·dt 가중은 Statistics 가) ──
       if (t >= s.output.stats_start_time) {
-        const auto t_bar = mpmstd::post::plane_average(T, sub);
-        const auto w2 = mpmstd::post::plane_average_square(W, sub);
-        const auto wt = mpmstd::post::plane_average_product(W, T, sub);
-        double wt_integral = 0.0;
-        for (int q = 0; q < s.mesh.nz; ++q) {
-          sum_t_z[q] += t_bar[q];
-          sum_w2_z[q] += w2[q];
-          sum_wt_z[q] += wt[q];
-          wt_integral += wt[q] * dz_global[q];
-        }
-        sum_wt_integral += wt_integral;
-        sum_theta_c += 0.5 * (t_bar[kc_low] + t_bar[kc_high]);
-        ++samples;
+        statistics.accumulate(step, t, dt, U, V, W, T, properties, grid, sub);
         if (s.output.stats_interval > 0 && t >= next_stats_write) {
           write_statistics(step, t);
           next_stats_write += s.output.stats_interval;
@@ -373,16 +363,24 @@ int main(int argc, char** argv) {
       if (step % s.output.monitor_interval == 0 || step == 1) {
         const real_t div = mpmstd::post::max_divergence(U, V, W, grid, sub);
         const auto t_bar = mpmstd::post::plane_average(T, sub);
-        const double theta_c_now = 0.5 * (t_bar[kc_low] + t_bar[kc_high]);
+        const double theta_c_now = statistics.center_temperature(t_bar);
         double t_min = t_bar[0], t_max = t_bar[0];
         for (int q = 0; q < s.mesh.nz; ++q) {
           t_min = std::min(t_min, double(t_bar[q]));
           t_max = std::max(t_max, double(t_bar[q]));
         }
+        double nu_bottom_now = 0, nu_top_now = 0;
+        statistics.wall_nusselt(t_bar, nu_bottom_now, nu_top_now);
+        // 윗벽 펌핑 진단: 벽 인접 평면의 max|U| 와 현재 dt 의 혼합 확산수 D_× (viscous_time_step)
+        const auto u_abs_max = mpmstd::post::plane_maximum(U, sub, /*absolute=*/true);
+        const auto viscous = mpmstd::time_integration::compute_viscous_coupling_dt(
+            properties.viscosity, grid, sub, Cmu, real_t(1), dt);
         const double wall_now = MPI_Wtime();
         if (mpi.is_root()) {
-          std::printf("%7ld %9.3f %9.5f %10.2e %9.5f %8.4f %8.4f %8.4f %8.3f\n",
+          std::printf("%7ld %9.3f %9.5f %10.2e %9.5f %8.4f %8.4f %8.4f %8.4f %8.4f %7.2f %10.3e %10.3e %8.3f\n",
                       step, t, dt, div, theta_c_now, running_nusselt(), t_min, t_max,
+                      nu_bottom_now, nu_top_now, viscous.mixed_number, u_abs_max[0],
+                      u_abs_max[s.mesh.nz - 1],
                       (wall_now - wall_prev) / s.output.monitor_interval);
           std::fflush(stdout);
         }
@@ -395,12 +393,11 @@ int main(int argc, char** argv) {
 write_statistics(step, t);
     if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval != 0)
       write_restart_checkpoint(step, t);  // 연장 런을 위한 마지막 상태
-    if (mpi.is_root() && samples > 0)
+    if (mpi.is_root() && statistics.started())
       std::printf("# FINAL: theta_c = %.5f (x DeltaT = %.3fK), Nu = %.4f  "
-                  "(t=%.1f, samples=%ld)\n",
-                  sum_theta_c / samples,
-                  sum_theta_c / samples * s.physics.delta_temperature,
-                  running_nusselt(), t, samples);
+                  "(t=%.1f, sum_dt=%.1f)\n",
+                  statistics.theta_c(), statistics.theta_c() * s.physics.delta_temperature,
+                  running_nusselt(), t, statistics.sum_dt());
   } catch (const std::exception& e) {
     std::fprintf(stderr, "error (rank %d): %s\n", mpi.world_rank(), e.what());
     return 1;

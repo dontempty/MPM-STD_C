@@ -2,6 +2,7 @@
 
 #include <mpi.h>
 
+#include <limits>
 #include <stdexcept>
 
 #include "common/cuda_check.hpp"
@@ -320,6 +321,85 @@ std::vector<real_t> plane_weighted_average_product(const field::Field& F, const 
                                                    const field::Buffer& weights,
                                                    const parallel::Subdomain& sub) {
   return weighted_profile_impl(F, &G, weights, sub, /*squared=*/false);
+}
+
+
+namespace {
+__global__ void plane_maximum_kernel(const field::ConstView f, const int h, const int i1,
+                                     const int i2, const int i3, const int z_offset,
+                                     const bool absolute, real_t* profile) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(i1) * i2 * i3) return;
+  const int k = h + static_cast<int>(idx % i3);
+  const int j = h + static_cast<int>((idx / i3) % i2);
+  const int i = h + static_cast<int>(idx / (static_cast<long long>(i3) * i2));
+  const real_t value = absolute ? fabs(f(i, j, k)) : f(i, j, k);
+  atomic_max_double(&profile[z_offset + (k - h)], value);
+}
+}  // namespace
+
+std::vector<real_t> plane_maximum(const field::Field& F, const parallel::Subdomain& sub,
+                                  const bool absolute) {
+  const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
+  const int nz_global = sub.z().n_global;
+  std::vector<real_t> profile(nz_global, -std::numeric_limits<real_t>::infinity());
+  real_t* device_profile = nullptr;
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_profile), nz_global * sizeof(real_t)));
+  MPMSTD_CUDA_CHECK(cudaMemcpy(device_profile, profile.data(), nz_global * sizeof(real_t),
+                               cudaMemcpyHostToDevice));
+  const long long n = static_cast<long long>(i1) * i2 * i3;
+  plane_maximum_kernel<<<blocks_for(n), kThreads>>>(F.view(), halo_width, i1, i2, i3,
+                                                    sub.z().offset, absolute, device_profile);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+  MPMSTD_CUDA_CHECK(cudaMemcpy(profile.data(), device_profile, nz_global * sizeof(real_t),
+                               cudaMemcpyDeviceToHost));
+  cudaFree(device_profile);
+  MPI_Allreduce(MPI_IN_PLACE, profile.data(), nz_global, MPI_DOUBLE, MPI_MAX,
+                sub.topology().cart_comm());
+  return profile;
+}
+
+
+namespace {
+__global__ void volume_histogram_kernel(const field::ConstView f, const real_t* dx, const real_t* dy,
+                                        const real_t* dz, const int h, const int i1, const int i2,
+                                        const int i3, const real_t lower, const real_t upper,
+                                        const int count, real_t* bins) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(i1) * i2 * i3) return;
+  const int k = h + static_cast<int>(idx % i3);
+  const int j = h + static_cast<int>((idx / i3) % i2);
+  const int i = h + static_cast<int>(idx / (static_cast<long long>(i3) * i2));
+  const real_t value = f(i, j, k);
+  const real_t width = (upper - lower) / count;
+  int b;
+  if (value < lower) b = 0;
+  else if (value >= upper) b = count + 1;
+  else b = 1 + static_cast<int>((value - lower) / width);
+  atomicAdd(&bins[b], dx[i] * dy[j] * dz[k]);
+}
+}  // namespace
+
+std::vector<double> volume_histogram(const field::Field& F, const grid::Grid& grid,
+                                     const parallel::Subdomain& sub, const real_t lower,
+                                     const real_t upper, const int count) {
+  const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
+  real_t* device_bins = nullptr;
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_bins), (count + 2) * sizeof(real_t)));
+  MPMSTD_CUDA_CHECK(cudaMemset(device_bins, 0, (count + 2) * sizeof(real_t)));
+  const long long n = static_cast<long long>(i1) * i2 * i3;
+  volume_histogram_kernel<<<blocks_for(n), kThreads>>>(
+      F.view(), grid.x.device_cell_width.data(), grid.y.device_cell_width.data(),
+      grid.z.device_cell_width.data(), halo_width, i1, i2, i3, lower, upper, count, device_bins);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+  std::vector<real_t> host(count + 2);
+  MPMSTD_CUDA_CHECK(cudaMemcpy(host.data(), device_bins, (count + 2) * sizeof(real_t),
+                               cudaMemcpyDeviceToHost));
+  cudaFree(device_bins);
+  std::vector<double> bins(host.begin(), host.end());
+  MPI_Allreduce(MPI_IN_PLACE, bins.data(), count + 2, MPI_DOUBLE, MPI_SUM,
+                sub.topology().cart_comm());
+  return bins;
 }
 
 }  // namespace mpmstd::post

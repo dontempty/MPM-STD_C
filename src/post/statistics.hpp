@@ -61,4 +61,16 @@ std::vector<real_t> plane_weighted_average_product(const field::Field& F, const 
                                                    const field::Buffer& weights,
                                                    const parallel::Subdomain& sub);
 
+// 평면 최대 max_{xy} F(z) (absolute=true 면 |F|) — 크기 nz_global, 전 랭크 동일 (Allreduce MAX).
+// 용도: 벽 근처 폭주 감시(|U| 최대), 가변 점성 dt 기준(μ̂ 평면 최대; time/time_step).
+std::vector<real_t> plane_maximum(const field::Field& F, const parallel::Subdomain& sub,
+                                  bool absolute);
+
+// 체적 가중 히스토그램 — F 의 내부 셀 값을 [lower, upper) 를 count 칸으로 나눠 셀 체적(dx·dy·dz)을
+// 더한다. 반환 크기 count + 2: [0] 아래 넘침, [1..count] 칸, [count+1] 위 넘침. 전 랭크 동일(Allreduce).
+// 용도: 온도 PDF (Horn 2013 fig.8). 정규화(÷총 체적·칸폭)는 호출자.
+std::vector<double> volume_histogram(const field::Field& F, const grid::Grid& grid,
+                                     const parallel::Subdomain& sub, real_t lower, real_t upper,
+                                     int count);
+
 }  // namespace mpmstd::post
