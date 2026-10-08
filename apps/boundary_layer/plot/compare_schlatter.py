@@ -14,7 +14,7 @@ def read_kth(path):
     g = lambda key: float(re.search(key + r'\s*=\s*([0-9.eE+-]+)', h).group(1))
     meta = dict(src='KTH', re_theta=g(r'Re_\{\\theta\}'), re_tau=g(r'Re_\{\\tau\}'), H=g(r'H_\{12\}'), cf=g(r'c_f'))
     d = np.loadtxt(path, comments='%')
-    return meta, dict(yd=d[:, 0], yp=d[:, 1], U=d[:, 2], urms=d[:, 3], vrms=d[:, 4], wrms=d[:, 5], uv=d[:, 6])
+    return meta, dict(yd=d[:, 0], yp=d[:, 1], U=d[:, 2], urms=d[:, 3], vrms=d[:, 5], wrms=d[:, 4], uv=d[:, 6])  # KTH v=벽수직·w=스팬 → 우리 v=스팬·w=벽수직
 
 def read_torroja(path):
     h = open(path).read()
@@ -22,7 +22,7 @@ def read_torroja(path):
     ut = g(r'u_\{tau\}'); dstar = g(r'delta\^\*'); theta = g(r'theta ')
     meta = dict(src='Torroja', re_theta=g(r'Re_\{theta\}'), re_tau=g(r'Re_\{tau\}'), H=dstar / theta, cf=2 * ut**2)
     d = np.loadtxt(path, comments='%')
-    return meta, dict(yd=d[:, 0], yp=d[:, 1], U=d[:, 6], urms=d[:, 2], vrms=d[:, 3], wrms=d[:, 4], uv=d[:, 5])
+    return meta, dict(yd=d[:, 0], yp=d[:, 1], U=d[:, 6], urms=d[:, 2], vrms=d[:, 4], wrms=d[:, 3], uv=d[:, 5])  # Torroja 도 같은 교환
 
 def load_refs():
     refs = []
