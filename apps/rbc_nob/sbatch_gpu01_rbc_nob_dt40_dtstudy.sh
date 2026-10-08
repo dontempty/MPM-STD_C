@@ -30,7 +30,8 @@ run smoke input_rbc_nob_smoke_ext.ini || { echo "SMOKE FAILED"; exit 1; }
 echo "# CPU smoke reference:"; grep FINAL log/smoke_ext_35983.log
 # base 는 잡 35985 에서 완료(stats_nob_dt40_base/, t 25000→27000). 임계 스캔(각 100 time, ~5 분) 먼저.
 # 스캔 1 (30/24/18) 은 잡 35987 에서 완료 — 전부 스파이크 소멸. 스캔 2 = 임계 구간 30~40 세분.
-for CV in 38 36 34; do run visc$CV input_rbc_nob_dt40_visc$CV.ini || echo "VISC$CV FAILED"; done
+# 스캔 2 (38/36/34, 잡 35988) 도 전부 소멸 → 임계 ≈ 40. 스캔 3 = 초임계 고정 dt(max_cfl 0.45) 44/41.
+for CV in 44 41; do run visc$CV input_rbc_nob_dt40_visc$CV.ini || echo "VISC$CV FAILED"; done
 run visc12 input_rbc_nob_dt40_visc12.ini || echo "VISC12 FAILED"
 run visc6  input_rbc_nob_dt40_visc6.ini  || echo "VISC6 FAILED"
 echo "# done $(date '+%F %T')"
