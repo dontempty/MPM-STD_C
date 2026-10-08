@@ -1,7 +1,8 @@
 #!/bin/bash
 # ΔT=40 K 윗벽 rms 스파이크 dt 스터디 — gpu01 2 GPU (2026-10-09)
 #   ① GPU 스모크(확장 통계·D_× 배선, CPU 스모크 log/smoke_ext_35983.log 과 대조)
-#   ② base  : CFL dt 그대로 warm restart (t 25000→27000, 통계 25300~)
+#   ② base  : CFL dt 그대로 warm restart (t 25000→27000, 통계 25300~) — 잡 35985 완료
+#   ②b 임계 스캔 visc30/24/18 (D_× 30/24/18, t 25000→25100, 통계 25050~; 스파이크 유무만)
 #   ③ visc12: viscous_coupling_number 12 (dt≈3.6e-3, t→26500)
 #   ④ visc6 : viscous_coupling_number 6  (dt≈1.8e-3, t→26500)
 #SBATCH -J nob_dt40_dt
@@ -27,7 +28,8 @@ echo "# host=$(hostname) gpus=$(nvidia-smi -L | wc -l) start=$(date '+%F %T')"
 run() { echo "=== $1: $(date '+%F %T') ==="; "$HPCX/ompi/bin/mpirun" -np 2 "$ROOT/build_gpu/bin/rbc_nob" "$2" > "log/dt40_$1_${SLURM_JOB_ID}.log" 2>&1; rc=$?; grep -E "FINAL|rror" "log/dt40_$1_${SLURM_JOB_ID}.log" | tail -3; return $rc; }
 run smoke input_rbc_nob_smoke_ext.ini || { echo "SMOKE FAILED"; exit 1; }
 echo "# CPU smoke reference:"; grep FINAL log/smoke_ext_35983.log
-run base   input_rbc_nob_dt40_base.ini   || echo "BASE FAILED"
+# base 는 잡 35985 에서 완료(stats_nob_dt40_base/, t 25000→27000). 임계 스캔(각 100 time, ~5 분) 먼저.
+for CV in 30 24 18; do run visc$CV input_rbc_nob_dt40_visc$CV.ini || echo "VISC$CV FAILED"; done
 run visc12 input_rbc_nob_dt40_visc12.ini || echo "VISC12 FAILED"
 run visc6  input_rbc_nob_dt40_visc6.ini  || echo "VISC6 FAILED"
 echo "# done $(date '+%F %T')"
