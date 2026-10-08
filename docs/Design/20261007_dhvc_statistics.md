@@ -43,3 +43,13 @@ GPU 쌍둥이(statistics.cu·wall_richardson_kernels.cu·spectra_kernels.cu, cuF
 - fig.12 조건 스펙트럼(패치 FFT) — 필요 시.
 - 조건평균의 통계 수렴은 ρ 가 작은 Ra(1e5 ρ≈0.06)에서 low 표본이 적어 느리다 — 창 100 time 이상 권장.
 - 돌고 있는 1e8 mirror(35834) 는 구형 통계 — 확장 통계가 필요하면 새 바이너리(build_gpu, 잡 35929 빌드)로 재시작.
+
+## 추가 2026-10-09 — 스펙트럼 cuFFT 레이아웃 버그 수정, 1e7 mirror 재검증 런
+- 1e7 mirror + 확장 통계 런(잡 35986, 1e6 warm start)이 통계 시작 t=100 의 첫 스펙트럼 표본에서 `cuFFT failed (spectra): ExecD2Z x` 로 중단.
+  원인: `LineSpectrumPlan` 이 cufftPlanMany 의 advanced layout 으로 필드 메모리를 **원소 보폭 ny·nz, 배치 간격 1** 로 직접 읽게 했는데
+  cuFFT 는 이 (보폭 > 배치 간격) 레이아웃을 실행 시 거부한다. FFTW 경로도 같은 전제라 한 번도 검증된 적이 없었다(스펙트럼 파일이 어느 out_* 에도 없음).
+- 수정: `gather_lines`(spectra_kernels 쌍둥이)로 nz_local 라인을 연속 [line][i] 버퍼에 모은 뒤 cufftPlan1d / fftw_plan_many(연속) 배치 변환.
+  스모크(48×24×32, np 2, `input_dhvc_smoke.ini` 에 stats_sample 2·conditional 2·spectra 10 추가): 4종 파일 전부 생성, **CPU = GPU 비트 동일**
+  (spectra rel diff 0, stats 7e-19, conditional·PDF 0), **Parseval Σ_m E(k;z) = U̅² + u_rms²** (같은 표본 간격일 때 1.000000, 간격이 다르면 ±4% 는 표본 차).
+- 아울러 GPU 빌드에 .d 의존 파일이 없던 문제(Makefile.inc) 때문에 이전 GPU dhvc 바이너리가 새 통계 키를 몰랐던 것도 2026-10-09 수정(커밋 b579987).
+- 재시작: `input_dhvc_1e7_mirror_restart.ini`(restart_1e7_mirror/dhvc_ck_00020000.bin, t=52.35) 잡 35992(gpu02, 05:00) — 통계 100~200, 완주 ~07:00.
