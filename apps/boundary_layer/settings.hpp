@@ -34,6 +34,17 @@ struct Inflow {                       // [inflow] — 유입 생성 방식 (boun
   double relaxation_time = 20;        // 재순환: ⟨Ū_r⟩ 완화 시간 (δ/U∞)
   double noise = 0.1;                 // 재순환 IC 섭동 진폭 (U∞ 배)
 };
+struct Trip {                         // [trip] — 난류 트립 체적력 (Schlatter & Örlü 2012; 설계 §4-4)
+  //   F_z = A · exp[−((x−x_t)/ℓ_x)² − (z/ℓ_z)²] · g(y,t),  g = 스팬 Fourier 랜덤(모드 m ≤ modes, rms 1),
+  //   t_s 마다 새 모양으로 3차(3p²−2p³) 완만 혼합. 유입 뒤 x_t 에서 전이를 일으켜 재순환 유입이 난류를 받게 한다.
+  double amplitude = 0;               // A (U∞²/δ*₀ 단위); 0 = 끔. Δw ≈ A·ℓ_x/U∞ 가 0.1~0.2 U∞ 되는 값이 기준
+  double x_center = 8;                // x_t (유입면 기준, δ*₀)
+  double length_x = 4;                // ℓ_x
+  double length_z = 0.8;              // ℓ_z (δ99,in ≈ 1 의 안쪽)
+  double time_scale = 4;              // t_s (δ*₀/U∞)
+  int modes = 10;                     // 스팬 모드 수 (파장 L_y/m, m = 1..modes)
+  double end_time = 0;                // 0 = 끝까지 켜 둠, > 0 이면 이 시각 이후 끔
+};
 struct Initial {                      // [initial]
   std::string profile = "blasius";    // blasius | uniform
   std::string restart_from = "";
@@ -61,6 +72,7 @@ struct Settings {
   Process process;
   Physics physics;
   Inflow inflow;
+  Trip trip;
   Initial initial;
   Time time;
   Output output;

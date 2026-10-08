@@ -34,6 +34,13 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"inflow", "delta99", &s.inflow.delta99, false},
       {"inflow", "relaxation_time", &s.inflow.relaxation_time, false},
       {"inflow", "noise", &s.inflow.noise, false},
+      {"trip", "amplitude", &s.trip.amplitude, false},
+      {"trip", "x_center", &s.trip.x_center, false},
+      {"trip", "length_x", &s.trip.length_x, false},
+      {"trip", "length_z", &s.trip.length_z, false},
+      {"trip", "time_scale", &s.trip.time_scale, false},
+      {"trip", "modes", &s.trip.modes, false},
+      {"trip", "end_time", &s.trip.end_time, false},
       {"physics", "convective_velocity", &s.physics.convective_velocity, false},
       {"initial", "profile", &s.initial.profile, false},
       {"initial", "restart_from", &s.initial.restart_from, false},
@@ -64,6 +71,9 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.inflow.delta99 > 0 && s.inflow.relaxation_time > 0 && s.inflow.noise >= 0,
           "'inflow.delta99'/'relaxation_time' must be > 0, 'noise' >= 0");
   require(ini, s.physics.convective_velocity >= 0, "'physics.convective_velocity' must be >= 0");
+  require(ini, s.trip.amplitude >= 0 && s.trip.length_x > 0 && s.trip.length_z > 0
+                   && s.trip.time_scale > 0 && s.trip.modes > 0 && s.trip.end_time >= 0,
+          "'trip.*': amplitude/end_time >= 0, length_x/length_z/time_scale/modes > 0");
   require(ini, s.initial.profile == "blasius" || s.initial.profile == "uniform",
           "'initial.profile' must be blasius | uniform");
   require(ini, s.time.end_time > 0, "'time.end_time' must be > 0");
@@ -138,6 +148,15 @@ std::string format_settings(const Settings& s) {
   add("delta99 = " + format_number(s.inflow.delta99));
   add("relaxation_time = " + format_number(s.inflow.relaxation_time));
   add("noise = " + format_number(s.inflow.noise));
+  add("");
+  add("[trip]");
+  add("amplitude = " + format_number(s.trip.amplitude));
+  add("x_center = " + format_number(s.trip.x_center));
+  add("length_x = " + format_number(s.trip.length_x));
+  add("length_z = " + format_number(s.trip.length_z));
+  add("time_scale = " + format_number(s.trip.time_scale));
+  add("modes = " + std::to_string(s.trip.modes));
+  add("end_time = " + format_number(s.trip.end_time));
   add("");
   add("[initial]");
   add("profile = " + s.initial.profile);

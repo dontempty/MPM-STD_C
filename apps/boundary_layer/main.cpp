@@ -38,6 +38,7 @@
 #include "grid/stretching.hpp"
 #include "parallel/mpi_context.hpp"
 #include "parallel/subdomain/subdomain.hpp"
+#include "physics/separable_force.hpp"
 #include "parallel/topology/topology.hpp"
 #include "post/checkpoint.hpp"
 #include "post/spatial_statistics.hpp"
@@ -306,6 +307,80 @@ int main(int argc, char** argv) {
     const double x_mid = flow.x0 + grid.x.face[halo_width + s.mesh.nx / 2];
     const double cf_blasius_mid = 0.664 / std::sqrt(flow.u_inf * x_mid / flow.nu);
 
+    // ── 난류 트립 체적력 ([trip], 설계 §4-4; Schlatter & Örlü 2012) ──────────────────────────
+    //   F_z = A·e_x(x_c)·e_z(z_f)·g(y_c,t) 를 rhs_W(z-면 변수)에. g 는 스팬 Fourier 랜덤(rms 1)을
+    //   t_s 세그먼트마다 새로 뽑아 3차(3p²−2p³)로 완만히 섞는다. 세그먼트 번호로 시드하므로
+    //   모든 랭크·재시작에서 같은 모양이다. 벽면(k = h) 은 W = 0 고정이라 포락선 0.
+    const bool trip_on = s.trip.amplitude > 0;
+    const int trip_nx = sub.x().n_total, trip_ny = sub.y().n_total, trip_nz = sub.z().n_total;
+    mpmstd::field::Buffer trip_envelope_x, trip_shape_y, trip_envelope_z;
+    std::vector<real_t> trip_shape_host(trip_ny, 0);
+    std::vector<real_t> trip_segment_cache[2];
+    long trip_segment_cached[2] = {-1, -1};
+    const auto trip_segment_shape = [&](const long segment) -> const std::vector<real_t>& {
+      const int slot = static_cast<int>(segment & 1);
+      if (trip_segment_cached[slot] != segment) {
+        std::mt19937 rng(20261008u + 1000003u * static_cast<unsigned>(segment));
+        std::uniform_real_distribution<double> uni(-1.0, 1.0);
+        std::vector<double> amplitude(s.trip.modes), phase(s.trip.modes);
+        const double pi = std::acos(-1.0);
+        for (int m = 0; m < s.trip.modes; ++m) {
+          amplitude[m] = uni(rng);
+          phase[m] = pi * uni(rng);
+        }
+        std::vector<real_t>& g = trip_segment_cache[slot];
+        g.assign(trip_ny, 0);
+        double sum_square = 0;
+        for (int j = mpmstd::halo_width; j < trip_ny - mpmstd::halo_width; ++j) {
+          const double y = grid.y.center[j];
+          double value = 0;
+          for (int m = 0; m < s.trip.modes; ++m)
+            value += amplitude[m] * std::cos(2 * pi * (m + 1) * y / s.domain.ly + phase[m]);
+          g[j] = static_cast<real_t>(value);
+          sum_square += value * value;
+        }
+        const double rms = std::sqrt(sum_square / sub.y().n_local);
+        if (rms > 0)
+          for (real_t& v : g) v /= static_cast<real_t>(rms);
+        trip_segment_cached[slot] = segment;
+      }
+      return trip_segment_cache[slot];
+    };
+    if (trip_on) {
+      std::vector<real_t> envelope_x(trip_nx, 0), envelope_z(trip_nz, 0);
+      for (int i = mpmstd::halo_width; i < trip_nx - mpmstd::halo_width; ++i) {
+        const double xr = (grid.x.center[i] - s.trip.x_center) / s.trip.length_x;
+        envelope_x[i] = static_cast<real_t>(std::exp(-xr * xr));
+      }
+      for (int k = mpmstd::halo_width + 1; k < trip_nz - mpmstd::halo_width; ++k) {
+        const double zr = grid.z.face[k] / s.trip.length_z;
+        envelope_z[k] = static_cast<real_t>(std::exp(-zr * zr));
+      }
+      trip_envelope_x.assign(trip_nx);
+      trip_envelope_x.upload(envelope_x);
+      trip_envelope_z.assign(trip_nz);
+      trip_envelope_z.upload(envelope_z);
+      trip_shape_y.assign(trip_ny);
+      if (mpi.is_root())
+        std::printf("# trip: A=%g x_t=%g l_x=%g l_z=%g t_s=%g modes=%d end=%g\n", s.trip.amplitude,
+                    s.trip.x_center, s.trip.length_x, s.trip.length_z, s.trip.time_scale,
+                    s.trip.modes, s.trip.end_time);
+    }
+    const auto apply_trip = [&](const real_t t_now, const real_t dt_now) {
+      if (!trip_on || (s.trip.end_time > 0 && t_now >= s.trip.end_time)) return;
+      const double segment_position = t_now / s.trip.time_scale;
+      const long segment = static_cast<long>(std::floor(segment_position));
+      const double p = segment_position - segment;
+      const double blend = p * p * (3 - 2 * p);
+      const std::vector<real_t>& g0 = trip_segment_shape(segment);
+      const std::vector<real_t>& g1 = trip_segment_shape(segment + 1);
+      for (int j = 0; j < trip_ny; ++j)
+        trip_shape_host[j] = static_cast<real_t>((1 - blend) * g0[j] + blend * g1[j]);
+      trip_shape_y.upload(trip_shape_host);
+      mpmstd::physics::add_separable_force(rhs_W, trip_envelope_x, trip_shape_y, trip_envelope_z,
+                                           static_cast<real_t>(s.trip.amplitude) * dt_now, sub);
+    };
+
     real_t t = static_cast<real_t>(restart_time);
     long step = restart_step;
     double next_dump = s.output.stats_interval > 0 ? s.output.stats_interval : 0;
@@ -327,6 +402,7 @@ int main(int argc, char** argv) {
       momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, flow.nu, dt);
       momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, flow.nu, dt);
       momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, flow.nu, dt);
+      apply_trip(t, dt);  // 난류 트립 (옵션)
       pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
                                         flow.nu, dt);

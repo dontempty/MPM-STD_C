@@ -6,6 +6,7 @@
 #SBATCH -N 1
 #SBATCH -n 2
 #SBATCH --gres=gpu:2
+#SBATCH --mem=64G
 #SBATCH --time=2-00:00:00
 #SBATCH -o /shared/home/wel1come1234/workspace/MPM-STD/apps/boundary_layer/logs/bl_re6000_%j.log
 set -u
