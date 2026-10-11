@@ -45,6 +45,11 @@ struct Trip {                         // [trip] — 난류 트립 체적력 (Sch
   int modes = 10;                     // 스팬 모드 수 (파장 L_y/m, m = 1..modes)
   double end_time = 0;                // 0 = 끝까지 켜 둠, > 0 이면 이 시각 이후 끔
 };
+struct Les {                          // [les] — LES 와점성 (physics/LES; 채널과 같은 계약 μ̂ = 1 + ν_t/ν)
+  std::string model = "none";         // none | constant_vreman | wale
+  double c_s = 0.12;                  // Vreman: C_v = 2.5·C_s²
+  double c_w = 0.5;                   // WALE
+};
 struct Initial {                      // [initial]
   std::string profile = "blasius";    // blasius | uniform
   std::string restart_from = "";
@@ -73,6 +78,7 @@ struct Settings {
   Physics physics;
   Inflow inflow;
   Trip trip;
+  Les les;
   Initial initial;
   Time time;
   Output output;

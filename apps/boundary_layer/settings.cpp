@@ -41,6 +41,9 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"trip", "time_scale", &s.trip.time_scale, false},
       {"trip", "modes", &s.trip.modes, false},
       {"trip", "end_time", &s.trip.end_time, false},
+      {"les", "model", &s.les.model, false},
+      {"les", "c_s", &s.les.c_s, false},
+      {"les", "c_w", &s.les.c_w, false},
       {"physics", "convective_velocity", &s.physics.convective_velocity, false},
       {"initial", "profile", &s.initial.profile, false},
       {"initial", "restart_from", &s.initial.restart_from, false},
@@ -74,6 +77,9 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.trip.amplitude >= 0 && s.trip.length_x > 0 && s.trip.length_z > 0
                    && s.trip.time_scale > 0 && s.trip.modes > 0 && s.trip.end_time >= 0,
           "'trip.*': amplitude/end_time >= 0, length_x/length_z/time_scale/modes > 0");
+  require(ini, s.les.model == "none" || s.les.model == "constant_vreman" || s.les.model == "wale",
+          "'les.model' must be none | constant_vreman | wale");
+  require(ini, s.les.c_s > 0 && s.les.c_w > 0, "'les.c_s'/'les.c_w' must be > 0");
   require(ini, s.initial.profile == "blasius" || s.initial.profile == "uniform",
           "'initial.profile' must be blasius | uniform");
   require(ini, s.time.end_time > 0, "'time.end_time' must be > 0");
@@ -157,6 +163,10 @@ std::string format_settings(const Settings& s) {
   add("time_scale = " + format_number(s.trip.time_scale));
   add("modes = " + std::to_string(s.trip.modes));
   add("end_time = " + format_number(s.trip.end_time));
+  add("[les]");
+  add("model = " + s.les.model);
+  add("c_s = " + format_number(s.les.c_s));
+  add("c_w = " + format_number(s.les.c_w));
   add("");
   add("[initial]");
   add("profile = " + s.initial.profile);

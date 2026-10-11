@@ -38,6 +38,9 @@
 #include "grid/stretching.hpp"
 #include "parallel/mpi_context.hpp"
 #include "parallel/subdomain/subdomain.hpp"
+#include "physics/LES/WALE/wale.hpp"
+#include "physics/LES/constant_vreman/vreman.hpp"
+#include "physics/LES/les.hpp"
 #include "physics/separable_force.hpp"
 #include "parallel/topology/topology.hpp"
 #include "post/checkpoint.hpp"
@@ -125,6 +128,17 @@ int main(int argc, char** argv) {
         rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
     momentum::Solver momentum_solver(sub);
     momentum::set_wall_closure(momentum_solver, bc);
+    // ── LES (채널 앱과 같은 배선): μ̂ = 1 + ν_t/ν 를 가변물성 운동량의 viscosity 자리에, 1/ρ̂ ≡ 1.
+    //    model = none 이면 기존 상수물성 경로 그대로 (DNS 결과와 비트 동일).
+    const bool les = s.les.model != "none";
+    const bool les_wale = s.les.model == "wale";
+    std::unique_ptr<Field> mu_hat, unit_inverse_density;
+    if (les) {
+      mu_hat = std::make_unique<Field>(nx, ny, nz, "mu_hat");
+      unit_inverse_density = std::make_unique<Field>(nx, ny, nz, "unit_inverse_density");
+      mu_hat->fill(1.0);
+      unit_inverse_density->fill(1.0);
+    }
     pressure::Solver pressure_solver(grid, sub);
 
     // 유입 평면 (로컬 (y,z), ghost 포함): blasius = z 프로파일 복제, recycling = 매 스텝 갱신
@@ -399,13 +413,34 @@ int main(int argc, char** argv) {
       }
 
       rhs_U.fill(0); rhs_V.fill(0); rhs_W.fill(0);
-      momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, flow.nu, dt);
-      momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, flow.nu, dt);
-      momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, flow.nu, dt);
+      if (les) {
+        if (les_wale)
+          mpmstd::physics::les::calculate_eddy_viscosity_wale(*mu_hat, U, V, W, grid, sub, flow.nu,
+                                                              static_cast<real_t>(s.les.c_w));
+        else
+          mpmstd::physics::les::calculate_eddy_viscosity_constant_vreman(
+              *mu_hat, U, V, W, grid, sub, flow.nu,
+              static_cast<real_t>(2.5 * s.les.c_s * s.les.c_s));
+        mpmstd::physics::les::synchronize_viscosity_ratio(*mu_hat, sub);  // 비주기 축 ghost μ̂ = 1
+        momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W, *mu_hat,
+                                                              *unit_inverse_density, grid, sub, flow.nu, dt);
+        momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W, *mu_hat,
+                                                              *unit_inverse_density, grid, sub, flow.nu, dt);
+        momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W, *mu_hat,
+                                                              *unit_inverse_density, grid, sub, flow.nu, dt);
+      } else {
+        momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, flow.nu, dt);
+        momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, flow.nu, dt);
+        momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, flow.nu, dt);
+      }
       apply_trip(t, dt);  // 난류 트립 (옵션)
       pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
-      momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
-                                        flow.nu, dt);
+      if (les)
+        momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
+                                          *mu_hat, *unit_inverse_density, flow.nu, dt);
+      else
+        momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
+                                          flow.nu, dt);
       sync_velocity();
       const real_t du_out = boundary::correct_outflow_flux(U, W, grid, sub);
 
