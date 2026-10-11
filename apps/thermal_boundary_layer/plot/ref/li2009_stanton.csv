@@ -1,0 +1,11 @@
+# Li, Schlatter, Brandt & Henningson (2009) IJHFF 30, 916 — fig.4 Stanton number St(Re_theta), digitised from the 250-dpi render (±3%)
+# columns: Re_theta, St_pr071_isoscalar (theta2, solid), St_pr071_isoflux (theta3, dash-dot), St_pr02_isoscalar (theta1, +), St_pr2_isoscalar (theta4, dashed), KaysCrawford_pr071 (circles: 0.0125 Pr^-0.4 Re_theta^-0.25)
+Re_theta,St_pr071_iso,St_pr071_flux,St_pr02_iso,St_pr2_iso,St_KC_pr071
+300,3.45e-3,3.25e-3,5.30e-3,2.05e-3,3.45e-3
+350,3.45e-3,3.35e-3,5.25e-3,2.15e-3,3.32e-3
+400,3.25e-3,3.25e-3,4.85e-3,2.10e-3,3.21e-3
+500,3.05e-3,3.05e-3,4.50e-3,2.00e-3,3.03e-3
+600,2.90e-3,2.92e-3,4.22e-3,1.90e-3,2.90e-3
+700,2.75e-3,2.78e-3,4.00e-3,1.80e-3,2.79e-3
+800,2.62e-3,2.68e-3,3.82e-3,1.72e-3,2.70e-3
+850,2.55e-3,2.65e-3,3.72e-3,1.70e-3,2.66e-3

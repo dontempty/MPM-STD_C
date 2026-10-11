@@ -1,0 +1,8 @@
+# Li et al. (2009) IJHFF 30, 916 — characteristic values read off fig.8 (theta_rms+), fig.9 (fluxes), fig.10 (Pr_t) at Re_theta = 830, ±5%
+# scalar, Pr, wall, theta_rms_wall, theta_rms_peak, y_plus_at_peak, vt_plus_plateau(-<v'theta'>+ at y+ 30-100), Pr_t_wall, Pr_t_peak(y+~45), Pr_t_min(y+~220), delta99_theta_plus (Table 1; velocity 315)
+scalar,Pr,wall,theta_rms_wall,theta_rms_peak,yplus_peak,vt_plus_plateau,Prt_wall,Prt_peak,Prt_min,delta99_theta_plus
+theta1,0.2,isoscalar,0,1.35,60,0.26,0.95,1.17,0.80,365
+theta2,0.71,isoscalar,0,2.40,17,0.71,1.05,1.07,0.72,340
+theta3,0.71,isoflux,2.10,2.50,13,0.71,1.05,1.07,0.72,340
+theta4,2.0,isoscalar,0,4.15,11,1.0,1.05,1.07,0.72,320
+theta5,2.0,isoflux,3.95,4.55,8,1.0,1.05,1.07,0.72,320

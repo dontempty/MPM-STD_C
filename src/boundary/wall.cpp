@@ -107,6 +107,25 @@ void fill_wall_value(field::Field& f, const parallel::Subdomain& sub, const int 
   for_each_in_plane(f, axis, ghost, [&](int i, int j, int k) { v(i, j, k) = value; });
 }
 
+void fill_wall_gradient(field::Field& f, const parallel::Subdomain& sub, const int axis,
+                        const int side, const real_t gradient, const real_t spacing) {
+  check_dims("fill_wall_gradient", f, sub);
+  check_axis("fill_wall_gradient", axis);
+  check_side("fill_wall_gradient", side);
+  if (!owns_wall(sub, axis, side)) return;
+  const int h = halo_width;
+  const int ghost = side == 0 ? 0 : n_total(f, axis) - 1;
+  const int to_interior = side == 0 ? +h : -h;
+  // minus 면: ghost 가 내부보다 축 음의 쪽 → ghost = 내부 − Δ·g;  plus 면: ghost = 내부 + Δ·g
+  const real_t offset = (side == 0 ? -spacing : spacing) * gradient;
+  const field::View v = f.view();
+  for_each_in_plane(f, axis, ghost, [&](int i, int j, int k) {
+    int ii = i, jj = j, kk = k;
+    shift(ii, jj, kk, axis, to_interior);
+    v(i, j, k) = v(ii, jj, kk) + offset;
+  });
+}
+
 void fill_wall_zero_gradient(field::Field& f, const parallel::Subdomain& sub,
                              const int axis, const int side) {
   check_dims("fill_wall_zero_gradient", f, sub);

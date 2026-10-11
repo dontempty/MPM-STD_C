@@ -150,6 +150,42 @@ __global__ void center_moments_kernel(const field::ConstView u, const field::Con
 
 }  // namespace
 
+__global__ void scalar_moments_kernel(const field::ConstView u, const field::ConstView w,
+                                      const field::ConstView t, real_t* out, const int h,
+                                      const int nxl, const int nyl, const int nzl) {
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= nxl * nzl) return;
+  const int i = h + idx / nzl, k = h + idx % nzl;
+  real_t s[6] = {0, 0, 0, 0, 0, 0};
+  for (int j = h; j < h + nyl; ++j) {
+    const real_t uc = real_t(0.5) * (u(i, j, k) + u(i + 1, j, k));
+    const real_t wc = real_t(0.5) * (w(i, j, k) + w(i, j, k + 1));
+    const real_t tc = t(i, j, k);
+    s[0] += tc; s[1] += tc * tc; s[2] += uc; s[3] += wc; s[4] += uc * tc; s[5] += wc * tc;
+  }
+  const long long n = static_cast<long long>(nxl) * nzl;
+  for (int m = 0; m < 6; ++m) out[m * n + idx] = s[m] / nyl;
+}
+
+void span_average_scalar_moments(const field::Field& U, const field::Field& W,
+                                 const field::Field& T, std::vector<real_t>& out,
+                                 const parallel::Subdomain& sub) {
+  if (sub.topology().y().nprocs != 1)
+    throw std::invalid_argument("span_average_scalar_moments: npy must be 1");
+  const int h = halo_width;
+  const int nxl = sub.x().n_local, nyl = sub.y().n_local, nzl = sub.z().n_local;
+  const std::size_t n = static_cast<std::size_t>(nxl) * nzl;
+  out.assign(6 * n, 0.0);
+  real_t* d = nullptr;
+  MPMSTD_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d), 6 * n * sizeof(real_t)));
+  const int threads = 256;
+  scalar_moments_kernel<<<static_cast<int>((n + threads - 1) / threads), threads>>>(
+      U.view(), W.view(), T.view(), d, h, nxl, nyl, nzl);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+  MPMSTD_CUDA_CHECK(cudaMemcpy(out.data(), d, 6 * n * sizeof(real_t), cudaMemcpyDeviceToHost));
+  cudaFree(d);
+}
+
 void span_average_center_moments(const field::Field& U, const field::Field& V,
                                  const field::Field& W, std::vector<real_t>& out,
                                  const parallel::Subdomain& sub) {

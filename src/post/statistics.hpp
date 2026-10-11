@@ -40,6 +40,12 @@ void span_average_center_moments(const field::Field& U, const field::Field& V,
                                  const field::Field& W, std::vector<real_t>& out,
                                  const parallel::Subdomain& sub);
 
+// 스칼라 스팬 평균 모멘트 (경계층 열 통계, 2026-10-11): out[6 × nxl × nzl] = ⟨θ⟩ ⟨θ²⟩ ⟨u_c⟩ ⟨w_c⟩ ⟨u_cθ⟩ ⟨w_cθ⟩
+// (u_c·w_c = 셀중심 보간, θ 는 셀중심). npy = 1 전제. CPU/GPU 쌍둥이.
+void span_average_scalar_moments(const field::Field& U, const field::Field& W,
+                                 const field::Field& T, std::vector<real_t>& out,
+                                 const parallel::Subdomain& sub);
+
 real_t bulk_velocity(const field::Field& U, const grid::Grid& grid,
                      const parallel::Subdomain& sub);
 

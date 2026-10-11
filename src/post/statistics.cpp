@@ -108,6 +108,31 @@ void span_average_center_moments(const field::Field& U, const field::Field& V,
     }
 }
 
+void span_average_scalar_moments(const field::Field& U, const field::Field& W,
+                                 const field::Field& T, std::vector<real_t>& out,
+                                 const parallel::Subdomain& sub) {
+  if (sub.topology().y().nprocs != 1)
+    throw std::invalid_argument("span_average_scalar_moments: npy must be 1");
+  const int h = halo_width;
+  const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
+  const int nxl = sub.x().n_local, nzl = sub.z().n_local, nyl = sub.y().n_local;
+  const std::size_t n = static_cast<std::size_t>(nxl) * nzl;
+  out.assign(6 * n, 0.0);
+  const field::ConstView u = U.view(), w = W.view(), t = T.view();
+  for (int i = h; i < nx - h; ++i)
+    for (int k = h; k < nz - h; ++k) {
+      real_t s[6] = {0, 0, 0, 0, 0, 0};
+      for (int j = h; j < ny - h; ++j) {
+        const real_t uc = real_t(0.5) * (u(i, j, k) + u(i + 1, j, k));
+        const real_t wc = real_t(0.5) * (w(i, j, k) + w(i, j, k + 1));
+        const real_t tc = t(i, j, k);
+        s[0] += tc; s[1] += tc * tc; s[2] += uc; s[3] += wc; s[4] += uc * tc; s[5] += wc * tc;
+      }
+      const std::size_t q = static_cast<std::size_t>(i - h) * nzl + (k - h);
+      for (int m = 0; m < 6; ++m) out[m * n + q] = s[m] / nyl;
+    }
+}
+
 real_t bulk_velocity(const field::Field& U, const grid::Grid& grid,
                      const parallel::Subdomain& sub) {
   const int h = halo_width;

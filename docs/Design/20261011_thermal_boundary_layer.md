@@ -1,0 +1,45 @@
+# 열 경계층(수동 스칼라) 검증 — apps/thermal_boundary_layer (2026-10-11)
+
+사용자 요청: "열도 같이 푸는 경계층을 새 app 으로 만들어 ① 검증 자료 선정 ② 자료가 비교하는 통계량 분석 ③ 같은 통계량을 논문과 동일 조건에서 해석·검증".
+
+## 1. 검증 자료 선정
+
+| 후보 | 조건 | 공개 데이터 | 판단 |
+|---|---|---|---|
+| **Li, Schlatter, Brandt & Henningson (2009)** IJHFF 30, 916 — "DNS of a spatially developing TBL with passive scalar transport" | Re_δ*₀ 450, Re_θ 175→830, Pr 0.2/0.71/2.0, isoscalar + isoflux 벽, 스펙트럴(SIMSON) 1024×289×128, 상자 750×40×34 δ*₀ | 논문 그림(디지타이즈) | **주 참조**. 우리 boundary_layer 앱(Blasius 유입 + 트립, KTH 와 같은 틀)과 조건이 1:1 로 맞고, 두 벽 조건·세 Pr 을 한 런에서 다룬다. |
+| Kong, Choi & Lee (2000) Phys. Fluids 12, 2555 | Re_θ 300, Pr 0.71, 재순환 유입 | 없음 | Li 2009 가 비교 대상으로 인용 — 값은 Li 본문을 통해 간접 사용 |
+| Kasagi/Iida (THTLAB CH122_PG.WL4, 2001) | 채널 Re_τ 150, Pr 0.71, 등온 벽 | **수치표 공개** (y⁺, u⁺, t⁺, rms, ut⁺, −vt⁺) | **벽 근처(y⁺ ≲ 100) 보조 참조** — Li 2009 fig.9 도 이 자료(Kasagi 1992)를 겹쳐 쓴다 |
+| Wu & Moin (2010) JFM 630 | Re_θ ≤ 1950, Pr 1, 등온 | 없음 | Pr 1 이라 Li 와 직접 비교 불가; 보류 |
+| Araya & Castillo (2012) IJHMT 55 | Re_θ ≤ 2300, Pr 0.71 | 없음 | 보류 |
+
+파일: `docs/Paper/TBL_scalar_Li2009_IJHFF.pdf`, `apps/thermal_boundary_layer/plot/ref/li2009_*.csv`(fig.4·8·9·10·Table 1 판독),
+`plot/ref/kasagi_iida2001_ch150_pr071.txt`(THTLAB 원본).
+
+## 2. 참조가 비교하는 통계량 (Li 2009 §3) 과 우리 측정
+
+| 논문 항목 | 정의 | 그림 | 우리 출력 (`bl_scalar<n>_stats_*.dat`) |
+|---|---|---|---|
+| Stanton 수 St(Re_θ) | q_w/(ρ c_p U∞ (θ_w−θ∞)) ; Kays–Crawford 0.0125 Pr^−0.4 Re_θ^−0.25 | fig.4 | section 1 `St` = α (∂θ/∂z)_w/(u_e (θ∞−θ_w)) (isoflux 는 θ_w 외삽) |
+| 레이놀즈 상사 2St/c_f | | (본문) | section 1 `2St_over_Cf` |
+| 평균 스칼라 θ⁺, 로그법칙 κ_θ 0.41, 진단함수 Ξ_θ = y⁺ dθ⁺/dy⁺ | θ⁺ = (θ_w−θ)/θ_τ | fig.8a | section 2 `theta+` → 노트북에서 Ξ_θ |
+| 스칼라 변동 θ_rms⁺ (isoflux 벽값 ~2.1, Pr 0.71 정점 2.4 @y⁺17) | | fig.8b | section 2 `theta_rms+` |
+| 스칼라 플럭스 ⟨u′θ′⟩⁺, −⟨v′θ′⟩⁺ (Pr 스케일링 Pr·y⁺², Pr^0.6) | | fig.9 | section 2 `ut+`, `wt+` (우리 w = 벽수직) |
+| 난류 Prandtl 수 Pr_t = ν_t/α_t | (⟨u′v′⟩ dθ/dy)/(⟨v′θ′⟩ dU/dy) | fig.10 | 노트북: 속도 스테이션(uw⁺, U⁺)과 스칼라 스테이션(wt⁺, θ⁺) 합성 |
+| 열 경계층 두께 δ⁺99,θ (340 @Pr 0.71, 365 @0.2, 320 @2.0 vs 속도 315) | | Table 1 | section 1 `delta99_theta` |
+| 수지·skewness/flatness·PDF·줄무늬 간격·스펙트럼 | | fig.11–18 | 범위 밖 (이번 검증 제외) |
+| 속도장 c_f·H·U⁺ | Österlund 상관식, Spalart 670 | fig.3·6·7 | 기존 `bl_stats` (단계 B 통과한 것) |
+
+## 3. 앱 구성 (apps/thermal_boundary_layer)
+- boundary_layer 앱 복제 + `[scalars]`(prandtl 목록, wall 목록 isoscalar|isoflux, θ∞, θ_w, ∂θ/∂z|w).
+- 스칼라 전진: `scalar::solve_constant_property`(융합 상수물성 ADI, uⁿ) 를 운동량 앞에서 스칼라마다; 벽 닫기 isoscalar −1 / isoflux +1, 상단 −1, 유입 0, 유출 +1.
+- 경계: z− isoscalar `fill_wall_mirror(θ_w)` / isoflux `fill_wall_gradient`(신설, CPU/GPU 쌍둥이), z+ `fill_wall_mirror(θ∞)`, x+ 영구배, x− 층류 상사 프로파일(초기 1회 ghost 기입; 비주기 halo 는 no-op).
+- 층류 상사해 `thermal_similarity.hpp`: isoscalar Pohlhausen 적분식, isoflux g″+(Pr/2)(f g′−f′ g)=0 두 기본해 결합. IC = 각 x 의 상사 프로파일.
+- 통계 `post/scalar_spatial_statistics`(신설) + `post::span_average_scalar_moments`(쌍둥이): (x,z) 6 모멘트 dt 가중 → section 1 (St, θ_w, 구배, δ99θ, θ_τ, 2St/c_f), section 2 (속도 통계와 같은 스테이션 i).
+- 체크포인트에 T1..Tn 포함.
+
+## 4. 런 계획
+- 층류 검증(스모크): 트립 없음, St(x) vs 상사해 (`plot/laminar_check.py`).
+- 본런 `input_tbl_li2009.ini`: 1600×160×192, 750×34×40, Re_δ*₀ 450, 트립 A 0.04 @x 10, 스칼라 θ1..θ4, t 0→9000(통계 2250~), gpu02 2 GPU.
+
+## 5. 결과
+(진행 중)

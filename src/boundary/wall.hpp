@@ -51,6 +51,10 @@ void fill_wall_mirror(field::Field& f, const parallel::Subdomain& sub, int axis,
 void fill_wall_value(field::Field& f, const parallel::Subdomain& sub, int axis, int side,
                      real_t value);
 // 셀 중심 필드: ghost = 첫 내부값 (영구배).  → 압력 P, 단열 T, slip 접선 속도
+// Neumann 비영 구배: ghost = 내부 − Δ·gradient (minus 면) / 내부 + Δ·gradient (plus 면), Δ = ghost·내부 셀중심 거리
+// (등온속 벽 ∂θ/∂n = g — 열 경계층 isoflux 벽, 2026-10-11). gradient 는 "축 양의 방향" 도함수 ∂f/∂x_axis.
+void fill_wall_gradient(field::Field& f, const parallel::Subdomain& sub, int axis, int side,
+                        real_t gradient, real_t spacing);
 void fill_wall_zero_gradient(field::Field& f, const parallel::Subdomain& sub, int axis,
                              int side);
 // 그 축의 면 필드(axis 0 → U, 1 → V, 2 → W)의 벽 면 자체를 0 으로 (불침투).

@@ -75,6 +75,16 @@ __global__ void value_kernel(const field::View v, const Plane pl, const real_t v
   v(i, j, k) = value;
 }
 
+__global__ void copy_offset_kernel(const field::View v, const Plane pl, const int to_interior,
+                                   const real_t offset) {
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= pl.np * pl.nq) return;
+  int i, j, k, ii, jj, kk;
+  decode(pl, idx, 0, i, j, k);
+  decode(pl, idx, to_interior, ii, jj, kk);
+  v(i, j, k) = v(ii, jj, kk) + offset;  // Neumann 비영 구배
+}
+
 __global__ void copy_kernel(const field::View v, const Plane pl, const int to_interior) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= pl.np * pl.nq) return;
@@ -128,6 +138,20 @@ void fill_wall_value(field::Field& f, const parallel::Subdomain& sub, const int 
   if (!owns_wall(sub, axis, side)) return;
   const Plane pl = make_plane(f, axis, side == 0 ? 0 : n_total(f, axis) - 1);
   value_kernel<<<blocks_for(pl.np * pl.nq), kThreads>>>(f.view(), pl, value);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
+void fill_wall_gradient(field::Field& f, const parallel::Subdomain& sub, const int axis,
+                        const int side, const real_t gradient, const real_t spacing) {
+  check_dims("fill_wall_gradient", f, sub);
+  check_axis("fill_wall_gradient", axis);
+  check_side("fill_wall_gradient", side);
+  if (!owns_wall(sub, axis, side)) return;
+  const int h = halo_width;
+  const Plane pl = make_plane(f, axis, side == 0 ? 0 : n_total(f, axis) - 1);
+  const real_t offset = (side == 0 ? -spacing : spacing) * gradient;
+  copy_offset_kernel<<<blocks_for(pl.np * pl.nq), kThreads>>>(f.view(), pl, side == 0 ? +h : -h,
+                                                             offset);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
