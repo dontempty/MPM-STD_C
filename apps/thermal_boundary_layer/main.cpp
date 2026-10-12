@@ -566,8 +566,10 @@ int main(int argc, char** argv) {
       stats.sample(U, V, W, dt, t >= s.output.stats_start_time);
       for (int n = 0; n < n_scalars; ++n)
         scalar_stats[n]->sample(U, W, *scalars[n], dt, t >= s.output.stats_start_time);
-      if (recycling && step % s.output.monitor_interval == 0) {
-        // 상단 자유류 w(x) = U∞ dδ*/dx — relaxed 평균의 δ*(x) 2차 적합에서 (단계 ②)
+      if ((recycling || trip_on) && step % s.output.monitor_interval == 0) {
+        // 상단 자유류 w(x) = U∞ dδ*/dx — relaxed 평균의 δ*(x) 국소 기울기에서.
+        // ⚠ 2026-10-12 이전엔 recycling 일 때만 갱신 → 층류 유입+트립 런은 상단 w 가 층류 Blasius
+        // 값(난류 dδ*/dx 의 절반)에 묶여 자유류가 2% 가속(FPG)했다 (열 경계층 §5-3).
         w_top = stats.free_stream_w(stats.integrals(/*from_relaxed=*/true));
       }
       if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval == 0)

@@ -120,35 +120,26 @@ BoundaryLayerIntegrals SpatialStatistics::integrals(const bool from_relaxed) con
 }
 
 std::vector<real_t> SpatialStatistics::free_stream_w(const BoundaryLayerIntegrals& in) const {
-  // δ*(x) ≈ a + b x + c x² (0.1 ≤ x/Lx ≤ 0.9, 정규방정식) → w_top = U∞ (b + 2 c x)
+  // w_top(x) = U∞ dδ*/dx — δ*(x) 의 **국소 선형 최소제곱 기울기**(창 ±5% Lx, 끝에서는 한쪽 창).
+  // 2026-10-12 이전의 전역 2차 적합(0.1~0.9 Lx)은 층류 유입+트립 런에서 층류 √x 성장·전이 딥·
+  // 난류 x^0.8 을 한 포물선으로 눌러 국소 기울기를 못 맞췄다. 국소 기울기는 세 구간을 모두 따른다.
+  // 음수(전이 딥)는 0 으로 자른다 — 전역 질량은 유출면 보정(correct_outflow_flux)이 맞춘다.
   const int nx = nxl_;
   const real_t lx = grid_.x.face[halo_width + nx];
-  double S[5] = {0, 0, 0, 0, 0}, T[3] = {0, 0, 0};
-  for (int i = 0; i < nx; ++i) {
-    const double x = in.x[i];
-    if (x < 0.1 * lx || x > 0.9 * lx) continue;
-    const double p[5] = {1, x, x * x, x * x * x, x * x * x * x};
-    for (int m = 0; m < 5; ++m) S[m] += p[m];
-    T[0] += in.dstar[i]; T[1] += in.dstar[i] * x; T[2] += in.dstar[i] * x * x;
-  }
-  // 3×3 풀이 (Cramer)
-  const double A[3][3] = {{S[0], S[1], S[2]}, {S[1], S[2], S[3]}, {S[2], S[3], S[4]}};
-  const auto det3 = [](const double m[3][3]) {
-    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-           + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
-  };
-  const double D = det3(A);
-  double coef[3] = {0, 0, 0};
-  if (std::abs(D) > 1e-300)
-    for (int c = 0; c < 3; ++c) {
-      double M[3][3];
-      for (int r = 0; r < 3; ++r) for (int q = 0; q < 3; ++q) M[r][q] = (q == c) ? T[r] : A[r][q];
-      coef[c] = det3(M) / D;
-    }
+  const double half_window = 0.05 * lx;
   std::vector<real_t> w(sub_.x().n_total, 0.0);
-  for (int i = 0; i < sub_.x().n_total; ++i) {
-    const double x = grid_.x.center[i];
-    w[i] = static_cast<real_t>(std::max(0.0, u_inf_ * (coef[1] + 2 * coef[2] * x)));
+  for (int ii = 0; ii < sub_.x().n_total; ++ii) {
+    const double xc = grid_.x.center[ii];
+    double sx = 0, sy = 0, sxx = 0, sxy = 0; int n = 0;
+    for (int i = 0; i < nx; ++i) {
+      const double x = in.x[i];
+      if (std::abs(x - xc) > half_window) continue;
+      sx += x; sy += in.dstar[i]; sxx += x * x; sxy += x * in.dstar[i]; ++n;
+    }
+    double slope = 0;
+    const double denom = n * sxx - sx * sx;
+    if (n >= 3 && std::abs(denom) > 1e-300) slope = (n * sxy - sx * sy) / denom;
+    w[ii] = static_cast<real_t>(std::max(0.0, u_inf_ * slope));
   }
   return w;
 }
