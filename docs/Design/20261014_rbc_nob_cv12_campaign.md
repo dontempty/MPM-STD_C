@@ -1,0 +1,39 @@
+# RBC NOB cv12 캠페인 — ΔT 20·40·60 K 냉시작, `viscous_coupling_number = 12`, Horn 2013 전 지표 (2026-10-14 시작)
+
+## 1. 목적 (사용자 지시)
+10-09 의 dt 기준(윗벽 D_× = C_μ μ̂ dt/(Δ_h Δz) ≤ 12, 임계 ≈ 40 의 0.3 배)을 **냉시작부터** 적용한 NOB 본런으로 ΔT 사다리 통계를 다시 얻고,
+Horn, Shishkina & Wagner (2013) JFM 724 (`docs/Paper/RBC(NOB).pdf`) 의 Ra = 10⁶ 검증 지표를 전부 누적·플롯한다. 10-05 의 fig9 본런은
+CFL dt 였고 윗벽 스파이크(artefact)가 점성 BL 통계(λ_u, χ_λu)를 오염했었다.
+
+## 2. 조건 (fig9 본런 덱과 동일, dt 기준만 추가)
+128×128×256, 6×6×1, γ_z 2.6, Ra 1e6, Pr 2547(글리세롤), perturb 0.05, 냉시작, CFL 0.3, dt_max 0.05, **viscous_coupling_number 12**,
+t → 25000, 통계 16900 부터 1000 간격, 표본 5 스텝(dt 가중), 체크포인트 50000 스텝(최신 2개). 덱 `apps/rbc_nob/input_rbc_nob_cv12_dt{20,40,60}.ini`.
+고정 dt: ΔT 20 → 8.3e-3, 40 → 3.6e-3, 60 → 1.46e-3 (μ̂_top 2.06·4.72·11.7).
+
+| 런 | 잡 | 노드 | 스텝 | 예상 |
+|---|---|---|---|---|
+| OB 연장 (rbc_ob, t 27000→29000, Re_pl·시간평균 PDF 참조) | 36135 ① | gpu01 | 40k | 10 분 |
+| ΔT 40 | 36135 ② | gpu01 | 6.9M | ~32 h |
+| ΔT 20 | 36135 ③ | gpu01 | 3.0M | ~14 h |
+| ΔT 60 | 36136 | gpu02 | 17.1M | ~78 h (3.3 일) |
+빌드·스모크 게이트 잡 36134 (FINAL 이 참조와 일치해야 런 잡이 시작: afterok).
+
+## 3. 통계 모듈 확장 (`apps/rbc_nob/statistics`, rbc_ob 공유; 커밋 127422e)
+기존(Horn 전 항목: T̄, u/v/w/T rms, ⟨wT⟩, Nu_z, 벽 Nu, θ_c, λ_θ·χ_λθ, λ_u·χ_λu, Re_E(ν_m, ν_c), 순간 T 체적 PDF)에 더해
+- **3D 시간평균 T·W 장**(표본 합, `add_increment`; 표본 수 가중 — 고정 dt 라 dt 가중과 같음) →
+  **U_pl = max|⟨w⟩_t|** (4.25) 와 **Re_pl,m·Re_pl,c** (4.24; 헤더 `U_pl Re_pl_m Re_pl_c n_field_samples`),
+  **시간평균 온도장의 체적 PDF** (fig.8 의 정의; tpdf 3열 `T pdf_instant pdf_timemean`).
+- 집합통신(plane_maximum·volume_histogram)은 루트 조기반환 **앞**에서 전 랭크가 수행(교착 방지).
+- 게이트: 해는 불변 — rbc_nob 스모크 FINAL θ_c 0.01512 / Nu 46.3863, rbc_ob 스모크 −0.00001 / 77.0954 (잡 36134 일치).
+
+## 4. 후처리 지표 (노트북 `apps/rbc_nob/plot/plot_rbc_nob_cv12.ipynb`, Horn 그림 번호 순)
+- fig.4: ⟨T⟩(z), 정규화 2차미분 ~ (4.1) (OB 의 max|∂²T/∂z²| 로 정규화).
+- fig.5(b): χ_λθ, χ_λu vs ΔT (참조 `plot/horn2013_ra1e6_deltaT.csv`).  fig.6: T_c·ΔT vs ΔT (Horm/zhang/PaScaL_TCS csv).
+- fig.7(b): χ_Ra, χ_w, χ_Θ (4.11)~(4.14) — BL 평균온도 (T_t+T_c)/2, (T_b+T_c)/2 의 α·ν·κ(글리세롤 다항식, `physics/properties.hpp` 계수)와 측정 λ·Δ; χ_Δ (4.6).
+- fig.8(b): 시간평균 온도 PDF (OB + ΔT).  fig.9(c,d)·11: u_h,rms·w_rms·U_E(z).
+- fig.12(b)·13(b): Re_pl·Re_E (m, c) vs ΔT, Re_NOB/Re_OB (OB = rbc_ob 본런/연장).
+- fig.14(b)·15(b): Nu_NOB/Nu_OB = F_λ F_Δ (4.32; F_λ = 2λ_OB/(λ_t+λ_b), F_Δ = (κ_t Δ_t + κ_b Δ_b)/(κ_m Δ), 판 온도의 κ), Nu vs ΔT.
+Horn 은 Γ=1 원통이라 Re·Nu 절대값은 다르고 ΔT 경향과 NOB/OB 비를 비교한다. OB 참조는 같은 박스의 rbc_ob(Nu 9.88, λ_θ 0.050, Re_E 0.087).
+
+## 5. 결과
+(진행 중 — 완료 후 기입)
