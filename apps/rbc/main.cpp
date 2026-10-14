@@ -180,12 +180,17 @@ int main(int argc, char** argv) {
       std::printf("# Ra=%.3g Pr=%.3g -> nu=%.4e alpha=%.4e | %dx%dx%d, dz_wall=%.4g\n",
                   s.physics.rayleigh, s.physics.prandtl, nu, alpha_T, s.mesh.nx,
                   s.mesh.ny, s.mesh.nz, faces_z[1] - faces_z[0]);
-      std::printf("# step      time        dt     max|div|   theta_c      Nu    sec/step\n");
+      std::printf("# step      time        dt     max|div|   theta_c      Nu    sec/step"
+                  "  u_bot_max  u_top_max\n");
     }
 
     // ── 시간 평균 통계 (참조 RbcStats 1:1) ──
     std::vector<double> sum_t_z(s.mesh.nz, 0.0), sum_w2_z(s.mesh.nz, 0.0),
         sum_wt_z(s.mesh.nz, 0.0);
+    // 2026-10-13 추가 (NOB 윗벽 rms 스파이크의 OB 대조): T·u·v 의 평면 제곱평균 —
+    // T_rms 는 평균을 뺀 변동, u·v 는 평면 평균이 0 인 RBC 라 제곱평균의 제곱근 그대로.
+    std::vector<double> sum_t2_z(s.mesh.nz, 0.0), sum_u2_z(s.mesh.nz, 0.0),
+        sum_v2_z(s.mesh.nz, 0.0);
     double sum_wt_integral = 0.0, sum_theta_c = 0.0;
     long samples = 0;
     const int kc_low = s.mesh.nz / 2 - 1, kc_high = s.mesh.nz / 2;  // 중앙 두 평면 평균
@@ -217,12 +222,17 @@ int main(int argc, char** argv) {
                    "Nu_wall_top=%.4f theta_c=%.5f\n",
                    s.physics.rayleigh, s.physics.prandtl, running_nusselt(),
                    nu_wall_bottom, nu_wall_top, sum_theta_c / samples);
-      std::fprintf(f, "# z  T_mean  w_rms  wT_mean\n");
-      for (int q = 0; q < s.mesh.nz; ++q)
-        std::fprintf(f, "%12.8f %12.8f %12.8f %14.8e\n", z_center[q],
-                     sum_t_z[q] / samples,
-                     std::sqrt(std::max(0.0, sum_w2_z[q] / samples)),
-                     sum_wt_z[q] / samples);
+      std::fprintf(f, "# z  T_mean  w_rms  wT_mean  T_rms  u_rms  v_rms   (u,v: cell-face slot values; "
+                      "rms of fluctuation for T, root-mean-square for u,v,w)\n");
+      for (int q = 0; q < s.mesh.nz; ++q) {
+        const double t_mean = sum_t_z[q] / samples;
+        std::fprintf(f, "%12.8f %12.8f %12.8f %14.8e %12.6e %12.6e %12.6e\n", z_center[q],
+                     t_mean, std::sqrt(std::max(0.0, sum_w2_z[q] / samples)),
+                     sum_wt_z[q] / samples,
+                     std::sqrt(std::max(0.0, sum_t2_z[q] / samples - t_mean * t_mean)),
+                     std::sqrt(std::max(0.0, sum_u2_z[q] / samples)),
+                     std::sqrt(std::max(0.0, sum_v2_z[q] / samples)));
+      }
       std::fclose(f);
       std::printf("# stats written: %s  (Nu=%.4f)\n", path, running_nusselt());
     };
@@ -269,11 +279,17 @@ int main(int argc, char** argv) {
         const auto t_bar = mpmstd::post::plane_average(T, sub);
         const auto w2 = mpmstd::post::plane_average_square(W, sub);
         const auto wt = mpmstd::post::plane_average_product(W, T, sub);
+        const auto t2 = mpmstd::post::plane_average_square(T, sub);
+        const auto u2 = mpmstd::post::plane_average_square(U, sub);
+        const auto v2 = mpmstd::post::plane_average_square(V, sub);
         double wt_integral = 0.0;
         for (int q = 0; q < s.mesh.nz; ++q) {
           sum_t_z[q] += t_bar[q];
           sum_w2_z[q] += w2[q];
           sum_wt_z[q] += wt[q];
+          sum_t2_z[q] += t2[q];
+          sum_u2_z[q] += u2[q];
+          sum_v2_z[q] += v2[q];
           wt_integral += wt[q] * dz_global[q];
         }
         sum_wt_integral += wt_integral;
@@ -289,11 +305,14 @@ int main(int argc, char** argv) {
         const real_t div = mpmstd::post::max_divergence(U, V, W, grid, sub);
         const auto t_bar = mpmstd::post::plane_average(T, sub);
         const double theta_c_now = 0.5 * (t_bar[kc_low] + t_bar[kc_high]);
+        // 벽 인접 평면의 max|U| (아랫벽 k=0, 윗벽 k=nz−1) — NOB 윗벽 스파이크 감시와 같은 자
+        const auto u_abs_max = mpmstd::post::plane_maximum(U, sub, /*absolute=*/true);
         const double wall_now = MPI_Wtime();
         if (mpi.is_root()) {
-          std::printf("%7ld %9.3f %9.5f %10.2e %9.5f %8.4f %8.4f\n", step, t, dt,
+          std::printf("%7ld %9.3f %9.5f %10.2e %9.5f %8.4f %8.4f %10.3e %10.3e\n", step, t, dt,
                       div, theta_c_now, running_nusselt(),
-                      (wall_now - wall_prev) / s.output.monitor_interval);
+                      (wall_now - wall_prev) / s.output.monitor_interval,
+                      double(u_abs_max[0]), double(u_abs_max[s.mesh.nz - 1]));
           std::fflush(stdout);
         }
         wall_prev = wall_now;

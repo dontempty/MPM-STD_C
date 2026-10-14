@@ -190,3 +190,8 @@ warm restart `checkpoints/rbc_nob_ck_02005764.bin` (dt40 본런 t = 25000, θ_c 
   (Re_E 도 같은 이유로 1.7배 큼; Horn 의 fig.13 처럼 NOB/OB 비로 비교하려면 같은 박스의 OB 런이 필요).
 - 아랫벽/윗벽 Nu 비 9.62/9.54: κ̂_wall 1.0077/0.9923 반영 후도 0.8% 비대칭 — 1200 time 창의 통계 요동 수준.
 - visc6(D_× 6, dt 1.82e-3)은 09:45 경 완료 예정 — dt 수렴의 마지막 점.
+
+## 9. OB 대조 (2026-10-13/14) — 별도 문서 `20261013_rbc_ob_constant_property_control.md`
+같은 격자·Ra·Pr·CFL 에서 물성만 상수(가변경로 ΔT=0, 그리고 신설 `apps/rbc_ob` 상수 커널)로 두면 윗/아랫벽 rms 비가 전 항목 1.00 — 스파이크는
+가변 μ̂ 경로에서만 생긴다(§2 기전 확정). legacy `apps/rbc` 는 Pr 2547·dt 0.05 에서 벽 미끄럼(Nu +45%)이라 OB 대조에 쓸 수 없었다.
+

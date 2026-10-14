@@ -124,10 +124,13 @@ int main(int argc, char** argv) {
     const rbc::Settings s = rbc::load_settings(argv[1]);
     if (s.physics.gravity_axis != 2)
       throw std::runtime_error("rbc_nob: gravity_axis must be 2 (z)");
-    if (s.physics.delta_temperature <= 0)
-      throw std::runtime_error(
-          "rbc_nob: delta_temperature must be > 0 (dimensional K) — the constant-"
-          "property OB case is the rbc app");
+    if (s.physics.delta_temperature < 0)
+      throw std::runtime_error("rbc_nob: delta_temperature must be >= 0 (dimensional K)");
+    // ΔT = 0: **정확한 상수물성(OB) 극한** — 기본 생성 PropertyModel(선행 계수만 1)로 모든 물성 ≡ 1,
+    // 미분 ≡ 0 (physics/properties.hpp 머리말; glycerol(0) 은 미분이 남아 '거의' OB). 가변물성 커널·
+    // 블록 커플링·NOB 압력항을 그대로 통과시키되 물성만 상수 — NOB 윗벽 rms 스파이크가 가변 μ̂ 때문인지
+    // 가변물성 경로(스킴) 때문인지 가르는 대조 런용 (2026-10-13). 상수물성 커널 자체는 rbc 앱.
+    const bool constant_property_limit = s.physics.delta_temperature == 0;
     if (mpi.is_root()) {
       std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
       std::fputs(rbc::format_settings(s).c_str(), stdout);
@@ -160,7 +163,8 @@ int main(int argc, char** argv) {
     const real_t Cmu = std::sqrt(s.physics.prandtl / s.physics.rayleigh);
     const real_t Ct = 1.0 / std::sqrt(s.physics.rayleigh * s.physics.prandtl);
     const physics::PropertyModel model =
-        physics::PropertyModel::glycerol(s.physics.delta_temperature);
+        constant_property_limit ? physics::PropertyModel{}
+                                : physics::PropertyModel::glycerol(s.physics.delta_temperature);
     const real_t density_quadratic_ratio = model.density_quadratic_ratio();
 
     // 변수 — U, V, W, T, 누적 P + δp, 압력 예측자 p̂(dPhat)·p̂₀(dP0), rhs 3장,
@@ -209,8 +213,10 @@ int main(int argc, char** argv) {
 
     if (mpi.is_root()) {
       std::printf(
-          "# NOB glycerol: Ra=%.3g Pr=%.3g DeltaT=%.1fK -> Cmu=%.4e Ct=%.4e "
+          "# %s: Ra=%.3g Pr=%.3g DeltaT=%.1fK -> Cmu=%.4e Ct=%.4e "
           "a2/a1=%.4e | %dx%dx%d, dz_wall=%.4g\n",
+          constant_property_limit ? "constant-property limit (all properties = 1, OB on the variable-property path)"
+                                  : "NOB glycerol",
           s.physics.rayleigh, s.physics.prandtl, s.physics.delta_temperature,
           Cmu, Ct, density_quadratic_ratio, s.mesh.nx, s.mesh.ny, s.mesh.nz,
           faces_z[1] - faces_z[0]);
