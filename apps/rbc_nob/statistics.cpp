@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <stdexcept>
 
+#include "equation/sweep_kernels.hpp"
 #include "post/statistics.hpp"
 
 namespace rbc_nob {
@@ -23,8 +24,13 @@ double normalized_polynomial(const mpmstd::real_t k[6], const double t) {
 }
 }  // namespace
 
-Statistics::Statistics(const StatisticsConfig& config, const Subdomain& sub) : c_(config) {
-  (void)sub;
+Statistics::Statistics(const StatisticsConfig& config, const Subdomain& sub)
+    : c_(config),
+      mean_t_sum_(sub.x().n_total, sub.y().n_total, sub.z().n_total, "stats_mean_T_sum"),
+      mean_w_sum_(sub.x().n_total, sub.y().n_total, sub.z().n_total, "stats_mean_W_sum"),
+      sub_(&sub) {
+  mean_t_sum_.fill(0);
+  mean_w_sum_.fill(0);
   if (c_.nz <= 0 || static_cast<int>(c_.z_center.size()) != c_.nz
       || static_cast<int>(c_.dz.size()) != c_.nz)
     throw std::invalid_argument("rbc_nob::Statistics: z_center/dz size must equal nz");
@@ -74,6 +80,7 @@ void Statistics::accumulate(const long step, const double t, const real_t dt, co
                             const physics::PropertyFields& properties,
                             const mpmstd::grid::Grid& grid, const Subdomain& sub) {
   if (time_begin_ < 0) time_begin_ = t - dt;
+  grid_ = &grid;
   pending_dt_ += dt;
   if (step % c_.sample_interval != 0) return;
   namespace post = mpmstd::post;
@@ -109,12 +116,28 @@ void Statistics::accumulate(const long step, const double t, const real_t dt, co
   const std::vector<double> bins = post::volume_histogram(
       T, grid, sub, c_.wall_temperature_top, c_.wall_temperature_bottom, c_.pdf_bins);
   for (std::size_t b = 0; b < bins.size(); ++b) histogram_[b] += bins[b] * weight;
+  // 3D 시간평균 장 (표본 합; 내부 셀만)
+  mpmstd::equation::add_increment(mean_t_sum_, T.data(), sub);
+  mpmstd::equation::add_increment(mean_w_sum_, W.data(), sub);
+  ++n_field_samples_;
   sum_dt_ += weight;
   pending_dt_ = 0;
 }
 
 int Statistics::write(const long step, const double t, const bool is_root) const {
-  if (!is_root || sum_dt_ <= 0) return 0;
+  if (sum_dt_ <= 0) return 0;
+  // ── 집합통신이 필요한 양은 루트 조기반환 **전에** 전 랭크가 계산한다 (교착 방지) ──
+  double u_plume = 0;                 // U_pl = max |⟨w⟩_t| (4.25)
+  std::vector<double> mean_histogram; // 시간평균 T 장의 체적 히스토그램 (합 장에 n 배 구간 → 스케일 커널 불필요)
+  if (n_field_samples_ > 0 && grid_ && sub_) {
+    const auto w_max = mpmstd::post::plane_maximum(mean_w_sum_, *sub_, /*absolute=*/true);
+    for (const real_t v : w_max) u_plume = std::max(u_plume, double(v));
+    u_plume /= double(n_field_samples_);
+    const real_t n = static_cast<real_t>(n_field_samples_);
+    mean_histogram = mpmstd::post::volume_histogram(mean_t_sum_, *grid_, *sub_, c_.wall_temperature_top * n,
+                                                    c_.wall_temperature_bottom * n, c_.pdf_bins);
+  }
+  if (!is_root) return 0;
   std::vector<double> t_mean, u_mean, v_mean, w_mean, uu, vv, ww, tt, wt, mu, kappa;
   mean(sum_t_, t_mean); mean(sum_u_, u_mean); mean(sum_v_, v_mean); mean(sum_w_, w_mean);
   mean(sum_uu_, uu); mean(sum_vv_, vv); mean(sum_ww_, ww); mean(sum_tt_, tt); mean(sum_wt_, wt);
@@ -161,6 +184,8 @@ int Statistics::write(const long step, const double t, const bool is_root) const
   const double nu_hat_c = normalized_polynomial(c_.model.d, t_c_dim);   // ν̂ = μ̂/ρ̂ = d-다항식
   const double rho_hat_c = normalized_polynomial(c_.model.a, t_c_dim);
   const double re_c = nu_hat_c > 0 ? re_m / nu_hat_c : 0;
+  const double re_pl_m = u_plume * c_.lz / c_.Cmu;            // Re_pl (4.24)(4.25), ν_m
+  const double re_pl_c = nu_hat_c > 0 ? re_pl_m / nu_hat_c : 0;  // ν_c
 
   char path[512];
   std::snprintf(path, sizeof(path), "%s/rbc_nob_stats_%08ld.dat", c_.stats_dir.c_str(), step);
@@ -177,6 +202,9 @@ int Statistics::write(const long step, const double t, const bool is_root) const
   std::fprintf(f, "# U_E=%.6e Re_E_m=%.4f Re_E_c=%.4f nu_hat_c=%.4f rho_hat_c=%.4f mu_hat_c=%.4f kappa_wall_b=%.5f kappa_wall_t=%.5f T_rms_center=%.5f\n",
                u_energy, re_m, re_c, nu_hat_c, rho_hat_c, nu_hat_c * rho_hat_c, kappa_wall_bottom_,
                kappa_wall_top_, 0.5 * (t_rms[kc_low_] + t_rms[kc_high_]));
+  std::fprintf(f, "# U_pl=%.6e Re_pl_m=%.4f Re_pl_c=%.4f n_field_samples=%ld   (U_pl = max|<w>_t| of the 3D time-mean W, "
+                  "Horn (4.25); field means are sample-count weighted)\n",
+               u_plume, re_pl_m, re_pl_c, n_field_samples_);
   std::fprintf(f, "# columns: dt-weighted xy-plane averages (Horn 2013 definitions); w_rms/wT_mean/ke on the MAC face below cell z (first row = wall face); Nu_z = (<wT> - Ct <kappa> dT/dz)/Ct "
                   "(conduction = mean kappa x mean gradient); lambda_theta = slope thickness (4.2)(4.3); "
                   "lambda_u = first maximum of horizontal rms (4.21)(4.22); Re_E from volume kinetic energy (4.26)\n");
@@ -203,10 +231,17 @@ int Statistics::write(const long step, const double t, const bool is_root) const
                  step, t, sum_dt_, c_.pdf_bins, c_.wall_temperature_top, c_.wall_temperature_bottom);
     std::fprintf(f, "# underflow=%.6e overflow=%.6e (volume fraction)\n",
                  total > 0 ? histogram_[0] / total : 0, total > 0 ? histogram_[c_.pdf_bins + 1] / total : 0);
-    std::fprintf(f, "# T_center pdf\n");
+    double total_mean = 0;
+    for (const double v : mean_histogram) total_mean += v;
+    std::fprintf(f, "# mean-field pdf: histogram of the 3D time-mean T (n_field_samples=%ld; Horn fig.8 'time-averaged temperature'); "
+                    "underflow=%.6e overflow=%.6e\n", n_field_samples_,
+                 (total_mean > 0 && !mean_histogram.empty()) ? mean_histogram[0] / total_mean : 0,
+                 (total_mean > 0 && !mean_histogram.empty()) ? mean_histogram[c_.pdf_bins + 1] / total_mean : 0);
+    std::fprintf(f, "# T_center pdf_instant pdf_timemean\n");
     for (int b = 0; b < c_.pdf_bins; ++b)
-      std::fprintf(f, "%10.5f %14.6e\n", c_.wall_temperature_top + (b + 0.5) * width,
-                   total > 0 ? histogram_[b + 1] / (total * width) : 0);
+      std::fprintf(f, "%10.5f %14.6e %14.6e\n", c_.wall_temperature_top + (b + 0.5) * width,
+                   total > 0 ? histogram_[b + 1] / (total * width) : 0,
+                   (total_mean > 0 && !mean_histogram.empty()) ? mean_histogram[b + 1] / (total_mean * width) : 0);
     std::fclose(f);
     ++written;
   }

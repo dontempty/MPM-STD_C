@@ -9,6 +9,9 @@
 //   Re_E (체적 운동에너지 기반 (4.26), ν_m 과 ν_c 두 버전)                       → fig.12·13
 //   온도 PDF (체적 가중 히스토그램)                                                → fig.8
 //   스파이크 감시: 벽 인접 평면의 max|U| (윗벽 펌핑 진단, 모니터)
+//   (2026-10-14 추가) 3D 시간평균 T·W 장 → U_pl = max|⟨w⟩_t| 와 Re_pl (4.24)(4.25), 시간평균 온도장의
+//   체적 PDF (fig.8 은 순간이 아니라 시간평균 온도의 PDF). 장 평균은 표본 수 가중(dt 가중 아님) —
+//   viscous_coupling_number 로 dt 가 고정된 런에서는 dt 가중과 같다.
 // 재시작 시 누적은 0 부터(체크포인트에 누적기 없음). 표본 간격 stats_sample_interval(스텝; 간격 안 dt 합이 가중).
 #include <string>
 #include <vector>
@@ -72,6 +75,11 @@ class Statistics {
   double sum_wt_integral_ = 0, sum_theta_c_ = 0;
   std::vector<double> histogram_;
   double volume_ = 0;
+  // 3D 시간평균 장(표본 합; ghost 포함 크기) — Re_pl·시간평균 T PDF 용
+  mpmstd::field::Field mean_t_sum_, mean_w_sum_;
+  long n_field_samples_ = 0;
+  const mpmstd::grid::Grid* grid_ = nullptr;
+  const mpmstd::parallel::Subdomain* sub_ = nullptr;
 };
 
 }  // namespace rbc_nob
