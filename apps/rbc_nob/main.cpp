@@ -292,6 +292,7 @@ int main(int argc, char** argv) {
     mpmstd::common::PhaseTimer timer;
     const long timing_start = s.output.phase_timing_start_step;
     if (timing_start > 0) momentum_solver.timer = &timer;  // momentum_solve 안의 호출별 구간 (plan.md §1.1)
+    if (timing_start > 0) scalar_solver.timer = &timer;    // scalar_solve 안의 호출별 구간
     double tdma_base_scalar = 0, tdma_base_momentum = 0, tdma_base_pressure = 0;
     double wall_prev = MPI_Wtime();
     while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {

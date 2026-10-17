@@ -1,0 +1,92 @@
+==========================================
+SLURM_JOB_ID = 935677
+SLURM_NODELIST = gpu04
+==========================================
+# host=gpu04
+	[4mGPU0	GPU1	GPU2	GPU3	GPU4	GPU5	GPU6	GPU7	NIC0	NIC1	NIC2	NIC3	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NV1	NV2	NV1	NV2	SYS	SYS	SYS	NODE	NODE	SYS	SYS	0-7	0		N/A
+GPU1	NV1	 X 	NV1	NV2	SYS	NV2	SYS	SYS	NODE	NODE	SYS	SYS	0-7	0		N/A
+GPU2	NV2	NV1	 X 	NV2	SYS	SYS	NV1	SYS	PIX	PIX	SYS	SYS	0-7	0		N/A
+GPU3	NV1	NV2	NV2	 X 	SYS	SYS	SYS	NV1	PIX	PIX	SYS	SYS	0-7	0		N/A
+GPU4	NV2	SYS	SYS	SYS	 X 	NV1	NV2	NV1	SYS	SYS	PIX	PIX	16-23	1		N/A
+GPU5	SYS	NV2	SYS	SYS	NV1	 X 	NV1	NV2	SYS	SYS	PIX	PIX	16-23	1		N/A
+GPU6	SYS	SYS	NV1	SYS	NV2	NV1	 X 	NV2	SYS	SYS	NODE	NODE	16-23	1		N/A
+GPU7	SYS	SYS	SYS	NV1	NV1	NV2	NV2	 X 	SYS	SYS	NODE	NODE	16-23	1		N/A
+NIC0	NODE	NODE	PIX	PIX	SYS	SYS	SYS	SYS	 X 	PIX	SYS	SYS				
+=== pair 0,1 (default UCX) ===
+rank 1  GPU 1 (Tesla V100-SXM2-32GB, bus 0000:20:00.0)  peer-access to rank 0's GPU: YES
+rank 0  GPU 0 (Tesla V100-SXM2-32GB, bus 0000:1F:00.0)  peer-access to rank 1's GPU: YES
+Sendrecv 0.52 MB device->device: 0.033 ms  (15.80 GB/s per direction)   host->host: 0.037 ms (14.05 GB/s)
+=== pair 2,3 (default UCX) ===
+rank 0  GPU 0 (Tesla V100-SXM2-32GB, bus 0000:65:00.0)  peer-access to rank 1's GPU: YES
+Sendrecv 0.52 MB device->device: 0.022 ms  (23.63 GB/s per direction)   host->host: 0.037 ms (14.18 GB/s)
+rank 1  GPU 1 (Tesla V100-SXM2-32GB, bus 0000:66:00.0)  peer-access to rank 0's GPU: YES
+=== pair 3,4 (default UCX) ===
+rank 1  GPU 1 (Tesla V100-SXM2-32GB, bus 0000:B6:00.0)  peer-access to rank 0's GPU: YES
+rank 0  GPU 0 (Tesla V100-SXM2-32GB, bus 0000:66:00.0)  peer-access to rank 1's GPU: YES
+Sendrecv 0.52 MB device->device: 0.096 ms  (5.47 GB/s per direction)   host->host: 0.037 ms (14.21 GB/s)
+=== pair 0,4 (default UCX) ===
+rank 1  GPU 1 (Tesla V100-SXM2-32GB, bus 0000:B6:00.0)  peer-access to rank 0's GPU: YES
+rank 0  GPU 0 (Tesla V100-SXM2-32GB, bus 0000:1F:00.0)  peer-access to rank 1's GPU: YES
+Sendrecv 0.52 MB device->device: 0.023 ms  (22.64 GB/s per direction)   host->host: 0.037 ms (14.26 GB/s)
+=== pair 0,7 (default UCX) ===
+rank 0  GPU 0 (Tesla V100-SXM2-32GB, bus 0000:1F:00.0)  peer-access to rank 1's GPU: YES
+Sendrecv 0.52 MB device->device: 0.093 ms  (5.65 GB/s per direction)   host->host: 0.038 ms (13.74 GB/s)
+rank 1  GPU 1 (Tesla V100-SXM2-32GB, bus 0000:E0:00.0)  peer-access to rank 0's GPU: YES
+=== pair 0,1 with UCX_TLS=cuda_ipc,cuda_copy,self,sm ===
+rank 0  GPU 0 (Tesla V100-SXM2-32GB, bus 0000:1F:00.0)  peer-access to rank 1's GPU: YES
+Sendrecv 0.52 MB device->device: 0.033 ms  (15.93 GB/s per direction)   host->host: 0.027 ms (19.25 GB/s)
+rank 1  GPU 1 (Tesla V100-SXM2-32GB, bus 0000:20:00.0)  peer-access to rank 0's GPU: YES
+=== pair 0,1 protocol info (UCX_PROTO_INFO=y) ===
+[1792229057.428642] [gpu04:3930834:0]   |                  0..2284 | eager short                                   | self/memory |
+[1792229057.428644] [gpu04:3930834:0]   |                2285..inf | (?) rendezvous copy from mapped remote memory | self/memory |
+[1792229057.428642] [gpu04:3930835:0]   |                  0..2284 | eager short                                   | self/memory |
+[1792229057.428644] [gpu04:3930835:0]   |                2285..inf | (?) rendezvous copy from mapped remote memory | self/memory |
+[1792229057.428744] [gpu04:3930835:0]   |                  0..8184 | eager short                                            | self/memory |
+[1792229057.428745] [gpu04:3930835:0]   |             8185..262143 | multi-frag eager copy-in copy-out                      | self/memory |
+[1792229057.428748] [gpu04:3930835:0]   |                256K..inf | (?) rendezvous copy from mapped remote memory          | self/memory |
+[1792229057.428744] [gpu04:3930834:0]   |                  0..8184 | eager short                                            | self/memory |
+[1792229057.428746] [gpu04:3930834:0]   |             8185..262143 | multi-frag eager copy-in copy-out                      | self/memory |
+[1792229057.428747] [gpu04:3930834:0]   |                256K..inf | (?) rendezvous copy from mapped remote memory          | self/memory |
+[1792229057.429045] [gpu04:3930835:0]   |                  0..2434 | eager short                                   | self/memory |
+[1792229057.429046] [gpu04:3930835:0]   |                2435..inf | (?) rendezvous copy from mapped remote memory | self/memory |
+[1792229057.429047] [gpu04:3930834:0]   |                  0..2434 | eager short                                   | self/memory |
+[1792229057.429048] [gpu04:3930834:0]   |                2435..inf | (?) rendezvous copy from mapped remote memory | self/memory |
+[1792229057.449469] [gpu04:3930835:0]   |                          0..92 | eager short                                   | sysv/memory                                   |
+[1792229057.449470] [gpu04:3930835:0]   |                       93..2824 | eager copy-in copy-out                        | sysv/memory                                   |
+[1792229057.449472] [gpu04:3930835:0]   |                   2825..271200 | (?) rendezvous copy from mapped remote memory | xpmem/memory                                  |
+[1792229057.449474] [gpu04:3930835:0]   |                    271201..inf | (?) rendezvous zero-copy read from remote     | 66% on cma/memory and 34% on rc_mlx5/mlx5_0:1 |
+[1792229057.449486] [gpu04:3930834:0]   |                          0..92 | eager short                                   | sysv/memory                                   |
+[1792229057.449488] [gpu04:3930834:0]   |                       93..2824 | eager copy-in copy-out                        | sysv/memory                                   |
+[1792229057.449490] [gpu04:3930834:0]   |                   2825..271200 | (?) rendezvous copy from mapped remote memory | xpmem/memory                                  |
+[1792229057.449491] [gpu04:3930834:0]   |                    271201..inf | (?) rendezvous zero-copy read from remote     | 66% on cma/memory and 34% on rc_mlx5/mlx5_0:1 |
+[1792229057.449595] [gpu04:3930835:0]   |                          0..92 | eager short                                   | sysv/memory                                   |
+[1792229057.449598] [gpu04:3930835:0]   |                       93..8248 | eager copy-in copy-out                        | sysv/memory                                   |
+[1792229057.449599] [gpu04:3930835:0]   |                   8249..262143 | multi-frag eager copy-in copy-out             | sysv/memory                                   |
+[1792229057.449601] [gpu04:3930835:0]   |                   256K..271200 | (?) rendezvous copy from mapped remote memory | xpmem/memory                                  |
+[1792229057.449603] [gpu04:3930835:0]   |                    271201..inf | (?) rendezvous zero-copy read from remote     | 66% on cma/memory and 34% on rc_mlx5/mlx5_0:1 |
+[1792229057.449610] [gpu04:3930834:0]   |                          0..92 | eager short                                   | sysv/memory                                   |
+[1792229057.449612] [gpu04:3930834:0]   |                       93..8248 | eager copy-in copy-out                        | sysv/memory                                   |
+[1792229057.449615] [gpu04:3930834:0]   |                   8249..262143 | multi-frag eager copy-in copy-out             | sysv/memory                                   |
+[1792229057.449617] [gpu04:3930834:0]   |                   256K..271200 | (?) rendezvous copy from mapped remote memory | xpmem/memory                                  |
+[1792229057.449619] [gpu04:3930834:0]   |                    271201..inf | (?) rendezvous zero-copy read from remote     | 66% on cma/memory and 34% on rc_mlx5/mlx5_0:1 |
+[1792229057.449908] [gpu04:3930835:0]   |                          0..92 | eager short                                   | sysv/memory                                   |
+[1792229057.449910] [gpu04:3930835:0]   |                       93..2397 | eager copy-in copy-out                        | sysv/memory                                   |
+[1792229057.449912] [gpu04:3930835:0]   |                    2398..16026 | (?) rendezvous copy from mapped remote memory | xpmem/memory                                  |
+[1792229057.449915] [gpu04:3930835:0]   |                     16027..inf | (?) rendezvous zero-copy read from remote     | 66% on cma/memory and 34% on rc_mlx5/mlx5_0:1 |
+[1792229057.449923] [gpu04:3930834:0]   |                          0..92 | eager short                                   | sysv/memory                                   |
+[1792229057.449925] [gpu04:3930834:0]   |                       93..2397 | eager copy-in copy-out                        | sysv/memory                                   |
+[1792229057.449926] [gpu04:3930834:0]   |                    2398..16026 | (?) rendezvous copy from mapped remote memory | xpmem/memory                                  |
+[1792229057.449928] [gpu04:3930834:0]   |                     16027..inf | (?) rendezvous zero-copy read from remote     | 66% on cma/memory and 34% on rc_mlx5/mlx5_0:1 |
+=== 8-rank ring (our halo pattern: Sendrecv to r+1 and r-1), default order vs NVLink order ===
+-- default order np 2
+ring halo exchange (2 Sendrecv of 0.5 MB), 2 ranks: 0.064 ms per exchange (max over ranks)
+-- default order np 4
+ring halo exchange (2 Sendrecv of 0.5 MB), 4 ranks: 0.073 ms per exchange (max over ranks)
+-- default order np 8
+ring halo exchange (2 Sendrecv of 0.5 MB), 8 ranks: 0.139 ms per exchange (max over ranks)
+-- NVLink order 0,1,2,3,7,6,5,4 np 8
+ring halo exchange (2 Sendrecv of 0.5 MB), 8 ranks: 0.072 ms per exchange (max over ranks)
+-- np 8 with UCX_TLS=cuda_ipc,cuda_copy,self,sm
+ring halo exchange (2 Sendrecv of 0.5 MB), 8 ranks: 0.139 ms per exchange (max over ranks)
+# done

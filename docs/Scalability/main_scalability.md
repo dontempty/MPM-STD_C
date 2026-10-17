@@ -30,8 +30,46 @@
 
 np 4 에서의 확장 손실(= np 를 늘려도 안 줄어드는 양)은 어디서나 momentum_solve 가 1위, scalar_solve 가 2위. 통신(TDMA Alltoallv·halo)은 0.3–2 ms 로 아직 주범이 아니다.
 
+## 2b. np 8 (V100 gpu04 8장, 현재 바이너리) — halo 자기 전송 수정 전/후
+
+| 256³ step_total | np 4 | np 8 | 효율 np 8 |
+|---|---|---|---|
+| strong 수정 전 → 후 | 39.4 → 36.1 | 41.0 → 31.5 | 36 → 47 % |
+| weak 수정 전 → 후 | 142 → 130 | 210 → 137 | 57 → **86 %** |
+
+np 8 에서 늘어나던 halo 시간(weak 71 ms/스텝)은 하드웨어가 아니라 **주기 축(x·y)에서 이웃이 자기 자신일 때 MPI_Sendrecv 를 자기에게 보내던 코드** 때문이었다
+(`scalar_scalability.md` §4, `subdomain_halo.cu` 수정, 비트 동일). 남은 np 8 손실은 분산 TDMA 의 Alltoallv (스텝의 1/3) 와 랭크당 격자가 작은 데서 오는 x·y TDMA 바닥.
+
+## 2c. 최적화 전 → 최종(2026-10-17 밤) — step_total, 같은 노드·같은 조합
+
+최종 바이너리 = momentum `build_kernel_z` 타일 전치 + 순환 Thomas 레지스터화 + scalar `build_z` 타일 전치 + halo 자기 이웃 디바이스 복사.
+전 = 원본 바이너리(꼬리표 `h200`·`v100`), 후 = `h200h`·`v100h`. 노트북 `main_scalability.ipynb` §C 의 요약표.
+
+| 조합 | 전 | 후 | 감소 | 주로 어디서 |
+|---|---|---|---|---|
+| H200 256³ np 1 / 2 / 4 | 41.4 / 25.9 / 17.0 | 35.3 / 21.8 / 14.1 | −15 / −16 / −17 % | momentum_solve −3.6, scalar_solve −1.9 |
+| H200 512³ np 1 / 2 / 4 | 329 / 172 / 91.2 | 262 / 139 / 72.5 | −20 / −19 / −21 % | momentum_solve −44, scalar_solve −22 |
+| H200 weak 256³ np 1 / 2 / 4 | 41.4 / 44.0 / 44.3 | 35.3 / 37.7 / 38.0 | −15 / −14 / −14 % | |
+| V100 256³ np 1 / 2 / 4 | 198 / 95.2 / 52.8 | 119 / 62.1 / 36.1 | **−40 / −35 / −32 %** | momentum_solve −57, scalar_solve −22 |
+| V100 weak 256³ np 1 / 2 / 4 | 198 / 207 / 220 | 119 / 128 / 130 | −40 / −38 / −41 % | np 4 는 halo 수정분 −3 ms 포함 |
+
+최종 바이너리만 있는 조합 (전 데이터 없음):
+
+| 조합 | step_total | 효율 |
+|---|---|---|
+| V100 256³ strong np 8 | 31.5 ms | 47 % (np 1 기준) — 남은 손실 = PaScaL Alltoallv + x·y TDMA 바닥 |
+| V100 256³ weak np 8 | 137 ms | 86 % |
+| V100 512³ strong np 2 / 4 / 8 | 581.6 / 273.8 / 169.1 ms | np 8: 86 % (np 2 기준; halo 수정 전 71 %) |
+| H200 weak 512³/랭크 np 1 / 2 / 4 | 261.8 / 273.6 / 273.2 ms | np 4: 96 % |
+
+H200 8장 np 8 은 빈 노드가 없어 잡(935694)이 대기 중 — 돌면 `h200h` 꼬리표로 노트북에 자동 추가된다.
+
 ## 3. 결론
 
-점유율 1위·손실 1위가 모두 **momentum_solve** → 이것부터 쪼개서 보고 최적화한다. → `momentum_scalability.md`
+점유율 1위·손실 1위가 모두 **momentum_solve** → 이것부터 쪼개서 보고 최적화한다. → `momentum_scalability.md`, 그 다음 `scalar_scalability.md`.
+
+노트북 `apps/rbc_nob/plot/main_scalability.ipynb` (momentum·scalar 도 같은 양식): §A 최적화 전 — 이벤트별 막대(np 나란히) → 이벤트별 scaling 곡선,
+§B 최적화 후(최신 바이너리) — 같은 그림, §C 이벤트별 scaling 곡선에 전(큰 빈 ○, 파선)·후(작은 채운 ■, 실선) 겹치기, §D 전 vs 후 이벤트별 전/후 막대 + 감소량 막대 + 요약표, (main 만) §E halo 수정 직전(`h200z`·`v100z`) vs 최종 — np 8 통신 효과.
+제목·범례는 환경 파일에서 읽은 실제 기종·노드·꼬리표 + 문제 크기. 그림은 저장하지 않는다.
 
 (다노드 잡은 이 큐에서 배정되지 않고 A100 8 GPU 잡도 잡히지 않아 포기 — 측정은 H200·V100 np ≤ 4 와 A100 np 1 로 닫는다.)

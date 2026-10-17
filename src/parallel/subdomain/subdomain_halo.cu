@@ -68,15 +68,31 @@ void Subdomain::exchange_halo_device(real_t* f) const {
   MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
 
   // ── x 방향 — 평면이 연속이라 필드에서 바로 보낸다 (CPU 와 동일 태그) ──
+  // 축 분할이 1 이고 주기이면 이웃 = 자기 자신. 이때 MPI_Sendrecv(self) 는 UCX 가 디바이스 메모리를 호스트로
+  // 올렸다 내리는 경로를 타고, 노드 안 랭크 수에 따라 급격히 느려진다 (gpu04 실측: 0.5 MB 면 4장 교환이
+  // np 1 0.1 ms → np 8 6 ms; 순수 Sendrecv 링은 0.14 ms — 2026-10-17 bench_halo). 자기 자신이면 디바이스
+  // 복사로 랩을 채운다 — 값은 동일(복사)이라 결과 비트 불변.
   {
     const int plane = ny * nz;
-    MPI_Sendrecv(f + static_cast<std::size_t>(h) * plane, plane, MPI_DOUBLE,
-                 topo_.x().minus_neighbor, 100,
-                 f + static_cast<std::size_t>(nx - h) * plane, plane, MPI_DOUBLE,
-                 topo_.x().plus_neighbor, 100, topo_.x().comm, MPI_STATUS_IGNORE);
-    MPI_Sendrecv(f + static_cast<std::size_t>(nx - 2 * h) * plane, plane, MPI_DOUBLE,
-                 topo_.x().plus_neighbor, 101, f, plane, MPI_DOUBLE,
-                 topo_.x().minus_neighbor, 101, topo_.x().comm, MPI_STATUS_IGNORE);
+    const bool self = topo_.x().plus_neighbor == topo_.x().rank
+                      && topo_.x().minus_neighbor == topo_.x().rank;
+    if (self) {
+      MPMSTD_CUDA_CHECK(cudaMemcpy(f + static_cast<std::size_t>(nx - h) * plane,
+                                   f + static_cast<std::size_t>(h) * plane,
+                                   static_cast<std::size_t>(plane) * sizeof(real_t),
+                                   cudaMemcpyDeviceToDevice));
+      MPMSTD_CUDA_CHECK(cudaMemcpy(f, f + static_cast<std::size_t>(nx - 2 * h) * plane,
+                                   static_cast<std::size_t>(plane) * sizeof(real_t),
+                                   cudaMemcpyDeviceToDevice));
+    } else {
+      MPI_Sendrecv(f + static_cast<std::size_t>(h) * plane, plane, MPI_DOUBLE,
+                   topo_.x().minus_neighbor, 100,
+                   f + static_cast<std::size_t>(nx - h) * plane, plane, MPI_DOUBLE,
+                   topo_.x().plus_neighbor, 100, topo_.x().comm, MPI_STATUS_IGNORE);
+      MPI_Sendrecv(f + static_cast<std::size_t>(nx - 2 * h) * plane, plane, MPI_DOUBLE,
+                   topo_.x().plus_neighbor, 101, f, plane, MPI_DOUBLE,
+                   topo_.x().minus_neighbor, 101, topo_.x().comm, MPI_STATUS_IGNORE);
+    }
   }
 
   // ── y 방향 — 팩 → 연속 버퍼 MPI → 언팩 ──
@@ -86,24 +102,33 @@ void Subdomain::exchange_halo_device(real_t* f) const {
     pack_y_kernel<<<blocks_for(face), kThreads>>>(y_send_plus_.data(), f, ny - 2 * h,
                                                   nx, ny, nz);
     MPMSTD_CUDA_CHECK_LAUNCH();
-    MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
-    MPI_Sendrecv(y_send_minus_.data(), static_cast<int>(face), MPI_DOUBLE,
-                 topo_.y().minus_neighbor, 200, y_recv_plus_.data(),
-                 static_cast<int>(face), MPI_DOUBLE, topo_.y().plus_neighbor, 200,
-                 topo_.y().comm, MPI_STATUS_IGNORE);
-    MPI_Sendrecv(y_send_plus_.data(), static_cast<int>(face), MPI_DOUBLE,
-                 topo_.y().plus_neighbor, 201, y_recv_minus_.data(),
-                 static_cast<int>(face), MPI_DOUBLE, topo_.y().minus_neighbor, 201,
-                 topo_.y().comm, MPI_STATUS_IGNORE);
-    if (topo_.y().plus_neighbor != MPI_PROC_NULL) {
-      unpack_y_kernel<<<blocks_for(face), kThreads>>>(f, y_recv_plus_.data(),
-                                                      ny - h, nx, ny, nz);
+    const bool self = topo_.y().plus_neighbor == topo_.y().rank
+                      && topo_.y().minus_neighbor == topo_.y().rank;
+    if (self) {
+      // 자기 자신 랩: 팩한 버퍼를 그대로 반대쪽 ghost 에 언팩 (x 와 같은 이유로 MPI 생략)
+      unpack_y_kernel<<<blocks_for(face), kThreads>>>(f, y_send_minus_.data(), ny - h, nx, ny, nz);
+      unpack_y_kernel<<<blocks_for(face), kThreads>>>(f, y_send_plus_.data(), 0, nx, ny, nz);
       MPMSTD_CUDA_CHECK_LAUNCH();
-    }
-    if (topo_.y().minus_neighbor != MPI_PROC_NULL) {
-      unpack_y_kernel<<<blocks_for(face), kThreads>>>(f, y_recv_minus_.data(), 0, nx,
-                                                      ny, nz);
-      MPMSTD_CUDA_CHECK_LAUNCH();
+    } else {
+      MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
+      MPI_Sendrecv(y_send_minus_.data(), static_cast<int>(face), MPI_DOUBLE,
+                   topo_.y().minus_neighbor, 200, y_recv_plus_.data(),
+                   static_cast<int>(face), MPI_DOUBLE, topo_.y().plus_neighbor, 200,
+                   topo_.y().comm, MPI_STATUS_IGNORE);
+      MPI_Sendrecv(y_send_plus_.data(), static_cast<int>(face), MPI_DOUBLE,
+                   topo_.y().plus_neighbor, 201, y_recv_minus_.data(),
+                   static_cast<int>(face), MPI_DOUBLE, topo_.y().minus_neighbor, 201,
+                   topo_.y().comm, MPI_STATUS_IGNORE);
+      if (topo_.y().plus_neighbor != MPI_PROC_NULL) {
+        unpack_y_kernel<<<blocks_for(face), kThreads>>>(f, y_recv_plus_.data(),
+                                                        ny - h, nx, ny, nz);
+        MPMSTD_CUDA_CHECK_LAUNCH();
+      }
+      if (topo_.y().minus_neighbor != MPI_PROC_NULL) {
+        unpack_y_kernel<<<blocks_for(face), kThreads>>>(f, y_recv_minus_.data(), 0, nx,
+                                                        ny, nz);
+        MPMSTD_CUDA_CHECK_LAUNCH();
+      }
     }
   }
 

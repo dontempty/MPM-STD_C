@@ -1,0 +1,105 @@
+==========================================
+SLURM_JOB_ID = 935683
+SLURM_NODELIST = gpu04
+==========================================
+# host=gpu04  (self-neighbor fast path)
+-- strong 256^3 np 1
+bench_halo 256x256x256 np 1 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.067 ms (min 0.067), barrier-synced 0.067 ms (min 0.067)
+-- strong 256^3 np 2
+bench_halo 256x256x256 np 2 (nz_local 128): x-plane 0.27 MB, y-plane 0.27 MB, z-face 0.53 MB | exchange: free 0.176 ms (min 0.176), barrier-synced 0.174 ms (min 0.174)
+-- strong 256^3 np 4
+bench_halo 256x256x256 np 4 (nz_local 64): x-plane 0.14 MB, y-plane 0.14 MB, z-face 0.53 MB | exchange: free 0.203 ms (min 0.203), barrier-synced 0.200 ms (min 0.185)
+-- strong 256^3 np 8
+bench_halo 256x256x256 np 8 (nz_local 32): x-plane 0.07 MB, y-plane 0.07 MB, z-face 0.53 MB | exchange: free 0.258 ms (min 0.257), barrier-synced 0.255 ms (min 0.128)
+-- weak 256^3/rank np 1
+bench_halo 256x256x256 np 1 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.067 ms (min 0.067), barrier-synced 0.067 ms (min 0.067)
+-- weak 256^3/rank np 2
+bench_halo 256x256x512 np 2 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.182 ms (min 0.182), barrier-synced 0.180 ms (min 0.180)
+-- weak 256^3/rank np 4
+bench_halo 256x256x1024 np 4 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.237 ms (min 0.237), barrier-synced 0.228 ms (min 0.214)
+-- weak 256^3/rank np 8
+bench_halo 256x256x2048 np 8 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.299 ms (min 0.298), barrier-synced 0.296 ms (min 0.169)
+# bench done; now rbc_nob gate + np 4/8 measurement (tag v100h)
+=== SMOKE 18:29:21 ===
+# FINAL: theta_c = 0.01503 (x DeltaT = 0.601K), Nu = 46.0360  (t=20.0, sum_dt=10.1)
+=== scal_strong_256_np1 rep 1 np 1 tag v100h seg auto 18:29:24 ===
+    200     0.362   0.00181   1.78e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.119
+# phase timing: 150 steps, 1 ranks (ms/step; share = max/step_total)
+# step_total                  118.587    118.587    118.587   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np1 rep 2 np 1 tag v100h seg auto 18:29:49 ===
+    200     0.362   0.00181   1.89e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.119
+# phase timing: 150 steps, 1 ranks (ms/step; share = max/step_total)
+# step_total                  118.562    118.562    118.562   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np2 rep 1 np 2 tag v100h seg auto 18:30:14 ===
+    200     0.362   0.00181   2.05e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.062
+# phase timing: 150 steps, 2 ranks (ms/step; share = max/step_total)
+# step_total                   62.078     62.078     62.078   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np2 rep 2 np 2 tag v100h seg auto 18:30:29 ===
+    200     0.362   0.00181   2.01e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.062
+# phase timing: 150 steps, 2 ranks (ms/step; share = max/step_total)
+# step_total                   62.068     62.068     62.068   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np4 rep 1 np 4 tag v100h seg auto 18:30:44 ===
+    200     0.362   0.00181   1.80e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.036
+# phase timing: 150 steps, 4 ranks (ms/step; share = max/step_total)
+# step_total                   36.089     36.090     36.090   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np4 rep 2 np 4 tag v100h seg auto 18:30:54 ===
+    200     0.362   0.00181   2.02e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.036
+# phase timing: 150 steps, 4 ranks (ms/step; share = max/step_total)
+# step_total                   36.108     36.108     36.109   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np8 rep 1 np 8 tag v100h seg auto 18:31:04 ===
+    200     0.362   0.00181   2.10e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.032
+# phase timing: 150 steps, 8 ranks (ms/step; share = max/step_total)
+# step_total                   31.494     31.495     31.495   100.00      0.00
+=== rc=0 ===
+=== scal_strong_256_np8 rep 2 np 8 tag v100h seg auto 18:31:14 ===
+    200     0.362   0.00181   1.92e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.032
+# phase timing: 150 steps, 8 ranks (ms/step; share = max/step_total)
+# step_total                   31.438     31.438     31.439   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np1 rep 1 np 1 tag v100h seg auto 18:31:24 ===
+    200     0.362   0.00181   1.96e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.119
+# phase timing: 150 steps, 1 ranks (ms/step; share = max/step_total)
+# step_total                  118.588    118.588    118.588   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np1 rep 2 np 1 tag v100h seg auto 18:31:49 ===
+    200     0.362   0.00181   1.89e-15   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.845e-04  7.727e-04    0.119
+# phase timing: 150 steps, 1 ranks (ms/step; share = max/step_total)
+# step_total                  118.535    118.535    118.535   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np2 rep 1 np 2 tag v100h seg auto 18:32:14 ===
+    200     0.360   0.00180   2.15e-15   0.00001   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  3.934e-04  9.073e-04    0.128
+# phase timing: 150 steps, 2 ranks (ms/step; share = max/step_total)
+# step_total                  127.609    127.609    127.609   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np2 rep 2 np 2 tag v100h seg auto 18:32:42 ===
+    200     0.360   0.00180   2.34e-15   0.00001   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  3.934e-04  9.073e-04    0.128
+# phase timing: 150 steps, 2 ranks (ms/step; share = max/step_total)
+# step_total                  127.554    127.554    127.554   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np4 rep 1 np 4 tag v100h seg auto 18:33:10 ===
+    200     0.359   0.00180   2.62e-15   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  3.038e-04  7.063e-04    0.129
+# phase timing: 150 steps, 4 ranks (ms/step; share = max/step_total)
+# step_total                  129.456    129.456    129.456   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np4 rep 2 np 4 tag v100h seg auto 18:33:39 ===
+    200     0.359   0.00180   2.65e-15   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  3.038e-04  7.063e-04    0.130
+# phase timing: 150 steps, 4 ranks (ms/step; share = max/step_total)
+# step_total                  129.480    129.480    129.480   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np8 rep 1 np 8 tag v100h seg auto 18:34:08 ===
+    200     0.359   0.00179   2.88e-15   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  1.735e-04  4.127e-04    0.137
+# phase timing: 150 steps, 8 ranks (ms/step; share = max/step_total)
+# step_total                  137.337    137.337    137.338   100.00      0.00
+=== rc=0 ===
+=== scal_weak_256_np8 rep 2 np 8 tag v100h seg auto 18:34:39 ===
+    200     0.359   0.00179   2.88e-15   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  1.735e-04  4.127e-04    0.137
+# phase timing: 150 steps, 8 ranks (ms/step; share = max/step_total)
+# step_total                  137.382    137.382    137.382   100.00      0.00
+=== rc=0 ===
+# done 2026-10-17T18:35:11+09:00

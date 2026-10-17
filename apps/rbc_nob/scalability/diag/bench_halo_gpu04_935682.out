@@ -1,0 +1,29 @@
+==========================================
+SLURM_JOB_ID = 935682
+SLURM_NODELIST = gpu04
+==========================================
+# host=gpu04
+-- strong 256^3 np 1
+bench_halo 256x256x256 np 1 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.107 ms (min 0.107), barrier-synced 0.108 ms (min 0.108)
+-- strong 256^3 np 2
+bench_halo 256x256x256 np 2 (nz_local 128): x-plane 0.27 MB, y-plane 0.27 MB, z-face 0.53 MB | exchange: free 0.206 ms (min 0.206), barrier-synced 0.202 ms (min 0.202)
+-- strong 256^3 np 4
+bench_halo 256x256x256 np 4 (nz_local 64): x-plane 0.14 MB, y-plane 0.14 MB, z-face 0.53 MB | exchange: free 0.448 ms (min 0.448), barrier-synced 0.444 ms (min 0.429)
+-- strong 256^3 np 8
+bench_halo 256x256x256 np 8 (nz_local 32): x-plane 0.07 MB, y-plane 0.07 MB, z-face 0.53 MB | exchange: free 1.011 ms (min 1.009), barrier-synced 1.014 ms (min 0.873)
+-- weak 256^3/rank np 1
+bench_halo 256x256x256 np 1 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.107 ms (min 0.107), barrier-synced 0.108 ms (min 0.108)
+-- weak 256^3/rank np 2
+bench_halo 256x256x512 np 2 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 0.212 ms (min 0.212), barrier-synced 0.209 ms (min 0.209)
+-- weak 256^3/rank np 4
+bench_halo 256x256x1024 np 4 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 1.271 ms (min 1.270), barrier-synced 1.258 ms (min 1.243)
+-- weak 256^3/rank np 8
+bench_halo 256x256x2048 np 8 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 6.009 ms (min 6.002), barrier-synced 5.997 ms (min 5.739)
+-- weak np 8, NVLink order
+bench_halo 256x256x2048 np 8 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 6.061 ms (min 6.051), barrier-synced 6.049 ms (min 5.763)
+-- weak np 8, bind-to none / map-by numa
+bench_halo 256x256x2048 np 8 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 5.946 ms (min 5.943), barrier-synced 5.909 ms (min 5.782)
+bench_halo 256x256x2048 np 8 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 5.990 ms (min 5.986), barrier-synced 5.974 ms (min 5.696)
+-- weak np 8, UCX_TLS=cuda_ipc,cuda_copy,self,sm
+bench_halo 256x256x2048 np 8 (nz_local 256): x-plane 0.53 MB, y-plane 0.53 MB, z-face 0.53 MB | exchange: free 6.010 ms (min 6.004), barrier-synced 5.994 ms (min 5.698)
+# done

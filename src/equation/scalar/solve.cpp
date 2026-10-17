@@ -1,6 +1,12 @@
 #include <cstddef>
 #include <stdexcept>
 
+// 구간 타이머 (Solver::timer 가 있을 때만; 없으면 no-op) — momentum/solve.cpp 와 같은 틀
+#define SCALAR_TIMER_BEGIN(name) \
+  do { if (solver.timer) solver.timer->begin(name); } while (0)
+#define SCALAR_TIMER_END(name) \
+  do { if (solver.timer) solver.timer->end(name); } while (0)
+
 #include "common/field_checks.hpp"
 #include "equation/scalar/solve.hpp"
 #include "equation/scalar/system/system.hpp"
@@ -73,25 +79,45 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   const stencil::WallMask wall = make_wall_mask(solver, sub);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
+  SCALAR_TIMER_BEGIN("scalar.build_x");
   build_x_system_variable_property(A, B, C, D, T.data(), U.data(), V.data(), W.data(),
                           properties, grid, sub, wall, Ct, dt);
+  SCALAR_TIMER_END("scalar.build_x");
+  SCALAR_TIMER_BEGIN("scalar.tdma_x");
   solve_sweep(solver.plan_x, A, B, C, D, sub, 0, i2 * i3, i1);
+  SCALAR_TIMER_END("scalar.tdma_x");
+  SCALAR_TIMER_BEGIN("scalar.scatter_x");
   equation::scatter_x(solver.stage_first.data(), D, sub);
+  SCALAR_TIMER_END("scalar.scatter_x");
 
   // y 스윕: D = x 증분 통과
+  SCALAR_TIMER_BEGIN("scalar.build_y");
   build_y_system_variable_property(A, B, C, D, solver.stage_first.data(), T.data(), U.data(),
                           V.data(), W.data(), properties, grid, sub, wall, Ct, dt);
+  SCALAR_TIMER_END("scalar.build_y");
+  SCALAR_TIMER_BEGIN("scalar.tdma_y");
   solve_sweep(solver.plan_y, A, B, C, D, sub, 1, i1 * i3, i2);
+  SCALAR_TIMER_END("scalar.tdma_y");
+  SCALAR_TIMER_BEGIN("scalar.scatter_y");
   equation::scatter_y(solver.stage_second.data(), D, sub);
+  SCALAR_TIMER_END("scalar.scatter_y");
 
   // z 스윕: 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
+  SCALAR_TIMER_BEGIN("scalar.build_z");
   build_z_system_variable_property(A, B, C, D, solver.stage_second.data(), T.data(), U.data(),
                           V.data(), W.data(), properties, grid, sub, wall, Ct, dt);
+  SCALAR_TIMER_END("scalar.build_z");
+  SCALAR_TIMER_BEGIN("scalar.tdma_z");
   solve_sweep(solver.plan_z, A, B, C, D, sub, 2, i1 * i2, i3);
+  SCALAR_TIMER_END("scalar.tdma_z");
+  SCALAR_TIMER_BEGIN("scalar.scatter_z");
   equation::scatter_z(solver.stage_first.data(), D, sub);
+  SCALAR_TIMER_END("scalar.scatter_z");
 
   // θⁿ⁺¹ = θⁿ + δθ (내부만; ghost 재동기화는 호출자 몫)
+  SCALAR_TIMER_BEGIN("scalar.add_increment");
   equation::add_increment(T, solver.stage_first.data(), sub);
+  SCALAR_TIMER_END("scalar.add_increment");
 }
 
 // ── 상수물성 판 (plan §18-1) — 위와 동일 구조, 물성 배열 없음 ──────────────

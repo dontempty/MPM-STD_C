@@ -1,7 +1,6 @@
 #include "pascal_tdma_cuda.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <cstring>
 #include <numeric>
 #include <sstream>

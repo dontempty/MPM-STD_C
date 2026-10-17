@@ -34,7 +34,8 @@ mkdir -p scalability/log scalability/out
   echo "# git=$(git -C $ROOT rev-parse --short HEAD 2>/dev/null)"
   module list 2>&1
   nvidia-smi --query-gpu=name,memory.total,clocks.max.sm --format=csv
-  echo "# PASCAL_TDMA_MPI_MODE=${PASCAL_TDMA_MPI_MODE:-device}"
+  echo "# PASCAL_TDMA_MPI_MODE=${PASCAL_TDMA_MPI_MODE:-device} PASCAL_TDMA_SEGMENTS=${PASCAL_TDMA_SEGMENTS:-auto} SEG_LIST=${SEG_LIST:-} GPU_ORDER=${GPU_ORDER:-} (Slurm CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-})"
+  nvidia-smi topo -m 2>/dev/null | head -12
   echo "# bin=$BIN ($(stat -c %y "$BIN"))"
 } > "scalability/out/environment_${TAG}_${J}.txt"
 
@@ -43,20 +44,28 @@ echo "=== SMOKE $(date '+%T') ==="
 mpirun -np 2 --oversubscribe "$BIN" input_rbc_nob_smoke.ini > "scalability/log/smoke_${J}.log" 2>&1 || { echo "SMOKE FAILED"; tail -5 "scalability/log/smoke_${J}.log"; exit 1; }
 grep "FINAL" "scalability/log/smoke_${J}.log"
 
-# ② 조합 루프: 반복마다 로그 하나, CSV 는 out/<name>/phase_timing.csv → out/<name>/phase_timing_<job>_r<rep>.csv 로 보존.
-for case in $CASES; do
-  for np in $NP_LIST; do
-    name="scal_${case}_np${np}"
-    deck="scalability/input_${name}.ini"
-    [[ -f "$deck" ]] || { echo "no deck $deck"; continue; }
-    for rep in $(seq 1 $REPEAT); do
-      log="scalability/log/${name}_${J}_r${rep}.log"
-      echo "=== $name rep $rep np $np $(date '+%T') ==="
-      ( cd scalability && mpirun -np $np "$BIN" "input_${name}.ini" > "../$log" 2>&1 )
-      rc=$?
-      [[ -f "scalability/out/${name}/phase_timing.csv" ]] && mv "scalability/out/${name}/phase_timing.csv" "scalability/out/${name}/phase_timing_${TAG}_${J}_r${rep}.csv"
-      grep -E "^ +200 |error \(rank|blew up|step_total" "$log" | head -4
-      echo "=== rc=$rc ==="
+# ② 조합 루프: 반복마다 로그 하나, CSV 는 out/<name>/phase_timing.csv → out/<name>/phase_timing_<tag>_<job>_r<rep>.csv 로 보존.
+#    SEG_LIST 가 있으면 PASCAL_TDMA_SEGMENTS(조각 수) 를 바꿔 가며 반복하고 꼬리표에 s<p> 를 붙인다 (예: h200s8).
+# 랭크→GPU 순서 실험: Slurm 이 잡 안에서 CUDA_VISIBLE_DEVICES 를 다시 쓰므로(--export 로 준 값은 덮인다) 여기서 GPU_ORDER 로 재지정한다.
+if [[ -n "${GPU_ORDER:-}" ]]; then export CUDA_VISIBLE_DEVICES="$GPU_ORDER"; echo "# GPU order override: CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"; fi
+BASE_TAG=$TAG
+for seg in ${SEG_LIST:-_}; do
+  if [[ "$seg" != "_" ]]; then export PASCAL_TDMA_SEGMENTS=$seg; TAG="${BASE_TAG}s${seg}"; fi
+  SEGX="${PASCAL_TDMA_SEGMENTS:+-x PASCAL_TDMA_SEGMENTS} ${GPU_ORDER:+-x CUDA_VISIBLE_DEVICES}"   # 랭크→GPU 순서 실험용 (예: 0,1,2,3,7,6,5,4 = NVLink 링)
+  for case in $CASES; do
+    for np in $NP_LIST; do
+      name="scal_${case}_np${np}"
+      deck="scalability/input_${name}.ini"
+      [[ -f "$deck" ]] || { echo "no deck $deck"; continue; }
+      for rep in $(seq 1 $REPEAT); do
+        log="scalability/log/${name}_${TAG}_${J}_r${rep}.log"
+        echo "=== $name rep $rep np $np tag $TAG seg ${PASCAL_TDMA_SEGMENTS:-auto} $(date '+%T') ==="
+        ( cd scalability && mpirun $SEGX -np $np "$BIN" "input_${name}.ini" > "../$log" 2>&1 )
+        rc=$?
+        [[ -f "scalability/out/${name}/phase_timing.csv" ]] && mv "scalability/out/${name}/phase_timing.csv" "scalability/out/${name}/phase_timing_${TAG}_${J}_r${rep}.csv"
+        grep -E "^ +200 |error \(rank|blew up|step_total" "$log" | head -4
+        echo "=== rc=$rc ==="
+      done
     done
   done
 done

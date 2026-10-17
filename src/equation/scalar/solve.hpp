@@ -29,6 +29,7 @@
 #include "parallel/subdomain/subdomain.hpp"
 #include "boundary/boundary_condition.hpp"
 #include "physics/properties.hpp"
+#include "common/phase_timer.hpp"
 
 namespace mpmstd::equation::scalar {
 
@@ -47,6 +48,10 @@ struct Solver {
   // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
   field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
   field::Buffer stage_first, stage_second;       // 전체 모양 스크래치 (δ 핑퐁)
+
+  // 확장성 측정용 (docs/Scalability/plan.md §1.1): nullptr 이 아니면 solve_variable_property 가
+  // 자기 안의 호출(조립·TDMA·scatter ×3축, 증분 적용)을 "scalar.<호출>" 구간으로 잰다. 수치 불변.
+  mpmstd::common::PhaseTimer* timer = nullptr;
 };
 
 // BoundaryCondition 테이블의 필드 which(보통 T)에 맞춰 wall_closure 를 채운다

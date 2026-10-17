@@ -254,3 +254,17 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
   런 산출물(`scalability/out`, `scalability/log`)과 그림은 커밋하지 않는다.
 - **2026-10-17 (밤)**: 최적화 2회차 = 순환 Thomas 커널 레지스터 두 행 버퍼링(논문 2.1 방식). 게이트 통과. 누적 H200 256³ −10 %, 512³ −14 %, V100 −29 %.
   `momentum_scalability.md` §5.
+- **2026-10-17 (밤 2)**: 최적화 3회차 = 라인이 적을 때 조각 분할 순환 Thomas(블록 안 Thomas–축소계, p 자동). H200 256³ np 4 누적 −30 %, 효율 61 → 75 %.
+  V100 의 np ≥ 2 step 비교는 노드 배정이 매번 달라 MPI 항이 흔들려 무효 (계산 항은 개선). `momentum_scalability.md` §6.
+- **2026-10-17 (밤 3)**: 3회차(조각 분할)는 본런 격자에서 2~3 % 라 **본 코드에서 제외**, `apps/rbc_nob/scalability/backup/` 에 백업·기록만. 본 코드는 2회차까지
+  (build_kernel_z + 순환 Thomas 레지스터화 = 논문 커널과 통일). 다음 = scalar z 조립·scatter_z 전치, 커플링 커널.
+- **2026-10-17 (밤 4)**: scalar_solve 를 호출 단위로 분해(`scalar::Solver::timer`) → build_z 가 같은 전치 문제(V100 에서 scalar 의 55 %). 같은 타일 전치 커널 적용, 게이트 통과.
+  V100 256³ 스텝 −15 %, H200 512³ −7 %. 누적(원본 대비) H200 512³ −20 %, V100 256³ −40 %. gpu04 8장이 비어 np 8 측정: 256³ 효율 41 %(통신 — 소켓 간 링크 3↔4),
+  512³ 76 %. 문서 `scalar_scalability.md` (문서 4개째 — scalar 노트북과 짝).
+- **2026-10-17 (밤 5)**: 노트북은 `apps/rbc_nob/plot/{main,momentum,scalar}_scalability.ipynb` 세 개만 (momentum_opt 삭제, PNG 저장 끔). 세 노트북 모두 같은 틀
+  (이벤트별 막대 → 이벤트별 scaling → 효율), 제목·범례는 환경 파일에서 읽은 실제 기종(모델·장 수·노드·꼬리표) + 문제 크기. 기존 결과만 사용.
+- **2026-10-17 (밤 6)**: V100 gpu04 np 8 붕괴 원인 확정 — 하드웨어·UCX 아님. 주기 축 npx=npy=1 에서 이웃 = 자기 자신이라 교환마다 x·y 면 4장을 자기에게 MPI_Sendrecv
+  (UCX 호스트 경유, np² 로 악화). `subdomain_halo.cu` 에서 자기 이웃은 디바이스 복사로 → weak np 8 효율 57 → 86 %, strong np 8 36 → 47 %. 진단 도구 `apps/bench_halo`,
+  `apps/rbc_nob/scalability/diag/`. H200 재측정(h200h) 진행. `scalar_scalability.md` §4.
+- **2026-10-17 (밤 7)**: 세 노트북을 "최적화 전 / 후 / 전·후 비교(이벤트별 감소량)" 양식으로 통일. 최종 바이너리로 H200(gpu55 4장) 재측정(`h200h`), V100 gpu04 8장
+  256³ np 1–8·512³ np 2–8(`v100h`), H200 weak 512³/랭크 np 1–4 와 8장 np 8 잡 진행/대기. 전 → 후: H200 −15~21 %, V100 −32~41 % (`main_scalability.md` §2c).

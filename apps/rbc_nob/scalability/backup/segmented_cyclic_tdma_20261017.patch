@@ -1,0 +1,209 @@
+--- ../../../../src/linear_solver/tdma/PaScaL_TDMA/pascal_tdma_cuda.cu	2026-10-17 17:33:16.000000000 +0900
++++ pascal_tdma_cuda_segmented_20261017.cu	2026-10-17 17:33:16.000000000 +0900
+@@ -1,6 +1,7 @@
+ #include "pascal_tdma_cuda.hpp"
+ 
+ #include <algorithm>
++#include <cstdlib>
+ #include <cstring>
+ #include <numeric>
+ #include <sstream>
+@@ -285,6 +286,142 @@
+         d[d_index2(i, j, nsys)] -= factor * z[d_index2(i, j, nsys)];
+ }
+ 
++// ── 조각(segment) 분할 순환 Thomas — "Thomas–PCR" 하이브리드의 단순안 (2026-10-17, docs/Scalability/momentum_scalability.md).
++//    라인 하나를 p 조각으로 잘라 스레드 p 개가 나눠 푼다. PaScaL 이 MPI 랭크 사이에서 하는 3단계를 한 블록 안에서:
++//      A. 조각마다 수정 Thomas (tdma_modified_kernel 과 같은 식) → 내부 행은 â·x_first + x + ĉ·x_last = d̂ 꼴, 경계 행 2개는 공유 메모리로
++//      B. 라인당 2p 행 축소계(순환 삼중대각, 대각 1) 를 ty = 0 스레드가 공유 메모리에서 순환 Thomas 로 풀기
++//      C. 조각마다 복원 (pascal_update_kernel 과 같은 식)
++//    주기 경계는 축소계의 순환으로 자연히 처리되어 Sherman–Morrison 보조 RHS z 가 없다 (원소당 전역 접근 11회).
++//    블록 = (32 라인 × p 조각) 스레드; 워프(같은 ty, tx 0..31) 가 이웃 라인을 맡아 전역 접근은 병합.
++//    산술 순서가 단일 스레드 순환 Thomas 와 달라 결과는 반올림 수준에서 다르다 (게이트: 상대 1e-12).
++constexpr int kSegLines = 32;   // 블록당 라인 수 (= 워프 폭)
++
++__device__ inline void modified_thomas_segment(double* a, const double* b, double* c, double* d,
++                                               const int i, const int nsys, const int row0,
++                                               const int m, double& A_first, double& C_first,
++                                               double& D_first, double& A_last, double& C_last,
++                                               double& D_last) {
++    // tdma_modified_kernel 의 행 0..m-1 을 row0 오프셋으로 (m >= 3)
++    const auto at = [&](const int j) { return d_index2(i, row0 + j, nsys); };
++    double a0 = a[at(0)], b0 = b[at(0)], c0 = c[at(0)], d0 = d[at(0)];
++    a0 /= b0; c0 /= b0; d0 /= b0;
++    a[at(0)] = a0; c[at(0)] = c0; d[at(0)] = d0;
++
++    double a1 = a[at(1)], b1 = b[at(1)], c1 = c[at(1)], d1 = d[at(1)];
++    a1 /= b1; c1 /= b1; d1 /= b1;
++    a[at(1)] = a1; c[at(1)] = c1; d[at(1)] = d1;
++
++    for (int j = 2; j < m; ++j) {
++        a0 = a1; c0 = c1; d0 = d1;
++        a1 = a[at(j)]; b1 = b[at(j)]; c1 = c[at(j)]; d1 = d[at(j)];
++        const double r = 1.0 / (b1 - a1 * c0);
++        d1 = r * (d1 - a1 * d0);
++        c1 = r * c1;
++        a1 = -r * a1 * a0;
++        a[at(j)] = a1; c[at(j)] = c1; d[at(j)] = d1;
++    }
++    A_last = a1; C_last = c1; D_last = d1;          // 행 m-1: â·x_first + x_last + ĉ·x_{last+1} = d̂
++
++    a1 = a0; c1 = c0; d1 = d0;                      // 행 m-2
++    for (int j = m - 3; j >= 1; --j) {
++        a0 = a[at(j)]; d0 = d[at(j)]; c0 = c[at(j)];
++        a0 = a0 - c0 * a1;
++        d0 = d0 - c0 * d1;
++        c0 = -c0 * c1;
++        a1 = a0; d1 = d0; c1 = c0;
++        a[at(j)] = a0; d[at(j)] = d0; c[at(j)] = c0;
++    }
++    a0 = a[at(0)]; d0 = d[at(0)]; c0 = c[at(0)];
++    const double r = 1.0 / (1.0 - a1 * c0);
++    a0 = r * a0;
++    d0 = r * (d0 - c0 * d1);
++    c0 = -r * c0 * c1;
++    a[at(0)] = a0; d[at(0)] = d0; c[at(0)] = c0;
++    A_first = a0; C_first = c0; D_first = d0;       // 행 0: â·x_{first-1} + x_first + ĉ·x_last = d̂
++}
++
++// 공유 메모리 위 순환 Thomas (대각 1, n 행, 보폭 kSegLines) — tdma_cycl_many_kernel 과 같은 Sherman–Morrison
++__device__ inline void cyclic_thomas_unit_shared(double* A, double* C, double* D, double* Z,
++                                                 const int n, const int tx) {
++    const auto at = [&](const int k) { return k * kSegLines + tx; };
++    const int last = n - 1;
++    const double a_first = A[at(0)];
++    const double gamma = -1.0;                         // b = 1
++    const double wrap_c = C[at(last)];
++    const double b_first = 1.0 - gamma;
++    const double b_last = 1.0 - a_first * wrap_c / gamma;
++    double c_prev, d_prev, z_prev;
++    {
++        const double inv = 1.0 / b_first;
++        c_prev = C[at(0)] * inv; d_prev = D[at(0)] * inv; z_prev = gamma * inv;
++        C[at(0)] = c_prev; D[at(0)] = d_prev; Z[at(0)] = z_prev;
++    }
++    for (int j = 1; j < n; ++j) {
++        const double a1 = A[at(j)];
++        const double b1 = (j == last) ? b_last : 1.0;
++        const double z_in = (j == last) ? wrap_c : 0.0;
++        const double r = 1.0 / (b1 - a1 * c_prev);
++        const double d1 = r * (D[at(j)] - a1 * d_prev);
++        const double z1 = r * (z_in - a1 * z_prev);
++        const double c1 = C[at(j)] * r;
++        D[at(j)] = d1; Z[at(j)] = z1; C[at(j)] = c1;
++        c_prev = c1; d_prev = d1; z_prev = z1;
++    }
++    const double d_last = d_prev, z_last = z_prev;
++    double d_next = d_last, z_next = z_last;
++    for (int j = n - 2; j >= 0; --j) {
++        const double cj = C[at(j)];
++        const double dj = D[at(j)] - cj * d_next;
++        const double zj = Z[at(j)] - cj * z_next;
++        D[at(j)] = dj; Z[at(j)] = zj;
++        d_next = dj; z_next = zj;
++    }
++    const double v_last = a_first / gamma;
++    const double factor = (d_next + v_last * d_last) / (1.0 + z_next + v_last * z_last);
++    for (int j = 0; j < n; ++j) D[at(j)] -= factor * Z[at(j)];
++}
++
++// blockDim = (kSegLines, p), 동적 공유 메모리 4 × 2p × kSegLines doubles
++__global__ void tdma_cycl_segmented_kernel(double* a, double* b, double* c, double* d,
++                                           const int nsys, const int nrow, const int p) {
++    extern __shared__ double shared[];
++    const int tx = threadIdx.x, ty = threadIdx.y;
++    const int n_red = 2 * p;
++    double* sA = shared;
++    double* sC = sA + n_red * kSegLines;
++    double* sD = sC + n_red * kSegLines;
++    double* sZ = sD + n_red * kSegLines;
++    const int i = blockIdx.x * kSegLines + tx;
++    const bool live = i < nsys;
++    const int m = nrow / p;
++    const int row0 = ty * m;
++
++    // A. 조각 수정 Thomas → 경계 행 2개를 공유 메모리 (행 2ty = first, 2ty+1 = last)
++    if (live) {
++        double Af, Cf, Df, Al, Cl, Dl;
++        modified_thomas_segment(a, b, c, d, i, nsys, row0, m, Af, Cf, Df, Al, Cl, Dl);
++        sA[(2 * ty) * kSegLines + tx] = Af; sC[(2 * ty) * kSegLines + tx] = Cf; sD[(2 * ty) * kSegLines + tx] = Df;
++        sA[(2 * ty + 1) * kSegLines + tx] = Al; sC[(2 * ty + 1) * kSegLines + tx] = Cl; sD[(2 * ty + 1) * kSegLines + tx] = Dl;
++    }
++    __syncthreads();
++
++    // B. 라인당 2p 행 순환 축소계 — ty = 0 스레드
++    if (live && ty == 0) cyclic_thomas_unit_shared(sA, sC, sD, sZ, n_red, tx);
++    __syncthreads();
++
++    // C. 복원: x_first, x_last 를 알면 내부 행은 x = d̂ − â·x_first − ĉ·x_last
++    if (live) {
++        const double xs = sD[(2 * ty) * kSegLines + tx];
++        const double xe = sD[(2 * ty + 1) * kSegLines + tx];
++        d[d_index2(i, row0, nsys)] = xs;
++        d[d_index2(i, row0 + m - 1, nsys)] = xe;
++        for (int j = 1; j < m - 1; ++j) {
++            const int q = d_index2(i, row0 + j, nsys);
++            d[q] -= a[q] * xs + c[q] * xe;
++        }
++    }
++}
++
+ __global__ void pascal_update_kernel(double* a,
+                                      double* b,
+                                      double* c,
+@@ -773,6 +910,36 @@
+     }
+ }
+ 
++// 조각 수 p 선택 (nprocs == 1 순환 경로): 환경변수 PASCAL_TDMA_SEGMENTS = 0 자동 / 1 단일 스레드 커널 / 2·4·8·16 강제.
++// 자동 (2026-10-17 스윕 실측, docs/Scalability/momentum_scalability.md §7): 라인이 SM 당 ~640 개보다 적으면 지연 한계라
++// p = 16 이 가장 빠르고(H200 16k 라인: 2.76 → 0.77 ms, 65k: 4.01 → 2.93), 그보다 많으면 대역폭 한계라 단일 스레드
++// 커널(p = 1)이 가장 빠르다(H200 262k: 24.8 vs 25.8+, V100 65k: 15.3 vs 15.9). nrow 는 p 로 나뉘고 조각은 4행 이상.
++int choose_segments(const int nsys, const int nrow) {
++    static const int forced = [] {
++        const char* v = std::getenv("PASCAL_TDMA_SEGMENTS");
++        return v ? std::atoi(v) : 0;
++    }();
++    static const int sm_count = [] {
++        int dev = 0, n = 0;
++        cudaGetDevice(&dev);
++        cudaDeviceGetAttribute(&n, cudaDevAttrMultiProcessorCount, dev);
++        return n > 0 ? n : 80;
++    }();
++    constexpr int kLinesPerSmThreshold = 640;
++    int p = forced > 0 ? forced : (nsys < kLinesPerSmThreshold * sm_count ? 16 : 1);
++    while (p > 1 && (nrow % p != 0 || nrow / p < 4)) p /= 2;
++    return p;
++}
++
++void launch_tdma_cycl_segmented(double* a, double* b, double* c, double* d, const int nsys,
++                                const int nrow, const int p, cudaStream_t stream) {
++    const dim3 threads(kSegLines, p, 1);
++    const dim3 blocks(ceil_div(nsys, kSegLines), 1, 1);
++    const std::size_t shared_bytes = static_cast<std::size_t>(4) * 2 * p * kSegLines * sizeof(double);
++    tdma_cycl_segmented_kernel<<<blocks, threads, shared_bytes, stream>>>(a, b, c, d, nsys, nrow, p);
++    PASCAL_TDMA_CUDA_CHECK(cudaGetLastError());
++}
++
+ // 순환 스크래치 z 를 필요한 만큼 확보해 돌려준다 (매 스텝 재할당 금지).
+ double* cyclic_scratch(PascalTdmaPlan& plan, const std::size_t need) {
+     if (plan.cyclic_z_size < need) {
+@@ -819,10 +986,14 @@
+ 
+     if (plan.nprocs == 1) {
+         const double local_start = wall_time();
+-        if (cyclic)
+-            launch_tdma_cycl_many(plan, a_dev, b_dev, c_dev, d_dev, nsys, nrow,
+-                                  plan.blocks_tdma, plan.threads_tdma, stream);
+-        else
++        if (cyclic) {
++            const int p = choose_segments(nsys, nrow);
++            if (p > 1)
++                launch_tdma_cycl_segmented(a_dev, b_dev, c_dev, d_dev, nsys, nrow, p, stream);
++            else
++                launch_tdma_cycl_many(plan, a_dev, b_dev, c_dev, d_dev, nsys, nrow,
++                                      plan.blocks_tdma, plan.threads_tdma, stream);
++        } else
+             launch_tdma_many(a_dev, b_dev, c_dev, d_dev, nsys, nrow,
+                              plan.blocks_tdma, plan.threads_tdma, stream);
+         sync_for_timing(timings, stream);
