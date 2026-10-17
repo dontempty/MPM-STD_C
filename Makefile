@@ -81,6 +81,22 @@ $(BUILD)/bin/%: $$(addprefix $(BUILD)/obj/,$$(subst .cpp,.o,$$(sort $$(wildcard 
 # 앱만 유지). 소스 백업: ../MPM-STD_test_apps_backup_20261004.tar.gz — 풀면
 # `make test` 가 다시 전부 집는다 (test_* 는 와일드카드 수집; MPI 조합 실행은
 # 그때 test_mpi 타깃을 복원할 것). 하네스 apps/framework.hpp 는 남겨 둔다.
+# 시간 측정용 쌍둥이 main (apps/<앱>/main_scale.cpp, tools/scale/instrument_main.py 가 main.cpp 에서 생성):
+# make <앱>_scale → build/bin/<앱>_scale. main.cpp 대신 main_scale.cpp 를 -DMPMSTD_SCALE_MAIN 으로 컴파일해 링크한다
+# (일반 빌드에서 main_scale.cpp 는 빈 TU). 앱마다 명시 규칙을 만든다 (패턴 규칙 연쇄는 make 가 거부).
+SCALE_APPS := $(patsubst apps/%/main_scale.cpp,%,$(wildcard apps/*/main_scale.cpp))
+define SCALE_RULE
+$(BUILD)/obj/apps/$(1)/main_scale.scale.o: apps/$(1)/main_scale.cpp
+	@mkdir -p $$(@D)
+	$$(CXX) $$(CXXFLAGS) -DMPMSTD_SCALE_MAIN $$(INC) -c $$< -o $$@
+$(BUILD)/bin/$(1)_scale: $(BUILD)/obj/apps/$(1)/main_scale.scale.o $(addprefix $(BUILD)/obj/,$(subst .cpp,.o,$(filter-out apps/$(1)/main.cpp apps/$(1)/main_scale.cpp,$(sort $(wildcard apps/$(1)/*.cpp))))) $(LIB_OBJ)
+	@mkdir -p $$(@D)
+	$$(CXX) $$(CXXFLAGS) $$^ -o $$@ $$(EXT_LIBS)
+.PHONY: $(1)_scale
+$(1)_scale: $(BUILD)/bin/$(1)_scale
+endef
+$(foreach a,$(SCALE_APPS),$(eval $(call SCALE_RULE,$(a))))
+
 test: $(TEST_BIN)
 	@fail=0; \
 	for t in $(TEST_BIN); do ./$$t || fail=1; done; \

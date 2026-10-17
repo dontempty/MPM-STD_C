@@ -301,3 +301,8 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
   ① 상수물성 momentum·scalar 풀이의 밴드 핑퐁·scatter_z 융합(`solve_constant_property`), ② OB 형 전용 RHS 빌드 `build_constant_property_rhs`(부력 x 옵션)·
   `build_variable_viscosity_rhs`(LES) — 기존 fill·add·부력·∇P 와 같은 식·순서(비트 동일), ③ pressure x 벽(DCT) 경로의 거울 팩·산포 타일 전치.
   게이트: 각 앱 짧은 런(30~40 스텝)의 모니터를 변경 전 바이너리와 비교.
+- **2026-10-18 (4)**: 앱별 전/후 시간 측정 도구 `tools/scale/`(README). `instrument_main.py` 가 main.cpp 에서 `main_scale.cpp` 를 만들고(`make <app>_scale`),
+  원본 커밋 f330720 worktree 로 "전" 바이너리를 빌드(`build_gpu/bin/orig/`). dhvc·channel·boundary_layer·thermal_boundary_layer 각각 strong/weak 256³ np 1–8 을
+  V100 에서 재고 `apps/<app>/plot.ipynb` 로 시각화.
+  결과(V100, 원본 f330720 → 현재, 256³ np 1 / weak np 8): dhvc 127.7 → 66.1 ms (×1.93) / ×2.68, channel(LES) 146.1 → 67.8 (×2.15) / ×2.92,
+  boundary_layer 124.8 → 64.4 (×1.94) / ×2.06, thermal_boundary_layer(스칼라 3) 211.6 → 98.1 (×2.16) / ×2.13. strong np 8 은 통신(Alltoallv·halo) 한계로 ×1.3~1.8.
