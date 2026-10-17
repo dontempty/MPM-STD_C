@@ -61,6 +61,7 @@ std::vector<Binding> make_bindings(Settings& s) {
       {"output", "spectra_interval", &s.output.spectra_interval, false},
       {"output", "richardson_threshold", &s.output.richardson_threshold, false},
       {"output", "richardson_z_plus", &s.output.richardson_z_plus, false},
+      {"output", "phase_timing_start_step", &s.output.phase_timing_start_step, false},
   };
   mpmstd::boundary::append_bindings(b, s.boundary);  // [boundary] — 공용 조각
   return b;
@@ -114,6 +115,8 @@ void validate(const IniFile& ini, const Settings& s) {
   require(ini, s.output.spectra_interval >= 0, "'output.spectra_interval' must be >= 0");
   require(ini, s.output.richardson_threshold > 0, "'output.richardson_threshold' must be > 0");
   require(ini, s.output.richardson_z_plus > 0, "'output.richardson_z_plus' must be > 0");
+  require(ini, s.output.phase_timing_start_step >= 0,
+          "'output.phase_timing_start_step' must be >= 0");
 }
 
 }  // namespace
@@ -211,6 +214,7 @@ std::string format_settings(const Settings& s) {
   add("spectra_interval = " + std::to_string(s.output.spectra_interval));
   add("richardson_threshold = " + format_number(s.output.richardson_threshold));
   add("richardson_z_plus = " + format_number(s.output.richardson_z_plus));
+  add("phase_timing_start_step = " + std::to_string(s.output.phase_timing_start_step));
   return out;
 }
 

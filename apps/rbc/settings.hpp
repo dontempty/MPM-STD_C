@@ -78,6 +78,9 @@ struct Output {                      // [output]
   int spectra_interval = 0;          // u 스펙트럼 표본 간격 (스텝, 0 = 끔)
   double richardson_threshold = 0.1; // low-|Ri_f| 상한 (Ng 2017: 0.1)
   double richardson_z_plus = 15;     // |Ri_f| 정의의 z⁺ (Ng 2017: 15)
+  // ── 확장성 측정 (docs/Scalability/plan.md §2; common/phase_timer.hpp) ──
+  long phase_timing_start_step = 0;  // > 0 이면 그 스텝(워밍업 끝)부터 main 호출 단위 구간 시간을 누적해
+                                     //   런 끝에 표 + <stats_dir>/phase_timing.csv 로 낸다. 0 = 끔.
 };
 
 // [boundary] 는 공용 조각 boundary/boundary_settings.hpp (경계층 앱과 공유).

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "boundary/wall.hpp"
+#include "common/phase_timer.hpp"
 #include "equation/momentum/rhs/rhs.hpp"
 #include "equation/momentum/solve.hpp"
 #include "equation/pressure/rhs/rhs.hpp"
@@ -285,72 +286,128 @@ int main(int argc, char** argv) {
         }
       }
     };
+    // ── 확장성 측정: main 호출 단위 구간 타이머 (docs/Scalability/plan.md §1·§2).
+    //    phase_timing_start_step > 0 이면 그 스텝부터 누적, 런 끝에 표 + CSV. 구간 이름은 plan.md §1 표가 정본.
+    //    분산 TDMA 의 MPI 시간은 플랜의 comm_seconds 훅(측정 오버헤드 없음)에서 읽되 워밍업 분을 뺀다.
+    mpmstd::common::PhaseTimer timer;
+    const long timing_start = s.output.phase_timing_start_step;
+    if (timing_start > 0) momentum_solver.timer = &timer;  // momentum_solve 안의 호출별 구간 (plan.md §1.1)
+    double tdma_base_scalar = 0, tdma_base_momentum = 0, tdma_base_pressure = 0;
     double wall_prev = MPI_Wtime();
     while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {
+      if (timing_start > 0 && !timer.active() && step >= timing_start) {
+        timer.activate();
+        tdma_base_scalar = scalar_solver.plan_z.comm_seconds;
+        tdma_base_momentum = momentum_solver.plan_z.comm_seconds;
+        tdma_base_pressure = pressure_solver.plan_z.comm_seconds;
+      }
+      timer.begin("step_total");
+      timer.begin("dt_cfl");
       real_t dt = mpmstd::time_integration::compute_cfl_dt(
           U, V, W, grid, sub, s.time.max_cfl, s.time.dt_max);
+      timer.end("dt_cfl");
       // ── 가변 점성 교차응력(명시 커플링) 한계 — time/viscous_time_step.hpp ──
+      timer.begin("dt_viscous");
       if (s.time.viscous_coupling_number > 0)
         dt = std::min(dt, mpmstd::time_integration::compute_viscous_coupling_dt(
                               properties.viscosity, grid, sub, Cmu,
                               static_cast<real_t>(s.time.viscous_coupling_number)).dt);
+      timer.end("dt_viscous");
 
       // ── 물성 갱신 (Tⁿ — ghost 포함; 참조 루프 자리) ──
+      timer.begin("properties_1");
       physics::update_properties(properties, T, model, sub);
+      timer.end("properties_1");
 
       // ── 에너지 (uⁿ, 가변-κ̂ 융합 ADI) → Tⁿ⁺¹ ──
+      timer.begin("scalar_solve");
       scalar::solve_variable_property(scalar_solver, grid, sub, T, U, V, W, properties, Ct, dt);
+      timer.end("scalar_solve");
+      timer.begin("sync_T");
       sync_temperature(T, sub);
+      timer.end("sync_T");
 
       // ── 운동량 예측자 (가변 μ̂; 부력은 Tⁿ⁺¹, 예측자는 −(1/ρ̂)∇Pⁿ) ──
+      timer.begin("momentum_rhs");
+      timer.begin("momentum_rhs.fill");
       rhs_U.fill(0);
       rhs_V.fill(0);
       rhs_W.fill(0);
+      timer.end("momentum_rhs.fill");
+      timer.begin("momentum_rhs.advection_diffusion_u");
       momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W,
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
+      timer.end("momentum_rhs.advection_diffusion_u");
+      timer.begin("momentum_rhs.advection_diffusion_v");
       momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W,
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
+      timer.end("momentum_rhs.advection_diffusion_v");
+      timer.begin("momentum_rhs.advection_diffusion_w");
       momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W,
                                                    properties.viscosity,
                                                    properties.inverse_density, grid,
                                                    sub, Cmu, dt);
+      timer.end("momentum_rhs.advection_diffusion_w");
+      timer.begin("momentum_rhs.buoyancy");
       physics::add_buoyancy_z_variable_property(rhs_W, T, properties.inverse_density, grid,
                                        sub, density_quadratic_ratio,
                                        s.physics.delta_temperature, dt);
+      timer.end("momentum_rhs.buoyancy");
+      timer.begin("momentum_rhs.pressure_gradient");
       pressure::add_gradient_variable_property(rhs_U, rhs_V, rhs_W, P,
                                       properties.inverse_density, grid, sub, dt);
+      timer.end("momentum_rhs.pressure_gradient");
+      timer.end("momentum_rhs");
+      timer.begin("momentum_solve");
       momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,
                                W, properties.viscosity, properties.inverse_density,
                                Cmu, dt);
+      timer.end("momentum_solve");
+      timer.begin("sync_UVW_1");
       sync_velocity(U, V, W, sub);
+      timer.end("sync_UVW_1");
 
       // ── 증분 투영 + NOB ExtraTerm/보정 (상수계수 Poisson 은 그대로) ──
       // ── 투영 직전 물성 재갱신 (Tⁿ⁺¹) — 참조 GPU 경로 1:1 (MPM-STD_C
       //    apps/rbc/main.cpp:307 "Update CPU properties for pressure"). 2026-10-06 적용
       //    (A/B: div max 4.9e-6 → 2.5e-13, θ_c 차 0.02%; docs/Debug/20261005_rbc_nob_dt60_div_spike.md).
+      timer.begin("properties_2");
       physics::update_properties(properties, T, model, sub);
+      timer.end("properties_2");
+      timer.begin("pressure_rhs");
       rhs_dP.fill(0);
       pressure::add_divergence(rhs_dP, U, V, W, grid, sub, dt);
       pressure::add_extra_term_variable_property(rhs_dP, pressure_predictor,
                                         properties.inverse_density, grid, sub);
+      timer.end("pressure_rhs");
+      timer.begin("pressure_solve");
       pressure::solve(pressure_solver, grid, sub, rhs_dP, dP);
+      timer.end("pressure_solve");
+      timer.begin("pressure_correct");
       pressure::correct_velocity_variable_property(U, V, W, dP, pressure_predictor,
                                           properties.inverse_density, grid, sub, dt);
       pressure::accumulate(P, dP);  // 증분: Pⁿ⁺¹ = Pⁿ + δp (ghost 포함)
+      timer.end("pressure_correct");
+      timer.begin("sync_UVW_2");
       sync_velocity(U, V, W, sub);
+      timer.end("sync_UVW_2");
 
       // 다음 스텝용 p̂ 2차 외삽 + ghost 동기화 (참조 §820-821 + ghostcell_update)
+      timer.begin("predictor");
       pressure::advance_pressure_predictor(pressure_predictor, previous_predictor, dP);
       sub.exchange_halo(pressure_predictor.data());
       mpmstd::boundary::fill_z_wall_zero_gradient(pressure_predictor, sub);
+      timer.end("predictor");
 
       // ── T 물리 클립 — **내부만** (ghost 까지 클램프하면 mirror 벽이 깨진다) ──
+      timer.begin("clip");
       mpmstd::equation::clip_interior(T, sub, kWallTemperatureTop,
                                       kWallTemperatureBottom);
+      timer.end("clip");
 
       t += dt;
       ++step;
@@ -367,6 +424,7 @@ int main(int argc, char** argv) {
       }
 
       if (step % s.output.monitor_interval == 0 || step == 1) {
+        timer.begin("monitor");
         const real_t div = mpmstd::post::max_divergence(U, V, W, grid, sub);
         const auto t_bar = mpmstd::post::plane_average(T, sub);
         const double theta_c_now = statistics.center_temperature(t_bar);
@@ -391,9 +449,26 @@ int main(int argc, char** argv) {
           std::fflush(stdout);
         }
         wall_prev = wall_now;
+        timer.end("monitor");
         if (!(div == div) || div > 1e3)
           throw std::runtime_error("divergence blew up — aborting");
       }
+      timer.end("step_total");
+      timer.count_step();
+    }
+
+    if (timing_start > 0) {
+      timer.set_external("tdma_comm_scalar_z", scalar_solver.plan_z.comm_seconds - tdma_base_scalar);
+      timer.set_external("tdma_comm_momentum_z",
+                         momentum_solver.plan_z.comm_seconds - tdma_base_momentum);
+      timer.set_external("tdma_comm_pressure_z",
+                         pressure_solver.plan_z.comm_seconds - tdma_base_pressure);
+      timer.report(sub.topology().cart_comm(), s.output.stats_dir + "/phase_timing.csv",
+                   {{"nx", std::to_string(s.mesh.nx)}, {"ny", std::to_string(s.mesh.ny)},
+                    {"nz", std::to_string(s.mesh.nz)}, {"npz", std::to_string(s.process.npz)},
+                    {"ranks", std::to_string(mpi.world_size())},
+                    {"phase_timing_start_step", std::to_string(timing_start)},
+                    {"max_step", std::to_string(s.time.max_step)}});
     }
 
 write_statistics(step, t);

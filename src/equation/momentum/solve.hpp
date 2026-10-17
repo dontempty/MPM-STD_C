@@ -38,6 +38,7 @@
 #include "grid/grid.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
+#include "common/phase_timer.hpp"
 
 namespace mpmstd::equation::momentum {
 
@@ -61,6 +62,11 @@ struct Solver {
   //  +1 = 영구배 ghost 일치 (slip)
   // 법선 성분은 closure 와 무관하게 minus 벽면 행 항등(pin) + plus 쪽 C = 0.
   real_t wall_closure[3][2] = {{0, 0}, {0, 0}, {0, 0}};
+
+  // 확장성 측정용 (docs/Scalability/plan.md §1.1): nullptr 이 아니면 solve_variable_property 가
+  // 자기 안의 호출(빌드·TDMA·scatter ×3축 ×3성분, halo, 벽 ghost, 커플링, 증분 적용)을
+  // "momentum.<성분>.<호출>" 구간으로 잰다. 수치는 불변 — 경계마다 동기화만 추가된다.
+  mpmstd::common::PhaseTimer* timer = nullptr;
 };
 
 // BoundaryCondition 테이블에서 wall_closure 를 채운다: 비주기 축의 접선 Dirichlet →

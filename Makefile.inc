@@ -41,17 +41,24 @@ DEPFLAGS := -MMD -MP
 # * FFT = cuFFT (-DMPMSTD_GPU_FFT), 분기 스위치는 -DMPMSTD_GPU 하나 (D5)
 # * 산출물은 build_gpu/ 분리
 ifdef GPU
-# 모듈 시스템에 기대지 않고 절대 경로로 못박는다 (로그인/계산 노드 공통).
-NVHPC_DIR ?= /opt/nvidia/hpc-sdk/Linux_x86_64/23.7
-# MPI 는 hpcx-2.15 (Filtered_TDMA env_gpu_local.sh 로 검증된 조합 — 시스템
-# /lib 의 UCX 1.14 가 hpcx 를 가리는 함정이 있어, 실행 시 LD_LIBRARY_PATH 에
-# hpcx ucx/ompi 를 앞세워야 한다. 실행 스크립트 apps/channel/run_gpu02_*.sh 참조)
+# nvhpc 위치: 모듈이 NVHPC_ROOT 를 주면 그것 (이 클러스터 2026-10-17: `module load nvhpc/25.11_cuda12`
+# → /apps/compiler/nvidia_hpc_sdk/25.11/Linux_x86_64/25.11, CUDA 12.9, hpc-x 2.25.1), 없으면 구 클러스터
+# (gpu01/gpu02, 23.7) 의 절대 경로. 둘 다 명령행 NVHPC_DIR= 로 덮어쓸 수 있다.
+NVHPC_DIR ?= $(or $(NVHPC_ROOT),/opt/nvidia/hpc-sdk/Linux_x86_64/23.7)
+# CUDA 버전 = nvhpc 번들 (모듈의 KISTI_CUDA_VER=12.9.1 → 12.9; 구 클러스터 12.2).
+CUDA_VER ?= $(if $(KISTI_CUDA_VER),$(shell echo $(KISTI_CUDA_VER) | cut -d. -f1,2),12.2)
+# GPU 아키텍처: A100 cc80 (기본), H200 cc90, V100 cc70. 여러 개면 GPU_ARCH=cc80,cc90.
+GPU_ARCH ?= cc80
+# MPI: 모듈이 HPCX_MPI_DIR 를 주면 그것 (hpcx-2.25.1 은 ompi_hwloc/), 없으면 nvhpc 번들 hpcx-2.15 의 ompi/
+# (Filtered_TDMA env_gpu_local.sh 로 검증된 조합 — 시스템 /lib 의 UCX 1.14 가 hpcx 를 가리는 함정이 있어,
+# 실행 시 LD_LIBRARY_PATH 에 hpcx ucx/ompi 를 앞세워야 한다. 모듈 환경에서는 모듈이 한다.)
 HPCX_DIR ?= $(NVHPC_DIR)/comm_libs/12.2/hpcx/hpcx-2.15
+MPI_DIR  ?= $(or $(HPCX_MPI_DIR),$(HPCX_DIR)/ompi)
 export PATH := $(NVHPC_DIR)/compilers/bin:$(PATH)
-CXX := $(HPCX_DIR)/ompi/bin/mpic++
-MPIRUN := $(HPCX_DIR)/ompi/bin/mpirun
-CXXFLAGS := -std=c++17 -O2 -cuda -gpu=cc80,cuda12.2 -DMPMSTD_GPU -DMPMSTD_GPU_FFT
-EXT_INC := -I$(NVHPC_DIR)/math_libs/12.2/targets/x86_64-linux/include
+CXX := $(MPI_DIR)/bin/mpic++
+MPIRUN := $(MPI_DIR)/bin/mpirun
+CXXFLAGS := -std=c++17 -O2 -cuda -gpu=$(GPU_ARCH),cuda$(CUDA_VER) -DMPMSTD_GPU -DMPMSTD_GPU_FFT
+EXT_INC := -I$(NVHPC_DIR)/math_libs/$(CUDA_VER)/targets/x86_64-linux/include
 EXT_LIBS := -cudalib=cufft -lm
 # nvc++ 는 -MP 를 모르고, .d 의 타깃 이름을 출력 basename 으로 쓰므로 -MT 로 전체
 # 경로를 준다 (없으면 헤더 변경이 GPU 오브젝트를 재컴파일하지 못해 stale .o 로

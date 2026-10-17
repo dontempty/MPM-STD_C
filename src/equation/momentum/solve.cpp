@@ -2,6 +2,12 @@
 #include <stdexcept>
 #include <string>
 
+// 구간 타이머 (Solver::timer 가 있을 때만; 없으면 no-op) — plan.md §1.1 의 "한 단계 쪼개기"
+#define MOMENTUM_TIMER_BEGIN(name) \
+  do { if (solver.timer) solver.timer->begin(name); } while (0)
+#define MOMENTUM_TIMER_END(name) \
+  do { if (solver.timer) solver.timer->end(name); } while (0)
+
 #include "boundary/wall.hpp"
 #include "common/field_checks.hpp"
 #include "equation/momentum/solve.hpp"
@@ -79,26 +85,48 @@ void adi_sweeps_variable_property(Solver& solver, const grid::Grid& grid,
   real_t* B = solver.band_b.data();
   real_t* C = solver.band_c.data();
   real_t* D = solver.band_d.data();
+  // 구간 이름 "momentum.dU.build_x" 등 (own_axis 0/1/2 = dU/dV/dW)
+  const std::string prefix =
+      std::string("momentum.") + (own_axis == 0 ? "dU" : own_axis == 1 ? "dV" : "dW") + ".";
+  const auto name = [&](const char* call) { return prefix + call; };
 
   // x 스윕 (이송 = U)
+  MOMENTUM_TIMER_BEGIN(name("build_x").c_str());
   build_x_sweep_variable_property(A, B, C, D, rhs_data, q.data(), U.data(), viscosity.data(),
                          inverse_density.data(), grid, sub, own_axis, Cmu, dt);
+  MOMENTUM_TIMER_END(name("build_x").c_str());
+  MOMENTUM_TIMER_BEGIN(name("tdma_x").c_str());
   solve_sweep(solver, solver.plan_x, A, B, C, D, sub, 0, own_axis, i2 * i3, i1);
+  MOMENTUM_TIMER_END(name("tdma_x").c_str());
+  MOMENTUM_TIMER_BEGIN(name("scatter_x").c_str());
   equation::scatter_x(solver.stage_first.data(), D, sub);
+  MOMENTUM_TIMER_END(name("scatter_x").c_str());
 
   // y 스윕 (이송 = V)
+  MOMENTUM_TIMER_BEGIN(name("build_y").c_str());
   build_y_sweep_variable_property(A, B, C, D, solver.stage_first.data(), q.data(), V.data(),
                          viscosity.data(), inverse_density.data(), grid, sub,
                          own_axis, Cmu, dt);
+  MOMENTUM_TIMER_END(name("build_y").c_str());
+  MOMENTUM_TIMER_BEGIN(name("tdma_y").c_str());
   solve_sweep(solver, solver.plan_y, A, B, C, D, sub, 1, own_axis, i1 * i3, i2);
+  MOMENTUM_TIMER_END(name("tdma_y").c_str());
+  MOMENTUM_TIMER_BEGIN(name("scatter_y").c_str());
   equation::scatter_y(solver.stage_second.data(), D, sub);
+  MOMENTUM_TIMER_END(name("scatter_y").c_str());
 
   // z 스윕 (이송 = W) — 벽 닫기는 OB 와 동일 (system.hpp ⚠)
+  MOMENTUM_TIMER_BEGIN(name("build_z").c_str());
   build_z_sweep_variable_property(A, B, C, D, solver.stage_second.data(), q.data(), W.data(),
                          viscosity.data(), inverse_density.data(), grid, sub,
                          own_axis, Cmu, dt);
+  MOMENTUM_TIMER_END(name("build_z").c_str());
+  MOMENTUM_TIMER_BEGIN(name("tdma_z").c_str());
   solve_sweep(solver, solver.plan_z, A, B, C, D, sub, 2, own_axis, i1 * i2, i3);
+  MOMENTUM_TIMER_END(name("tdma_z").c_str());
+  MOMENTUM_TIMER_BEGIN(name("scatter_z").c_str());
   equation::scatter_z(delta_out, D, sub);
+  MOMENTUM_TIMER_END(name("scatter_z").c_str());
 }
 
 void adi_sweeps_constant(Solver& solver, const grid::Grid& grid,
@@ -227,41 +255,67 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   adi_sweeps_variable_property(solver, grid, sub, rhs_u.data(), U, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/0, Cmu, dt,
                       solver.delta_u.data());
+  MOMENTUM_TIMER_BEGIN("momentum.dU.halo");
   sub.exchange_halo(solver.delta_u.data());
+  MOMENTUM_TIMER_END("momentum.dU.halo");
+  MOMENTUM_TIMER_BEGIN("momentum.dU.wall_ghost");
   close_delta_wall_ghosts(solver, solver.delta_u, 0, sub);
+  MOMENTUM_TIMER_END("momentum.dU.wall_ghost");
 
   // ② dV (own y) — M21(δU) 주입 후 풀이
+  MOMENTUM_TIMER_BEGIN("momentum.dV.couple_rhs");
   couple_rhs_v_from_delta_u_variable_property(rhs_v, solver.delta_u, V, viscosity,
                                      inverse_density, grid, sub, Cmu, dt);
+  MOMENTUM_TIMER_END("momentum.dV.couple_rhs");
   adi_sweeps_variable_property(solver, grid, sub, rhs_v.data(), V, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/1, Cmu, dt,
                       solver.delta_v.data());
+  MOMENTUM_TIMER_BEGIN("momentum.dV.halo");
   sub.exchange_halo(solver.delta_v.data());
+  MOMENTUM_TIMER_END("momentum.dV.halo");
+  MOMENTUM_TIMER_BEGIN("momentum.dV.wall_ghost");
   close_delta_wall_ghosts(solver, solver.delta_v, 1, sub);
+  MOMENTUM_TIMER_END("momentum.dV.wall_ghost");
 
   // ③ dW (own z, 벽) — M31(δU) + M32(δV) 주입 후 풀이
+  MOMENTUM_TIMER_BEGIN("momentum.dW.couple_rhs");
   couple_rhs_w_from_delta_uv_variable_property(rhs_w, solver.delta_u, solver.delta_v, W,
                                       viscosity, inverse_density, grid, sub, Cmu, dt);
+  MOMENTUM_TIMER_END("momentum.dW.couple_rhs");
   adi_sweeps_variable_property(solver, grid, sub, rhs_w.data(), W, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/2, Cmu, dt,
                       solver.delta_w.data());
+  MOMENTUM_TIMER_BEGIN("momentum.dW.halo");
   sub.exchange_halo(solver.delta_w.data());
+  MOMENTUM_TIMER_END("momentum.dW.halo");
   // 하단 벽면(내부 행 k=h)의 가짜 증분 제거 포함 — 커플링이 소비하기 전
   // (벽 전단 1/dmz 증폭으로 U 스파이크가 되는 경로; 참조 Report/27)
+  MOMENTUM_TIMER_BEGIN("momentum.dW.wall_ghost");
   close_delta_wall_ghosts(solver, solver.delta_w, 2, sub);
+  MOMENTUM_TIMER_END("momentum.dW.wall_ghost");
 
   // ── 사후 상삼각: δV ← δW, 동기화, δU ← (보정된 δV) + δW. δW 는 무보정 ──
+  MOMENTUM_TIMER_BEGIN("momentum.post.block_couple_v");
   block_couple_delta_v_variable_property(solver.delta_v, solver.delta_w, V, viscosity,
                                 inverse_density, grid, sub, Cmu, dt);
+  MOMENTUM_TIMER_END("momentum.post.block_couple_v");
+  MOMENTUM_TIMER_BEGIN("momentum.post.halo_dV");
   sub.exchange_halo(solver.delta_v.data());
+  MOMENTUM_TIMER_END("momentum.post.halo_dV");
+  MOMENTUM_TIMER_BEGIN("momentum.post.wall_ghost_dV");
   close_delta_wall_ghosts(solver, solver.delta_v, 1, sub);
+  MOMENTUM_TIMER_END("momentum.post.wall_ghost_dV");
+  MOMENTUM_TIMER_BEGIN("momentum.post.block_couple_u");
   block_couple_delta_u_variable_property(solver.delta_u, solver.delta_v, solver.delta_w, U,
                                 viscosity, inverse_density, grid, sub, Cmu, dt);
+  MOMENTUM_TIMER_END("momentum.post.block_couple_u");
 
   // 속도 갱신 (내부만) — ghost 재동기화는 호출자의 다음 sync 몫
+  MOMENTUM_TIMER_BEGIN("momentum.post.add_increment");
   equation::add_increment(U, solver.delta_u.data(), sub);
   equation::add_increment(V, solver.delta_v.data(), sub);
   equation::add_increment(W, solver.delta_w.data(), sub);
+  MOMENTUM_TIMER_END("momentum.post.add_increment");
 }
 
 }  // namespace mpmstd::equation::momentum

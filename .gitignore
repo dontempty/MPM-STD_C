@@ -45,3 +45,7 @@ apps/boundary_layer/stats/
 apps/boundary_layer/logs/
 apps/boundary_layer/checkpoints/
 apps/boundary_layer/plot/*.png
+
+# rbc_nob 확장성 측정 산출물 (CSV·로그) — 결과는 커밋하지 않는다 (2026-10-17)
+apps/rbc_nob/scalability/out/
+apps/rbc_nob/scalability/log/
