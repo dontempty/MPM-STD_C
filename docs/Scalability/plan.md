@@ -252,3 +252,5 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
   측정 상한은 1노드 8 GPU (다노드 잡은 이 큐에서 배정되지 않는다 — 사용자 결정). A100 8 GPU 잡은 배정이 안 돼 포기 (10-17) — 측정은 H200·V100 4장과 A100 1장 결과로 닫는다.
   덱·잡·집계 스크립트 `apps/rbc_nob/scalability/`, 노트북 `apps/rbc_nob/plot/{main,momentum,momentum_opt}_scalability.ipynb`.
   런 산출물(`scalability/out`, `scalability/log`)과 그림은 커밋하지 않는다.
+- **2026-10-17 (밤)**: 최적화 2회차 = 순환 Thomas 커널 레지스터 두 행 버퍼링(논문 2.1 방식). 게이트 통과. 누적 H200 256³ −10 %, 512³ −14 %, V100 −29 %.
+  `momentum_scalability.md` §5.

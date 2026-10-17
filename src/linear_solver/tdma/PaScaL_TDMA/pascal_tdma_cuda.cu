@@ -196,6 +196,13 @@ __global__ void tdma_modified_kernel(double* a,
 // thomas_cyclic_many_scratch)과 같은 수식: 랩을 rank-1 수정으로 벗겨 두 RHS
 // (d 와 z)를 한 소거로 풀고 되섞는다. gamma/factor 는 스레드-로컬 스칼라,
 // 보조 RHS z 만 전역 스크래치 [nsys*nrow].
+//
+// 2026-10-17 레지스터 상주 두 행 버퍼링 (논문 PaScaL_TDMA 2.1 Algorithm 2 와 같은
+// 방식 — 비주기 tdma_many_kernel 과 동일한 틀). 이전 행의 c·d·z 를 레지스터에
+// 들고 가서 현재 행의 a·b·c·d 만 읽고, z 는 내부 행이 0 이라 읽지 않고 생성만
+// 한다(0 채우기 패스 삭제). 산술 식과 평가 순서는 이전 판과 같아 결과는 비트
+// 동일. 행당 전역 접근 ~22 → 15 (전진 4+3, 후진 3+2, 보정 2+1). b 는 쓰지 않는다
+// (밴드는 매 스윕 재조립; 수정된 b[0]·b[last] 는 레지스터에만).
 __global__ void tdma_cycl_many_kernel(double* a,
                                       double* b,
                                       double* c,
@@ -225,38 +232,56 @@ __global__ void tdma_cycl_many_kernel(double* a,
     }
 
     const int last = nrow - 1;
+    const double a_first = a[d_index2(i, 0, nsys)];   // 랩 계수 — 마지막 보정에 쓴다 (보존)
     const double gamma = -b[d_index2(i, 0, nsys)];
     const double wrap_c = c[d_index2(i, last, nsys)];
-    b[d_index2(i, 0, nsys)] -= gamma;
-    b[d_index2(i, last, nsys)] -= a[d_index2(i, 0, nsys)] * wrap_c / gamma;
-    for (int j = 0; j < nrow; ++j) z[d_index2(i, j, nsys)] = 0.0;
-    z[d_index2(i, 0, nsys)] = gamma;
-    z[d_index2(i, last, nsys)] = wrap_c;
+    const double b_first = b[d_index2(i, 0, nsys)] - gamma;
+    const double b_last = b[d_index2(i, last, nsys)] - a_first * wrap_c / gamma;
 
-    // 융합 두-RHS Thomas (a[row 0] = 랩 계수는 보존되어 마지막 보정에 쓴다)
+    // ── 전진 소거 (두 RHS d·z 융합) — 이전 행 c·d·z 는 레지스터 ──
+    double c_prev, d_prev, z_prev;
     {
-        const double inv = 1.0 / b[d_index2(i, 0, nsys)];
-        c[d_index2(i, 0, nsys)] *= inv;
-        d[d_index2(i, 0, nsys)] *= inv;
-        z[d_index2(i, 0, nsys)] *= inv;
+        const double inv = 1.0 / b_first;
+        c_prev = c[d_index2(i, 0, nsys)] * inv;
+        d_prev = d[d_index2(i, 0, nsys)] * inv;
+        z_prev = gamma * inv;
+        c[d_index2(i, 0, nsys)] = c_prev;
+        d[d_index2(i, 0, nsys)] = d_prev;
+        z[d_index2(i, 0, nsys)] = z_prev;
     }
     for (int j = 1; j < nrow; ++j) {
-        const double r = 1.0 / (b[d_index2(i, j, nsys)]
-                                - a[d_index2(i, j, nsys)] * c[d_index2(i, j - 1, nsys)]);
-        d[d_index2(i, j, nsys)] = r * (d[d_index2(i, j, nsys)]
-                                       - a[d_index2(i, j, nsys)] * d[d_index2(i, j - 1, nsys)]);
-        z[d_index2(i, j, nsys)] = r * (z[d_index2(i, j, nsys)]
-                                       - a[d_index2(i, j, nsys)] * z[d_index2(i, j - 1, nsys)]);
-        c[d_index2(i, j, nsys)] *= r;
+        const double a1 = a[d_index2(i, j, nsys)];
+        const double b1 = (j == last) ? b_last : b[d_index2(i, j, nsys)];
+        const double z_in = (j == last) ? wrap_c : 0.0;   // z 초기값: 내부 0, 마지막 행 wrap_c
+        const double r = 1.0 / (b1 - a1 * c_prev);
+        const double d1 = r * (d[d_index2(i, j, nsys)] - a1 * d_prev);
+        const double z1 = r * (z_in - a1 * z_prev);
+        const double c1 = c[d_index2(i, j, nsys)] * r;
+        d[d_index2(i, j, nsys)] = d1;
+        z[d_index2(i, j, nsys)] = z1;
+        c[d_index2(i, j, nsys)] = c1;
+        c_prev = c1;
+        d_prev = d1;
+        z_prev = z1;
     }
+    const double d_last = d_prev;   // 후진에서 마지막 행은 불변 — 보정 인자에 쓴다
+    const double z_last = z_prev;
+
+    // ── 후진 대입 — 다음 행 d·z 는 레지스터 ──
+    double d_next = d_last, z_next = z_last;
     for (int j = nrow - 2; j >= 0; --j) {
-        d[d_index2(i, j, nsys)] -= c[d_index2(i, j, nsys)] * d[d_index2(i, j + 1, nsys)];
-        z[d_index2(i, j, nsys)] -= c[d_index2(i, j, nsys)] * z[d_index2(i, j + 1, nsys)];
+        const double cj = c[d_index2(i, j, nsys)];
+        const double dj = d[d_index2(i, j, nsys)] - cj * d_next;
+        const double zj = z[d_index2(i, j, nsys)] - cj * z_next;
+        d[d_index2(i, j, nsys)] = dj;
+        z[d_index2(i, j, nsys)] = zj;
+        d_next = dj;
+        z_next = zj;
     }
 
-    const double v_last = a[d_index2(i, 0, nsys)] / gamma;  // v = (1, 0, …, a0/γ)
-    const double factor = (d[d_index2(i, 0, nsys)] + v_last * d[d_index2(i, last, nsys)])
-                          / (1.0 + z[d_index2(i, 0, nsys)] + v_last * z[d_index2(i, last, nsys)]);
+    // ── Sherman–Morrison 보정: x = d − factor·z,  v = (1, 0, …, a0/γ) ──
+    const double v_last = a_first / gamma;
+    const double factor = (d_next + v_last * d_last) / (1.0 + z_next + v_last * z_last);
     for (int j = 0; j < nrow; ++j)
         d[d_index2(i, j, nsys)] -= factor * z[d_index2(i, j, nsys)];
 }
