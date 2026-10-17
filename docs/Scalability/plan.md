@@ -268,3 +268,8 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
   `apps/rbc_nob/scalability/diag/`. H200 재측정(h200h) 진행. `scalar_scalability.md` §4.
 - **2026-10-17 (밤 7)**: 세 노트북을 "최적화 전 / 후 / 전·후 비교(이벤트별 감소량)" 양식으로 통일. 최종 바이너리로 H200(gpu55 4장) 재측정(`h200h`), V100 gpu04 8장
   256³ np 1–8·512³ np 2–8(`v100h`), H200 weak 512³/랭크 np 1–4 와 8장 np 8 잡 진행/대기. 전 → 후: H200 −15~21 %, V100 −32~41 % (`main_scalability.md` §2c).
+- **2026-10-17 (밤 8)**: momentum_rhs 최적화 — 격자 역수(나눗셈 58회/셀 제거), 전용 RHS 빌드 커널(8 → 3 패스), j coarsening(실험 후 끔). V100 momentum_rhs ×2.5, 스텝 −6~9 %.
+  기여 분리: 역수 50 %, 융합 20 %, coarsening 손해. H200 잡은 전부 취소(사용자: 배정 불가) — 이후 측정은 V100 gpu04 8장만. `main_scalability.md` §2d.
+- **2026-10-17 (밤 9)**: 격자 역수를 나머지 스텐실로 확장 — momentum 조립(`sweep_band`·`own_face_blend`)·커플링 4개·scalar `axis_band`. 게이트 허용오차 통과. V100 gpu04(`v100s`):
+  스텝 −5~−8 %(256³ np 1 108.3 → 100.1), 커플링 −30~−40 %, scalar build_x −29 %, 조립 −10~−16 %. 누적 원본 대비 256³ np 1 **198 → 100 ms**. `main_scalability.md` §2e.
+  다음 후보: pressure_solve 분해(np 1 의 13 %), np 8 의 PaScaL Alltoallv.

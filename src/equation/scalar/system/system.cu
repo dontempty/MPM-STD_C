@@ -21,9 +21,9 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const DKA conductivity_derivative,
                                const HA inverse_heat_capacity,
                                const DHA inverse_heat_capacity_derivative,
-                               const real_t* dx_x, const real_t* dmx_x,
-                               const real_t* dx_y, const real_t* dmx_y,
-                               const real_t* dx_z, const real_t* dmx_z, const int h,
+                               const real_t* dx_x, const real_t* idx_x, const real_t* idmx_x,
+                               const real_t* dx_y, const real_t* idx_y, const real_t* idmx_y,
+                               const real_t* dx_z, const real_t* idx_z, const real_t* idmx_z, const int h,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
                                const real_t dt, const stencil::WallMask wall) {
@@ -36,7 +36,7 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
   stencil::build_cell(0, ii + h, jj + h, kk + h, ny_total, nz_total, nullptr,
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
-                               dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, true,
+                               dx_x, idx_x, idmx_x, dx_y, idx_y, idmx_y, dx_z, idx_z, idmx_z, Ct, dt, true,
                                wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
                                wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
@@ -51,9 +51,9 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const DKA conductivity_derivative,
                                const HA inverse_heat_capacity,
                                const DHA inverse_heat_capacity_derivative,
-                               const real_t* dx_x, const real_t* dmx_x,
-                               const real_t* dx_y, const real_t* dmx_y,
-                               const real_t* dx_z, const real_t* dmx_z, const int h,
+                               const real_t* dx_x, const real_t* idx_x, const real_t* idmx_x,
+                               const real_t* dx_y, const real_t* idx_y, const real_t* idmx_y,
+                               const real_t* dx_z, const real_t* idx_z, const real_t* idmx_z, const int h,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
                                const real_t dt, const stencil::WallMask wall) {
@@ -66,7 +66,7 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
   stencil::build_cell(1, ii + h, jj + h, kk + h, ny_total, nz_total, source,
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
-                               dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, false,
+                               dx_x, idx_x, idmx_x, dx_y, idx_y, idmx_y, dx_z, idx_z, idmx_z, Ct, dt, false,
                                wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
                                wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
@@ -88,9 +88,9 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const DKA conductivity_derivative,
                                const HA inverse_heat_capacity,
                                const DHA inverse_heat_capacity_derivative,
-                               const real_t* dx_x, const real_t* dmx_x,
-                               const real_t* dx_y, const real_t* dmx_y,
-                               const real_t* dx_z, const real_t* dmx_z, const int h,
+                               const real_t* dx_x, const real_t* idx_x, const real_t* idmx_x,
+                               const real_t* dx_y, const real_t* idx_y, const real_t* idmx_y,
+                               const real_t* dx_z, const real_t* idx_z, const real_t* idmx_z, const int h,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
                                const real_t dt, const stencil::WallMask wall) {
@@ -108,7 +108,7 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
       stencil::build_cell(2, ii + h, jj + h, kk + h, ny_total, nz_total, source,
                                    T, U, V, W, conductivity, conductivity_derivative,
                                    inverse_heat_capacity, inverse_heat_capacity_derivative,
-                                   dx_x, dmx_x, dx_y, dmx_y, dx_z, dmx_z, Ct, dt, false,
+                                   dx_x, idx_x, idmx_x, dx_y, idx_y, idmx_y, dx_z, idx_z, idmx_z, Ct, dt, false,
                                    wall.lo[0] && ii == 0, wall.hi[0] && ii == i1 - 1,
                                    wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
                                    wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall,
@@ -158,9 +158,12 @@ LaunchShapeZ launch_shape_z(const parallel::Subdomain& sub) {
   properties.conductivity.data(), properties.conductivity_derivative.data(),          \
       properties.inverse_heat_capacity.data(),                                        \
       properties.inverse_heat_capacity_derivative.data(),                             \
-      grid.x.device_cell_width.data(), grid.x.device_center_distance.data(),          \
-      grid.y.device_cell_width.data(), grid.y.device_center_distance.data(),          \
-      grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
+      grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),       \
+      grid.x.device_inverse_center_distance.data(),                                   \
+      grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),       \
+      grid.y.device_inverse_center_distance.data(),                                   \
+      grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),       \
+      grid.z.device_inverse_center_distance.data(),                                   \
       halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
       sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
       wall
@@ -210,9 +213,12 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
 #define MPMSTD_SCALAR_CONSTANT_ARGS                                                   \
   equation::UnitArray{}, equation::ZeroArray{}, equation::UnitArray{},                \
       equation::ZeroArray{},                                                          \
-      grid.x.device_cell_width.data(), grid.x.device_center_distance.data(),          \
-      grid.y.device_cell_width.data(), grid.y.device_center_distance.data(),          \
-      grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),          \
+      grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),       \
+      grid.x.device_inverse_center_distance.data(),                                   \
+      grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),       \
+      grid.y.device_inverse_center_distance.data(),                                   \
+      grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),       \
+      grid.z.device_inverse_center_distance.data(),                                   \
       halo_width, sub.x().n_local, sub.y().n_local, sub.z().n_local,                   \
       sub.y().n_total, sub.z().n_total, Ct, dt,                                        \
       wall

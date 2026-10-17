@@ -61,11 +61,22 @@ Axis1D make_axis(const std::vector<real_t>& gf, AxisRange r, const std::string& 
   for (int i = 1; i < n_tot; ++i)
     axis.center_distance[i] = axis.center[i] - axis.center[i - 1];
 
+  axis.inverse_cell_width.resize(n_tot);
+  axis.inverse_center_distance.resize(n_tot);
+  for (int i = 0; i < n_tot; ++i) {
+    axis.inverse_cell_width[i] = real_t{1} / axis.cell_width[i];
+    axis.inverse_center_distance[i] = real_t{1} / axis.center_distance[i];
+  }
+
 #ifdef MPMSTD_GPU
   axis.device_cell_width.assign(axis.cell_width.size());
   axis.device_cell_width.upload(axis.cell_width);
   axis.device_center_distance.assign(axis.center_distance.size());
   axis.device_center_distance.upload(axis.center_distance);
+  axis.device_inverse_cell_width.assign(axis.inverse_cell_width.size());
+  axis.device_inverse_cell_width.upload(axis.inverse_cell_width);
+  axis.device_inverse_center_distance.assign(axis.inverse_center_distance.size());
+  axis.device_inverse_center_distance.upload(axis.inverse_center_distance);
 #endif
   return axis;
 }

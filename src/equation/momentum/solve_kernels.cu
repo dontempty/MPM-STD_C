@@ -40,62 +40,54 @@ template <class MuArray, class RhoArray>
 __global__ void couple_rhs_v_kernel(const Shape shape, real_t* rhs_v,
                                     const real_t* delta_u, const real_t* V,
                                     const MuArray mu, const RhoArray invrho,
-                                    const real_t* dx1, const real_t* dmx1,
-                                    const real_t* dx2, const real_t* dmx2,
+                                    const real_t* dx1, const real_t* idx1, const real_t* idmx1,
+                                    const real_t* dx2, const real_t* idx2, const real_t* idmx2,
                                     const real_t Cmu, const real_t dt) {
   MPMSTD_CELL_FROM_IDX(shape);
   rhs_v[stencil::vindex(i, j, k, shape.ny_total, shape.nz_total)] -=
       stencil::couple_rhs_v_from_delta_u_cell(i, j, k, shape.ny_total, shape.nz_total,
-                                              delta_u, V, mu, invrho, dx1, dmx1, dx2,
-                                              dmx2, Cmu, dt);
+                                              delta_u, V, mu, invrho, dx1, idx1, idmx1, dx2, idx2, idmx2, Cmu, dt);
 }
 
 template <class MuArray, class RhoArray>
 __global__ void couple_rhs_w_kernel(const Shape shape, real_t* rhs_w,
                                     const real_t* delta_u, const real_t* delta_v,
                                     const real_t* W, const MuArray mu,
-                                    const RhoArray invrho, const real_t* dx1,
-                                    const real_t* dmx1, const real_t* dx2,
-                                    const real_t* dmx2, const real_t* dx3,
-                                    const real_t* dmx3, const real_t Cmu,
+                                    const RhoArray invrho, const real_t* dx1, const real_t* idx1, const real_t* idmx1, const real_t* dx2, const real_t* idx2, const real_t* idmx2, const real_t* dx3, const real_t* idx3, const real_t* idmx3, const real_t Cmu,
                                     const real_t dt) {
   MPMSTD_CELL_FROM_IDX(shape);
   rhs_w[stencil::vindex(i, j, k, shape.ny_total, shape.nz_total)] -=
       stencil::couple_rhs_w_from_delta_uv_cell(i, j, k, shape.ny_total,
                                                shape.nz_total, delta_u, delta_v, W,
-                                               mu, invrho, dx1, dmx1, dx2, dmx2, dx3,
-                                               dmx3, Cmu, dt);
+                                               mu, invrho, dx1, idx1, idmx1, dx2, idx2, idmx2, dx3, idx3, idmx3, Cmu, dt);
 }
 
 template <class MuArray, class RhoArray>
 __global__ void couple_delta_v_kernel(const Shape shape, real_t* delta_v,
                                       const real_t* delta_w, const real_t* V,
                                       const MuArray mu, const RhoArray invrho,
-                                      const real_t* dx2, const real_t* dmx2,
-                                      const real_t* dx3, const real_t* dmx3,
+                                      const real_t* dx2, const real_t* idx2, const real_t* idmx2,
+                                      const real_t* dx3, const real_t* idx3, const real_t* idmx3,
                                       const real_t Cmu, const real_t dt) {
   MPMSTD_CELL_FROM_IDX(shape);
   delta_v[stencil::vindex(i, j, k, shape.ny_total, shape.nz_total)] -=
       stencil::couple_delta_v_from_delta_w_cell(i, j, k, shape.ny_total,
                                                 shape.nz_total, delta_w, V, mu,
-                                                invrho, dx2, dmx2, dx3, dmx3, Cmu, dt);
+                                                invrho, dx2, idx2, idmx2, dx3, idx3, idmx3, Cmu, dt);
 }
 
 template <class MuArray, class RhoArray>
 __global__ void couple_delta_u_kernel(const Shape shape, real_t* delta_u,
                                       const real_t* delta_v, const real_t* delta_w,
                                       const real_t* U, const MuArray mu,
-                                      const RhoArray invrho, const real_t* dx1,
-                                      const real_t* dmx1, const real_t* dx2,
-                                      const real_t* dmx2, const real_t* dx3,
-                                      const real_t* dmx3, const real_t Cmu,
+                                      const RhoArray invrho, const real_t* dx1, const real_t* idx1, const real_t* idmx1, const real_t* dx2, const real_t* idx2, const real_t* idmx2, const real_t* dx3, const real_t* idx3, const real_t* idmx3, const real_t Cmu,
                                       const real_t dt) {
   MPMSTD_CELL_FROM_IDX(shape);
   delta_u[stencil::vindex(i, j, k, shape.ny_total, shape.nz_total)] -=
       stencil::couple_delta_u_from_delta_vw_cell(i, j, k, shape.ny_total,
                                                  shape.nz_total, delta_v, delta_w, U,
-                                                 mu, invrho, dx1, dmx1, dx2, dmx2,
-                                                 dx3, dmx3, Cmu, dt);
+                                                 mu, invrho, dx1, idx1, idmx1, dx2, idx2, idmx2,
+                                                 dx3, idx3, idmx3, Cmu, dt);
 }
 
 #undef MPMSTD_CELL_FROM_IDX
@@ -115,9 +107,9 @@ void couple_rhs_v_from_delta_u_variable_property(field::Field& rhs_v,
   const Shape shape = make_shape(sub);
   couple_rhs_v_kernel<<<shape.blocks, shape.threads>>>(
       shape, rhs_v.data(), delta_u.data(), V.data(), viscosity.data(),
-      inverse_density.data(), grid.x.device_cell_width.data(),
-      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), Cmu, dt);
+      inverse_density.data(), grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+                grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), Cmu, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -136,10 +128,10 @@ void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
   const Shape shape = make_shape(sub);
   couple_rhs_w_kernel<<<shape.blocks, shape.threads>>>(
       shape, rhs_w.data(), delta_u.data(), delta_v.data(), W.data(),
-      viscosity.data(), inverse_density.data(), grid.x.device_cell_width.data(),
-      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), Cmu, dt);
+      viscosity.data(), inverse_density.data(), grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+                grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+                grid.z.device_inverse_center_distance.data(), Cmu, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -155,9 +147,9 @@ void block_couple_delta_v_variable_property(field::Field& delta_v, const field::
   const Shape shape = make_shape(sub);
   couple_delta_v_kernel<<<shape.blocks, shape.threads>>>(
       shape, delta_v.data(), delta_w.data(), V.data(), viscosity.data(),
-      inverse_density.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), Cmu, dt);
+      inverse_density.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+                grid.z.device_inverse_center_distance.data(), Cmu, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -174,10 +166,10 @@ void block_couple_delta_u_variable_property(field::Field& delta_u, const field::
   const Shape shape = make_shape(sub);
   couple_delta_u_kernel<<<shape.blocks, shape.threads>>>(
       shape, delta_u.data(), delta_v.data(), delta_w.data(), U.data(),
-      viscosity.data(), inverse_density.data(), grid.x.device_cell_width.data(),
-      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), Cmu, dt);
+      viscosity.data(), inverse_density.data(), grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+                grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+                grid.z.device_inverse_center_distance.data(), Cmu, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -191,9 +183,9 @@ void couple_rhs_v_from_delta_u_constant_property(
   const Shape shape = make_shape(sub);
   couple_rhs_v_kernel<<<shape.blocks, shape.threads>>>(
       shape, rhs_v.data(), delta_u.data(), V.data(), equation::UnitArray{},
-      equation::UnitArray{}, grid.x.device_cell_width.data(),
-      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), viscosity, dt);
+      equation::UnitArray{}, grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+                grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), viscosity, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -207,10 +199,10 @@ void couple_rhs_w_from_delta_uv_constant_property(
   const Shape shape = make_shape(sub);
   couple_rhs_w_kernel<<<shape.blocks, shape.threads>>>(
       shape, rhs_w.data(), delta_u.data(), delta_v.data(), W.data(),
-      equation::UnitArray{}, equation::UnitArray{}, grid.x.device_cell_width.data(),
-      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), viscosity, dt);
+      equation::UnitArray{}, equation::UnitArray{}, grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+                grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+                grid.z.device_inverse_center_distance.data(), viscosity, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -225,9 +217,9 @@ void block_couple_delta_v_constant_property(field::Field& delta_v,
   const Shape shape = make_shape(sub);
   couple_delta_v_kernel<<<shape.blocks, shape.threads>>>(
       shape, delta_v.data(), delta_w.data(), V.data(), equation::UnitArray{},
-      equation::UnitArray{}, grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), viscosity, dt);
+      equation::UnitArray{}, grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+                grid.z.device_inverse_center_distance.data(), viscosity, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -244,10 +236,10 @@ void block_couple_delta_u_constant_property(field::Field& delta_u,
   const Shape shape = make_shape(sub);
   couple_delta_u_kernel<<<shape.blocks, shape.threads>>>(
       shape, delta_u.data(), delta_v.data(), delta_w.data(), U.data(),
-      equation::UnitArray{}, equation::UnitArray{}, grid.x.device_cell_width.data(),
-      grid.x.device_center_distance.data(), grid.y.device_cell_width.data(),
-      grid.y.device_center_distance.data(), grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), viscosity, dt);
+      equation::UnitArray{}, equation::UnitArray{}, grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+                grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+                grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+                grid.z.device_inverse_center_distance.data(), viscosity, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 

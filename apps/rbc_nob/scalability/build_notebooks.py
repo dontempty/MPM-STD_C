@@ -11,37 +11,49 @@ SPECS = {
     nb="main_scalability.ipynb", title="rbc_nob 전체 스텝 프로파일 — 최적화 전 / 후 / 전·후 비교",
     what="`apps/rbc_nob/main.cpp` 시간 루프의 호출 단위 구간(plan.md §1 표). 분산 TDMA 의 MPI 시간 3개(`tdma_comm_*_z`, 풀이 안에 포함)는 참고용으로 같이 그린다.",
     before={"h200": "h200", "v100": "v100", "a100": "a100"},
-    after={"h200h": "h200", "v100h": "v100"},
+    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100"},
     before_note="원본 바이너리(최적화 전). H200 gpu55 4장·V100 gpu04 4장·A100 gpu36 1장 (np ≤ 4).",
-    after_note="최신 바이너리 = momentum build_kernel_z 타일 전치 + 순환 Thomas 레지스터화 + scalar build_z 타일 전치 + halo 자기 이웃 디바이스 복사. H200 gpu55 (np ≤ 4, 8장 잡 대기), V100 gpu04 8장 (np ≤ 8).",
+    after_note="최신 바이너리 = momentum build_kernel_z 타일 전치 + 순환 Thomas 레지스터화 + scalar build_z 타일 전치 + halo 자기 이웃 디바이스 복사 + momentum_rhs 역수·융합 + 조립·커플링·scalar 스텐실 역수(`v100s`; H200 은 `h200h` 까지 — H200 잡 취소). V100 gpu04 8장 (np ≤ 8).",
     events=["dt_cfl", "dt_viscous", "properties_1", "scalar_solve", "sync_T", "momentum_rhs", "momentum_solve", "sync_UVW_1",
             "properties_2", "pressure_rhs", "pressure_solve", "pressure_correct", "sync_UVW_2", "predictor", "clip", "monitor",
             "tdma_comm_scalar_z", "tdma_comm_momentum_z", "tdma_comm_pressure_z"],
     prefix="", total="step_total", require=None,
     extra=[("E. 통신(halo 자기 전송) 수정 전 vs 후 — np 8 포함",
             "A/B 의 '전' 은 원본 바이너리라 np ≤ 4 뿐이어서 halo 수정 효과(np 8 에서 큼)가 안 보인다. 여기서는 **halo 수정 직전 바이너리**(다른 최적화는 모두 적용, 꼬리표 `h200z`·`v100z`)를 '전' 으로 두고 같은 세 그림을 그린다. 차이는 전부 halo 교환(sync_*, predictor, momentum 내부 halo)에서 나야 한다.",
-            {"h200z": "h200", "v100z": "v100"})],
+            {"h200z": "h200", "v100z": "v100"}),
+           ("F. momentum_rhs 최적화(역수·융합) 직전 vs 최종 — V100",
+            "전 = halo 까지 적용된 바이너리(`v100h`), 후 = momentum_rhs 최적화까지 적용된 최종(`v100r1`). 차이는 momentum_rhs 에서만 나야 한다.",
+            {"v100h": "v100"}),
+           ("G. 조립·커플링·scalar 스텐실 역수 직전 vs 최종 — V100",
+            "전 = momentum_rhs 까지 적용된 바이너리(`v100r1`), 후 = sweep_band·couple_*·axis_band 의 나눗셈을 격자 역수 곱으로 바꾼 최종(`v100s`). 차이는 momentum_solve(build_*·couple·block_couple)와 scalar_solve(build_*)에서 나야 한다.",
+            {"v100r1": "v100"})],
   ),
   "momentum": dict(
     nb="momentum_scalability.ipynb", title="momentum_solve 이벤트별 프로파일 — 최적화 전 / 후 / 전·후 비교",
     what="`momentum::solve_variable_property` 가 부르는 호출 (`momentum.<dU|dV|dW>.<호출>` 을 세 성분 합으로, `momentum.post.*` 는 그대로). 상위 구간 `momentum_solve` 도 첫 막대로.",
     before={"h200m": "h200", "v100m": "v100"},
-    after={"h200h": "h200", "v100h": "v100"},
+    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100"},
     before_note="momentum 분해 측정 시점의 바이너리(최적화 전). H200 gpu55 4장·V100 gpu04 4장.",
-    after_note="최신 바이너리(위 네 가지 최적화 전부). H200 gpu55, V100 gpu04 8장.",
+    after_note="최신 바이너리(위 네 가지 최적화 + momentum_rhs 역수·융합 + 조립·커플링 스텐실 역수 `v100s`). H200 gpu55, V100 gpu04 8장.",
     events=["momentum_solve", "build_x", "tdma_x", "scatter_x", "build_y", "tdma_y", "scatter_y", "build_z", "tdma_z", "scatter_z",
             "halo", "wall_ghost", "couple_rhs", "block_couple_v", "halo_dV", "wall_ghost_dV", "block_couple_u", "add_increment"],
     prefix="momentum", total="momentum_solve", require="momentum.",
+    extra=[("E. 조립·커플링 스텐실 역수 직전 vs 최종 — V100",
+            "전 = `v100r1`(momentum_rhs 까지), 후 = `v100s`(sweep_band·own_face_blend·couple_* 의 나눗셈을 역수 곱으로). 차이는 build_x/y/z·couple_rhs·block_couple_* 에서만 나야 한다.",
+            {"v100r1": "v100"})],
   ),
   "scalar": dict(
     nb="scalar_scalability.ipynb", title="scalar_solve(에너지 방정식) 이벤트별 프로파일 — 최적화 전 / 후 / 전·후 비교",
     what="`scalar::solve_variable_property` 가 부르는 호출 (`scalar.<build|tdma|scatter>_<x|y|z>`, `scalar.add_increment`). 상위 구간 `scalar_solve` 도 첫 막대로.",
     before={"h200k": "h200", "v100e": "v100"},
-    after={"h200h": "h200", "v100h": "v100"},
+    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100"},
     before_note="scalar 분해 측정 시점의 바이너리(scalar build_z 수정 전, momentum 최적화는 적용됨). H200 gpu55 4장·V100 gpu04 8장.",
-    after_note="최신 바이너리(scalar build_z 타일 전치 + halo 자기 이웃 복사 추가). H200 gpu55, V100 gpu04 8장.",
+    after_note="최신 바이너리(scalar build_z 타일 전치 + halo 자기 이웃 복사 + axis_band 스텐실 역수 `v100s`). H200 gpu55, V100 gpu04 8장.",
     events=["scalar_solve", "build_x", "tdma_x", "scatter_x", "build_y", "tdma_y", "scatter_y", "build_z", "tdma_z", "scatter_z", "add_increment"],
     prefix="scalar", total="scalar_solve", require="scalar.",
+    extra=[("E. scalar 스텐실 역수 직전 vs 최종 — V100",
+            "전 = `v100r1`, 후 = `v100s`(axis_band 의 `/dx`·`/dmx` 를 역수 곱으로). 차이는 build_x/y/z 에서만 나야 한다.",
+            {"v100r1": "v100"})],
   ),
 }
 
@@ -310,7 +322,7 @@ for hw in ("h200", "v100"):
             for np_ in (4, 8):
                 plot_before_after(mode, hw, n, np_)
 plt.show()
-print(f"{{'hw':5s}} {{'mode':6s}} {{'n':4s}} {{'np':3s}} | {{'step before':>11s}} {{'after':>8s}} {{'gain':>6s}} | halo 계열 합(sync_T+sync_UVW×2+predictor) 전 → 후")
+print(f"{{'hw':5s}} {{'mode':6s}} {{'n':4s}} {{'np':3s}} | {{'step before':>11s}} {{'after':>8s}} {{'gain':>6s}} | halo 계열 합(sync_T+sync_UVW×2+predictor) 전 → 후 | momentum_rhs 전 → 후")
 for hw in ("h200", "v100"):
     for mode in ("strong", "weak"):
         for n in (256, 512):
@@ -320,7 +332,7 @@ for hw in ("h200", "v100"):
                     continue
                 b, a = BEFORE[k], AFTER[k]
                 hb = sum(b.get(e, 0) for e in ("sync_T", "sync_UVW_1", "sync_UVW_2", "predictor")); ha = sum(a.get(e, 0) for e in ("sync_T", "sync_UVW_1", "sync_UVW_2", "predictor"))
-                print(f"{{hw:5s}} {{mode:6s}} {{n:<4d}} {{np_:<3d}} | {{b['step_total']:11.1f}} {{a['step_total']:8.1f}} {{100*(1-a['step_total']/b['step_total']):5.0f}}% | {{hb:6.2f}} → {{ha:6.2f}} ms")
+                print(f"{{hw:5s}} {{mode:6s}} {{n:<4d}} {{np_:<3d}} | {{b['step_total']:11.1f}} {{a['step_total']:8.1f}} {{100*(1-a['step_total']/b['step_total']):5.0f}}% | {{hb:6.2f}} → {{ha:6.2f}} ms | {{b.get('momentum_rhs', 0):6.2f}} → {{a.get('momentum_rhs', 0):6.2f}} ms")
 BEFORE, BEFORE_TAG = _B, _BT""")
     return cells
 

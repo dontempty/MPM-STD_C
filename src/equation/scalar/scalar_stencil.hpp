@@ -56,7 +56,8 @@ MPMSTD_HD inline void axis_band(
     const real_t* T, const KappaArray conductivity,
     const DKappaArray conductivity_derivative, const real_t* face_velocity, const long long cm, const long long cc,
     const long long cp, const real_t dx_m, const real_t dx_c, const real_t dx_p,
-    const real_t dmx_lo, const real_t dmx_hi, const real_t half_ct_inverse_heat_capacity,
+    const real_t idx_c, const real_t idmx_lo, const real_t idmx_hi,
+    const real_t half_ct_inverse_heat_capacity,
     const bool wall_lo, const bool wall_hi, const bool full_offdiag_mask,
     const real_t closure_lo, const real_t closure_hi,
     const bool want_rhs, real_t& eAM, real_t& eAC, real_t& eAP, real_t& div_axis,
@@ -64,42 +65,42 @@ MPMSTD_HD inline void axis_band(
   const real_t half = real_t(0.5), quarter = real_t(0.25);
 
   // 면 값 (체적가중 보간) — R 과 밴드가 공유
-  const real_t ded_lo = (T[cc] - T[cm]) / dmx_lo;
-  const real_t ded_hi = (T[cp] - T[cc]) / dmx_hi;
-  const real_t kappa_lo = (half / dmx_lo) * (dx_c * conductivity[cm] + dx_m * conductivity[cc]);
-  const real_t kappa_hi = (half / dmx_hi) * (dx_p * conductivity[cc] + dx_c * conductivity[cp]);
+  const real_t ded_lo = (T[cc] - T[cm]) * idmx_lo;
+  const real_t ded_hi = (T[cp] - T[cc]) * idmx_hi;
+  const real_t kappa_lo = (half * idmx_lo) * (dx_c * conductivity[cm] + dx_m * conductivity[cc]);
+  const real_t kappa_hi = (half * idmx_hi) * (dx_p * conductivity[cc] + dx_c * conductivity[cp]);
   real_t dkappa_lo =
-      (half / dmx_lo) * (dx_c * conductivity_derivative[cm] + dx_m * conductivity_derivative[cc]);
+      (half * idmx_lo) * (dx_c * conductivity_derivative[cm] + dx_m * conductivity_derivative[cc]);
   real_t dkappa_hi =
-      (half / dmx_hi) * (dx_p * conductivity_derivative[cc] + dx_c * conductivity_derivative[cp]);
+      (half * idmx_hi) * (dx_p * conductivity_derivative[cc] + dx_c * conductivity_derivative[cp]);
 
   const real_t vlo = face_velocity[cc], vhi = face_velocity[cp];
 
-  div_axis = (kappa_hi * ded_hi - kappa_lo * ded_lo) / dx_c;
+  div_axis = (kappa_hi * ded_hi - kappa_lo * ded_lo) * idx_c;
 
   // R 전용 (첫 스윕) — 마스크 전 dκ̂ 로 계산 (참조 ORDER 그대로)
   if (want_rhs) {
-    const real_t theta_lo = (dx_c * T[cm] + dx_m * T[cc]) * (half / dmx_lo);
-    const real_t theta_hi = (dx_p * T[cc] + dx_c * T[cp]) * (half / dmx_hi);
+    const real_t theta_lo = (dx_c * T[cm] + dx_m * T[cc]) * (half * idmx_lo);
+    const real_t theta_hi = (dx_p * T[cc] + dx_c * T[cp]) * (half * idmx_hi);
     convect_axis = (vlo * ded_lo + vhi * ded_hi) * half;
     viscous_axis = (kappa_hi * ded_hi - kappa_lo * ded_lo - theta_hi * dkappa_hi * ded_hi
                     + theta_lo * dkappa_lo * ded_lo)
-                   / dx_c;
+                   * idx_c;
   }
 
   // 음해 연산자: 벽 면의 dκ̂ 마스크
   if (wall_lo) dkappa_lo = 0;
   if (wall_hi) dkappa_hi = 0;
 
-  const real_t cf = half_ct_inverse_heat_capacity / dx_c;
-  eAC = +cf * kappa_hi / dmx_hi + cf * kappa_lo / dmx_lo
-        - cf * dx_p * (half / dmx_hi) * dkappa_hi * ded_hi
-        + cf * dx_m * (half / dmx_lo) * dkappa_lo * ded_lo + quarter * vlo / dmx_lo
-        - quarter * vhi / dmx_hi;
-  eAP = -cf * kappa_hi / dmx_hi - cf * dx_c * (half / dmx_hi) * dkappa_hi * ded_hi
-        + quarter * vhi / dmx_hi;
-  eAM = -cf * kappa_lo / dmx_lo + cf * dx_c * (half / dmx_lo) * dkappa_lo * ded_lo
-        - quarter * vlo / dmx_lo;
+  const real_t cf = half_ct_inverse_heat_capacity * idx_c;
+  eAC = +cf * kappa_hi * idmx_hi + cf * kappa_lo * idmx_lo
+        - cf * dx_p * (half * idmx_hi) * dkappa_hi * ded_hi
+        + cf * dx_m * (half * idmx_lo) * dkappa_lo * ded_lo + quarter * vlo * idmx_lo
+        - quarter * vhi * idmx_hi;
+  eAP = -cf * kappa_hi * idmx_hi - cf * dx_c * (half * idmx_hi) * dkappa_hi * ded_hi
+        + quarter * vhi * idmx_hi;
+  eAM = -cf * kappa_lo * idmx_lo + cf * dx_c * (half * idmx_lo) * dkappa_lo * ded_lo
+        - quarter * vlo * idmx_lo;
 
   if (full_offdiag_mask) {  // 벽 행 닫기 (WallMask::closure 주석)
     if (wall_lo) { eAC += closure_lo * eAM; eAM = 0; }
@@ -117,8 +118,9 @@ MPMSTD_HD inline void build_cell(
     const real_t* V, const real_t* W, const KappaArray conductivity,
     const DKappaArray conductivity_derivative, const HeatCapArray inverse_heat_capacity,
     const DHeatCapArray inverse_heat_capacity_derivative, const real_t* dx_x,
-    const real_t* dmx_x, const real_t* dx_y, const real_t* dmx_y, const real_t* dx_z,
-    const real_t* dmx_z, const real_t Ct, const real_t dt, const bool is_first_sweep,
+    const real_t* idx_x, const real_t* idmx_x, const real_t* dx_y, const real_t* idx_y,
+    const real_t* idmx_y, const real_t* dx_z, const real_t* idx_z, const real_t* idmx_z,
+    const real_t Ct, const real_t dt, const bool is_first_sweep,
     const bool x_wall_lo, const bool x_wall_hi, const bool y_wall_lo, const bool y_wall_hi,
     const bool z_wall_lo, const bool z_wall_hi, const WallMask& wall, real_t& am,
     real_t& ac, real_t& ap, real_t& D_value) {
@@ -140,15 +142,15 @@ MPMSTD_HD inline void build_cell(
     real_t eAMy, eACy, eAPy, dvy, cvy, vsy;
     real_t eAMz, eACz, eAPz, dvz, cvz, vsz;
     axis_band(T, conductivity, conductivity_derivative, U, xm, c, xp,
-                       dx_x[i - 1], dx_x[i], dx_x[i + 1], dmx_x[i], dmx_x[i + 1],
+                       dx_x[i - 1], dx_x[i], dx_x[i + 1], idx_x[i], idmx_x[i], idmx_x[i + 1],
                        half_ct_ihc, x_wall_lo, x_wall_hi, false, 0, 0, true, eAMx, eACx, eAPx,
                        dvx, cvx, vsx);
     axis_band(T, conductivity, conductivity_derivative, V, ym, c, yp,
-                       dx_y[j - 1], dx_y[j], dx_y[j + 1], dmx_y[j], dmx_y[j + 1],
+                       dx_y[j - 1], dx_y[j], dx_y[j + 1], idx_y[j], idmx_y[j], idmx_y[j + 1],
                        half_ct_ihc, y_wall_lo, y_wall_hi, false, 0, 0, true, eAMy, eACy, eAPy,
                        dvy, cvy, vsy);
     axis_band(T, conductivity, conductivity_derivative, W, zm, c, zp,
-                       dx_z[k - 1], dx_z[k], dx_z[k + 1], dmx_z[k], dmx_z[k + 1],
+                       dx_z[k - 1], dx_z[k], dx_z[k + 1], idx_z[k], idmx_z[k], idmx_z[k + 1],
                        half_ct_ihc, z_wall_lo, z_wall_hi, /*full_offdiag=*/false, 0, 0, true,
                        eAMz, eACz, eAPz, dvz, cvz, vsz);
 
@@ -179,7 +181,7 @@ MPMSTD_HD inline void build_cell(
       const long long xm = cell_index(i - 1, j, k, ny_total, nz_total);
       const long long xp = cell_index(i + 1, j, k, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, U, xm, c, xp,
-                         dx_x[i - 1], dx_x[i], dx_x[i + 1], dmx_x[i], dmx_x[i + 1],
+                         dx_x[i - 1], dx_x[i], dx_x[i + 1], idx_x[i], idmx_x[i], idmx_x[i + 1],
                          half_ct_ihc, x_wall_lo, x_wall_hi, /*full_offdiag=*/true,
                          wall.closure_lo[0], wall.closure_hi[0], false, eAM_d, eAC_d,
                          eAP_d, dv, cv, vs);
@@ -187,7 +189,7 @@ MPMSTD_HD inline void build_cell(
       const long long ym = cell_index(i, j - 1, k, ny_total, nz_total);
       const long long yp = cell_index(i, j + 1, k, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, V, ym, c, yp,
-                         dx_y[j - 1], dx_y[j], dx_y[j + 1], dmx_y[j], dmx_y[j + 1],
+                         dx_y[j - 1], dx_y[j], dx_y[j + 1], idx_y[j], idmx_y[j], idmx_y[j + 1],
                          half_ct_ihc, y_wall_lo, y_wall_hi, /*full_offdiag=*/true,
                          wall.closure_lo[1], wall.closure_hi[1], false, eAM_d, eAC_d,
                          eAP_d, dv, cv, vs);
@@ -195,7 +197,7 @@ MPMSTD_HD inline void build_cell(
       const long long zm = cell_index(i, j, k - 1, ny_total, nz_total);
       const long long zp = cell_index(i, j, k + 1, ny_total, nz_total);
       axis_band(T, conductivity, conductivity_derivative, W, zm, c, zp,
-                         dx_z[k - 1], dx_z[k], dx_z[k + 1], dmx_z[k], dmx_z[k + 1],
+                         dx_z[k - 1], dx_z[k], dx_z[k + 1], idx_z[k], idmx_z[k], idmx_z[k + 1],
                          half_ct_ihc, z_wall_lo, z_wall_hi, /*full_offdiag=*/true,
                          wall.closure_lo[2], wall.closure_hi[2], false, eAM_d, eAC_d,
                          eAP_d, dv, cv, vs);

@@ -19,9 +19,9 @@ template <class MuArray, class RhoArray>
 __global__ void build_kernel(const int sweep_axis, real_t* A, real_t* B, real_t* C,
                              real_t* D, const real_t* source, const real_t* q,
                              const real_t* advecting_velocity, const MuArray viscosity,
-                             const RhoArray inverse_density, const real_t* dx_along,
-                             const real_t* dmx_along, const real_t* dx_own,
-                             const real_t* dmx_own, const long long own_stride,
+                             const RhoArray inverse_density, const real_t* dx_along, const real_t* idx_along,
+                             const real_t* idmx_along, const real_t* dx_own,
+                             const real_t* idmx_own, const long long own_stride,
                              const int own_axis, const int h, const int i1,
                              const int i2, const int i3, const int ny_total,
                              const int nz_total, const real_t Cmu, const real_t dt) {
@@ -57,8 +57,8 @@ __global__ void build_kernel(const int sweep_axis, real_t* A, real_t* B, real_t*
   const int own_index = (own_axis == 0) ? i : (own_axis == 1) ? j : k;
   stencil::sweep_band(own_axis == sweep_axis, false, gi, gm, gp, a,
                                own_index, own_stride, q, advecting_velocity,
-                               viscosity, inverse_density, dx_along, dmx_along,
-                               dx_own, dmx_own, Cmu, dt, A[p], B[p], C[p]);
+                               viscosity, inverse_density, dx_along, idx_along, idmx_along,
+                               dx_own, idmx_own, Cmu, dt, A[p], B[p], C[p]);
   D[p] = source[gi];
 }
 
@@ -77,9 +77,9 @@ template <class MuArray, class RhoArray>
 __global__ void build_kernel_z(real_t* A, real_t* B, real_t* C, real_t* D,
                                const real_t* source, const real_t* q,
                                const real_t* advecting_velocity, const MuArray viscosity,
-                               const RhoArray inverse_density, const real_t* dx_along,
-                               const real_t* dmx_along, const real_t* dx_own,
-                               const real_t* dmx_own, const long long own_stride,
+                               const RhoArray inverse_density, const real_t* dx_along, const real_t* idx_along,
+                             const real_t* idmx_along, const real_t* dx_own,
+                             const real_t* idmx_own, const long long own_stride,
                                const int own_axis, const int h, const int i1,
                                const int i2, const int i3, const int ny_total,
                                const int nz_total, const real_t Cmu, const real_t dt) {
@@ -101,8 +101,8 @@ __global__ void build_kernel_z(real_t* A, real_t* B, real_t* C, real_t* D,
       const long long gp = stencil::vindex(i, j, k + 1, ny_total, nz_total);
       const int own_index = (own_axis == 0) ? i : (own_axis == 1) ? j : k;
       stencil::sweep_band(own_axis == 2, false, gi, gm, gp, k, own_index, own_stride, q,
-                          advecting_velocity, viscosity, inverse_density, dx_along,
-                          dmx_along, dx_own, dmx_own, Cmu, dt, sA[ty + r][tx],
+                          advecting_velocity, viscosity, inverse_density, dx_along, idx_along,
+                          idmx_along, dx_own, idmx_own, Cmu, dt, sA[ty + r][tx],
                           sB[ty + r][tx], sC[ty + r][tx]);
       sD[ty + r][tx] = source[gi];
     }
@@ -125,15 +125,19 @@ __global__ void build_kernel_z(real_t* A, real_t* B, real_t* C, real_t* D,
 
 struct DeviceAxes {
   const real_t* dx;
-  const real_t* dmx;
+  const real_t* idx;   // 1/dx (grid::Axis1D::device_inverse_cell_width)
+  const real_t* idmx;  // 1/dmx
 };
 
 DeviceAxes device_axes(const int axis, const grid::Grid& grid) {
   if (axis == 0)
-    return {grid.x.device_cell_width.data(), grid.x.device_center_distance.data()};
+    return {grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(),
+            grid.x.device_inverse_center_distance.data()};
   if (axis == 1)
-    return {grid.y.device_cell_width.data(), grid.y.device_center_distance.data()};
-  return {grid.z.device_cell_width.data(), grid.z.device_center_distance.data()};
+    return {grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(),
+            grid.y.device_inverse_center_distance.data()};
+  return {grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(),
+          grid.z.device_inverse_center_distance.data()};
 }
 
 long long own_axis_stride(const int own_axis, const parallel::Subdomain& sub) {
@@ -157,7 +161,7 @@ void launch_xy(const int sweep_axis, real_t* A, real_t* B, real_t* C, real_t* D,
   const DeviceAxes own = device_axes(own_axis, grid);
   build_kernel<<<blocks, threads>>>(sweep_axis, A, B, C, D, source, q,
                                     advecting_velocity, viscosity, inverse_density,
-                                    along.dx, along.dmx, own.dx, own.dmx,
+                                    along.dx, along.idx, along.idmx, own.dx, own.idmx,
                                     own_axis_stride(own_axis, sub), own_axis, halo_width,
                                     i1, i2, i3, sub.y().n_total, sub.z().n_total, Cmu, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();
@@ -176,7 +180,7 @@ void launch_z(real_t* A, real_t* B, real_t* C, real_t* D, const real_t* source,
   const dim3 threads(kTileZ, kRowsZ);
   const dim3 blocks((i3 + kTileZ - 1) / kTileZ, (i2 + kTileZ - 1) / kTileZ, i1);
   build_kernel_z<<<blocks, threads>>>(A, B, C, D, source, q, advecting_velocity, viscosity,
-                                      inverse_density, along.dx, along.dmx, own.dx, own.dmx,
+                                      inverse_density, along.dx, along.idx, along.idmx, own.dx, own.idmx,
                                       own_axis_stride(own_axis, sub), own_axis, halo_width,
                                       i1, i2, i3, sub.y().n_total, sub.z().n_total, Cmu, dt);
   MPMSTD_CUDA_CHECK_LAUNCH();

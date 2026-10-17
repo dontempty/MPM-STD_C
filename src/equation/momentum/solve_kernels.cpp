@@ -27,9 +27,9 @@ void couple_rhs_v_from_delta_u_variable_property(field::Field& rhs_v,
         rhs[stencil::vindex(i, j, k, ny_total, nz_total)] -=
             stencil::couple_rhs_v_from_delta_u_cell(
                 i, j, k, ny_total, nz_total, delta_u.data(), V.data(),
-                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(),
-                grid.x.center_distance.data(), grid.y.cell_width.data(),
-                grid.y.center_distance.data(), Cmu, dt);
+                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                grid.x.inverse_center_distance.data(), grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(), Cmu, dt);
 }
 
 void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
@@ -53,10 +53,10 @@ void couple_rhs_w_from_delta_uv_variable_property(field::Field& rhs_w,
         rhs[stencil::vindex(i, j, k, ny_total, nz_total)] -=
             stencil::couple_rhs_w_from_delta_uv_cell(
                 i, j, k, ny_total, nz_total, delta_u.data(), delta_v.data(), W.data(),
-                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(),
-                grid.x.center_distance.data(), grid.y.cell_width.data(),
-                grid.y.center_distance.data(), grid.z.cell_width.data(),
-                grid.z.center_distance.data(), Cmu, dt);
+                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                grid.x.inverse_center_distance.data(), grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(), grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                grid.z.inverse_center_distance.data(), Cmu, dt);
 }
 
 void block_couple_delta_v_variable_property(field::Field& delta_v, const field::Field& delta_w,
@@ -77,9 +77,9 @@ void block_couple_delta_v_variable_property(field::Field& delta_v, const field::
         dv[stencil::vindex(i, j, k, ny_total, nz_total)] -=
             stencil::couple_delta_v_from_delta_w_cell(
                 i, j, k, ny_total, nz_total, delta_w.data(), V.data(),
-                viscosity.data(), inverse_density.data(), grid.y.cell_width.data(),
-                grid.y.center_distance.data(), grid.z.cell_width.data(),
-                grid.z.center_distance.data(), Cmu, dt);
+                viscosity.data(), inverse_density.data(), grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(), grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                grid.z.inverse_center_distance.data(), Cmu, dt);
 }
 
 void block_couple_delta_u_variable_property(field::Field& delta_u, const field::Field& delta_v,
@@ -101,10 +101,10 @@ void block_couple_delta_u_variable_property(field::Field& delta_u, const field::
         du[stencil::vindex(i, j, k, ny_total, nz_total)] -=
             stencil::couple_delta_u_from_delta_vw_cell(
                 i, j, k, ny_total, nz_total, delta_v.data(), delta_w.data(), U.data(),
-                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(),
-                grid.x.center_distance.data(), grid.y.cell_width.data(),
-                grid.y.center_distance.data(), grid.z.cell_width.data(),
-                grid.z.center_distance.data(), Cmu, dt);
+                viscosity.data(), inverse_density.data(), grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                grid.x.inverse_center_distance.data(), grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(), grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                grid.z.inverse_center_distance.data(), Cmu, dt);
 }
 
 // ── 상수물성 판 — 루프는 위와 동일, 물성 자리만 UnitArray (plan §18-1) ──────
@@ -125,8 +125,10 @@ void couple_rhs_v_from_delta_u_constant_property(
             stencil::couple_rhs_v_from_delta_u_cell(
                 i, j, k, ny_total, nz_total, delta_u.data(), V.data(),
                 equation::UnitArray{}, equation::UnitArray{},
-                grid.x.cell_width.data(), grid.x.center_distance.data(),
-                grid.y.cell_width.data(), grid.y.center_distance.data(), viscosity,
+                grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                grid.x.inverse_center_distance.data(),
+                grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(), viscosity,
                 dt);
 }
 
@@ -147,9 +149,12 @@ void couple_rhs_w_from_delta_uv_constant_property(
             stencil::couple_rhs_w_from_delta_uv_cell(
                 i, j, k, ny_total, nz_total, delta_u.data(), delta_v.data(), W.data(),
                 equation::UnitArray{}, equation::UnitArray{},
-                grid.x.cell_width.data(), grid.x.center_distance.data(),
-                grid.y.cell_width.data(), grid.y.center_distance.data(),
-                grid.z.cell_width.data(), grid.z.center_distance.data(), viscosity,
+                grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                grid.x.inverse_center_distance.data(),
+                grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(),
+                grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                grid.z.inverse_center_distance.data(), viscosity,
                 dt);
 }
 
@@ -171,8 +176,10 @@ void block_couple_delta_v_constant_property(field::Field& delta_v,
             stencil::couple_delta_v_from_delta_w_cell(
                 i, j, k, ny_total, nz_total, delta_w.data(), V.data(),
                 equation::UnitArray{}, equation::UnitArray{},
-                grid.y.cell_width.data(), grid.y.center_distance.data(),
-                grid.z.cell_width.data(), grid.z.center_distance.data(), viscosity,
+                grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(),
+                grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                grid.z.inverse_center_distance.data(), viscosity,
                 dt);
 }
 
@@ -196,9 +203,12 @@ void block_couple_delta_u_constant_property(field::Field& delta_u,
             stencil::couple_delta_u_from_delta_vw_cell(
                 i, j, k, ny_total, nz_total, delta_v.data(), delta_w.data(), U.data(),
                 equation::UnitArray{}, equation::UnitArray{},
-                grid.x.cell_width.data(), grid.x.center_distance.data(),
-                grid.y.cell_width.data(), grid.y.center_distance.data(),
-                grid.z.cell_width.data(), grid.z.center_distance.data(), viscosity,
+                grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                grid.x.inverse_center_distance.data(),
+                grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                grid.y.inverse_center_distance.data(),
+                grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                grid.z.inverse_center_distance.data(), viscosity,
                 dt);
 }
 

@@ -18,18 +18,18 @@ namespace {
 struct OwnSpec {
   long long stride;
   const real_t* dx;
-  const real_t* dmx;
+  const real_t* idmx;  // 1/dmx
 };
 
 OwnSpec own_spec(const int own_axis, const grid::Grid& grid,
                  const parallel::Subdomain& sub) {
   if (own_axis == 0)
     return {static_cast<long long>(sub.y().n_total) * sub.z().n_total,
-            grid.x.cell_width.data(), grid.x.center_distance.data()};
+            grid.x.cell_width.data(), grid.x.inverse_center_distance.data()};
   if (own_axis == 1)
     return {static_cast<long long>(sub.z().n_total), grid.y.cell_width.data(),
-            grid.y.center_distance.data()};
-  return {1, grid.z.cell_width.data(), grid.z.center_distance.data()};
+            grid.y.inverse_center_distance.data()};
+  return {1, grid.z.cell_width.data(), grid.z.inverse_center_distance.data()};
 }
 
 template <class MuArray, class RhoArray>
@@ -55,8 +55,8 @@ void build_x_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
         const int own_index = (own_axis == 0) ? i : (own_axis == 1) ? j : k;
         stencil::sweep_band(own_axis == 0, false, gi, gm, gp, i, own_index,
                                      own.stride, q, advecting_velocity, viscosity,
-                                     inverse_density, grid.x.cell_width.data(),
-                                     grid.x.center_distance.data(), own.dx, own.dmx,
+                                     inverse_density, grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
+                                     grid.x.inverse_center_distance.data(), own.dx, own.idmx,
                                      Cmu, dt, A[p], B[p], C[p]);
         D[p] = source[gi];
       }
@@ -85,8 +85,8 @@ void build_y_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
         const int own_index = (own_axis == 0) ? i : (own_axis == 1) ? j : k;
         stencil::sweep_band(own_axis == 1, false, gi, gm, gp, j, own_index,
                                      own.stride, q, advecting_velocity, viscosity,
-                                     inverse_density, grid.y.cell_width.data(),
-                                     grid.y.center_distance.data(), own.dx, own.dmx,
+                                     inverse_density, grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
+                                     grid.y.inverse_center_distance.data(), own.dx, own.idmx,
                                      Cmu, dt, A[p], B[p], C[p]);
         D[p] = source[gi];
       }
@@ -115,8 +115,8 @@ void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
         const int own_index = (own_axis == 0) ? i : (own_axis == 1) ? j : k;
         stencil::sweep_band(own_axis == 2, false, gi, gm, gp, k, own_index,
                                      own.stride, q, advecting_velocity, viscosity,
-                                     inverse_density, grid.z.cell_width.data(),
-                                     grid.z.center_distance.data(), own.dx, own.dmx,
+                                     inverse_density, grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
+                                     grid.z.inverse_center_distance.data(), own.dx, own.idmx,
                                      Cmu, dt, A[p], B[p], C[p]);
         D[p] = source[gi];
       }

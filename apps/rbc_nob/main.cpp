@@ -330,38 +330,11 @@ int main(int argc, char** argv) {
 
       // ── 운동량 예측자 (가변 μ̂; 부력은 Tⁿ⁺¹, 예측자는 −(1/ρ̂)∇Pⁿ) ──
       timer.begin("momentum_rhs");
-      timer.begin("momentum_rhs.fill");
-      rhs_U.fill(0);
-      rhs_V.fill(0);
-      rhs_W.fill(0);
-      timer.end("momentum_rhs.fill");
-      timer.begin("momentum_rhs.advection_diffusion_u");
-      momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W,
-                                                   properties.viscosity,
-                                                   properties.inverse_density, grid,
-                                                   sub, Cmu, dt);
-      timer.end("momentum_rhs.advection_diffusion_u");
-      timer.begin("momentum_rhs.advection_diffusion_v");
-      momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W,
-                                                   properties.viscosity,
-                                                   properties.inverse_density, grid,
-                                                   sub, Cmu, dt);
-      timer.end("momentum_rhs.advection_diffusion_v");
-      timer.begin("momentum_rhs.advection_diffusion_w");
-      momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W,
-                                                   properties.viscosity,
-                                                   properties.inverse_density, grid,
-                                                   sub, Cmu, dt);
-      timer.end("momentum_rhs.advection_diffusion_w");
-      timer.begin("momentum_rhs.buoyancy");
-      physics::add_buoyancy_z_variable_property(rhs_W, T, properties.inverse_density, grid,
-                                       sub, density_quadratic_ratio,
-                                       s.physics.delta_temperature, dt);
-      timer.end("momentum_rhs.buoyancy");
-      timer.begin("momentum_rhs.pressure_gradient");
-      pressure::add_gradient_variable_property(rhs_U, rhs_V, rhs_W, P,
-                                      properties.inverse_density, grid, sub, dt);
-      timer.end("momentum_rhs.pressure_gradient");
+      // 전용 RHS 빌드 (rhs/rhs.hpp build_variable_property_rhs): fill·이송확산 ×3·부력·∇P 를 성분당 한 패스로
+      momentum::build_variable_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, T, P,
+                                            properties.viscosity, properties.inverse_density,
+                                            grid, sub, Cmu, density_quadratic_ratio,
+                                            s.physics.delta_temperature, dt);
       timer.end("momentum_rhs");
       timer.begin("momentum_solve");
       momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,

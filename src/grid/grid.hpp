@@ -52,12 +52,18 @@ struct Axis1D {
   std::vector<real_t> center;           // 크기 n_total
   std::vector<real_t> cell_width;       // 크기 n_total
   std::vector<real_t> center_distance;  // 크기 n_total
+  // 역수 — 스텐실의 "/ dx", "/ dmx" 를 곱셈으로 (2026-10-17, 운동량 RHS 최적화 1: 셀당 FP64 나눗셈 ~60회 제거).
+  // a/b 와 a·(1/b) 는 마지막 비트가 다를 수 있다 → 이 배열을 쓰는 커널은 비트 동일이 아니라 허용오차 게이트.
+  std::vector<real_t> inverse_cell_width;       // 1 / cell_width
+  std::vector<real_t> inverse_center_distance;  // 1 / center_distance
 
 #ifdef MPMSTD_GPU
   // 커널이 읽는 메트릭의 디바이스 사본 — make_axis 가 한 번 올린다.
   // (격자는 불변이라 복사 한 번이면 끝; 호스트 배열은 통계·출력용으로 유지)
   field::Buffer device_cell_width;
   field::Buffer device_center_distance;
+  field::Buffer device_inverse_cell_width;
+  field::Buffer device_inverse_center_distance;
 #endif
 };
 
