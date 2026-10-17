@@ -366,9 +366,6 @@ int main(int argc, char** argv) {
       }
 
       // ── 운동량 예측자 ──
-      rhs_U.fill(0);
-      rhs_V.fill(0);
-      rhs_W.fill(0);
       if (les) {
         // ν_t(uⁿ) → μ̂ (참조 Fortran: 스텝 시작에 한 번, 음해 밴드엔 lag)
         if (les_wale)
@@ -378,24 +375,14 @@ int main(int argc, char** argv) {
           mpmstd::physics::les::calculate_eddy_viscosity_constant_vreman(*mu_hat, U, V, W, grid,
                                                                          sub, nu, c_vreman);
         mpmstd::physics::les::synchronize_viscosity_ratio(*mu_hat, sub);
-        momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W, *mu_hat,
-                                                              *unit_inverse_density, grid, sub, nu, dt);
-        momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W, *mu_hat,
-                                                              *unit_inverse_density, grid, sub, nu, dt);
-        momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W, *mu_hat,
-                                                              *unit_inverse_density, grid, sub, nu, dt);
-        pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+        // [최적화 2026-10-18] 전용 RHS 빌드 — 이송확산 ×3 + ∇P 를 성분당 한 패스로 (순서·식 동일)
+        momentum::build_variable_viscosity_rhs(rhs_U, rhs_V, rhs_W, U, V, W, P, *mu_hat,
+                                               *unit_inverse_density, grid, sub, nu, dt);
         mpmstd::physics::add_mean_pressure_gradient(rhs_U, sub, mean_dPdx, dt);
         momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
                                           *mu_hat, *unit_inverse_density, nu, dt);
       } else {
-      momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid,
-                                                             sub, nu, dt);
-      momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid,
-                                                             sub, nu, dt);
-      momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid,
-                                                             sub, nu, dt);
-      pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+      momentum::build_constant_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, P, grid, sub, nu, dt);
       mpmstd::physics::add_mean_pressure_gradient(rhs_U, sub, mean_dPdx, dt);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V,
                                         rhs_W, U, V, W, nu, dt);

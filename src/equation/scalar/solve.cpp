@@ -135,29 +135,29 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
   real_t* A = solver.band_a.data();
   real_t* B = solver.band_b.data();
   real_t* C = solver.band_c.data();
-  real_t* D = solver.band_d.data();
+  // [최적화 2026-10-18] 가변물성 판과 같은 D 밴드 핑퐁 + scatter_z 가 T += δT 를 바로
+  real_t* D0 = solver.band_d.data();
+  real_t* D1 = solver.band_d2.data();
   const stencil::WallMask wall = make_wall_mask(solver, sub);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
-  build_x_system_constant_property(A, B, C, D, T.data(), U.data(), V.data(),
+  build_x_system_constant_property(A, B, C, D0, T.data(), U.data(), V.data(),
                                    W.data(), grid, sub, wall, Ct, dt);
-  solve_sweep(solver.plan_x, A, B, C, D, sub, 0, i2 * i3, i1);
-  equation::scatter_x(solver.stage_first.data(), D, sub);
+  solve_sweep(solver.plan_x, A, B, C, D0, sub, 0, i2 * i3, i1);
 
   // y 스윕: D = x 증분 통과
-  build_y_system_constant_property(A, B, C, D, solver.stage_first.data(), T.data(),
-                                   U.data(), V.data(), W.data(), grid, sub, wall, Ct, dt);
-  solve_sweep(solver.plan_y, A, B, C, D, sub, 1, i1 * i3, i2);
-  equation::scatter_y(solver.stage_second.data(), D, sub);
+  build_y_system_constant_property(A, B, C, D1, D0, T.data(),
+                                   U.data(), V.data(), W.data(), grid, sub, wall, Ct, dt,
+                                   SourceLayout::BandX);
+  solve_sweep(solver.plan_y, A, B, C, D1, sub, 1, i1 * i3, i2);
 
   // z 스윕: 벽 행 닫기 = 조립 안의 dκ̂·비대각 마스크 (fold 호출 없음)
-  build_z_system_constant_property(A, B, C, D, solver.stage_second.data(), T.data(),
-                                   U.data(), V.data(), W.data(), grid, sub, wall, Ct, dt);
-  solve_sweep(solver.plan_z, A, B, C, D, sub, 2, i1 * i2, i3);
-  equation::scatter_z(solver.stage_first.data(), D, sub);
+  build_z_system_constant_property(A, B, C, D0, D1, T.data(),
+                                   U.data(), V.data(), W.data(), grid, sub, wall, Ct, dt,
+                                   SourceLayout::BandY);
+  solve_sweep(solver.plan_z, A, B, C, D0, sub, 2, i1 * i2, i3);
+  equation::scatter_z(nullptr, D0, sub, T.data());   // 산포 + T += δT
 
-  // θⁿ⁺¹ = θⁿ + δθ (내부만; ghost 재동기화는 호출자 몫)
-  equation::add_increment(T, solver.stage_first.data(), sub);
 }
 
 }  // namespace mpmstd::equation::scalar

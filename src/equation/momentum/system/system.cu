@@ -225,8 +225,9 @@ void build_x_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                      const grid::Grid& grid,
                                      const parallel::Subdomain& sub,
                                      const int own_axis, const real_t viscosity,
-                                     const real_t dt) {
-  launch_xy(0, A, B, C, D, source, SourceLayout::Field, q, advecting_velocity, equation::UnitArray{},
+                                     const real_t dt,
+                                     const SourceLayout source_layout) {
+  launch_xy(0, A, B, C, D, source, source_layout, q, advecting_velocity, equation::UnitArray{},
          equation::UnitArray{}, grid, sub, own_axis, viscosity, dt);
 }
 
@@ -236,8 +237,9 @@ void build_y_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                      const grid::Grid& grid,
                                      const parallel::Subdomain& sub,
                                      const int own_axis, const real_t viscosity,
-                                     const real_t dt) {
-  launch_xy(1, A, B, C, D, source, SourceLayout::Field, q, advecting_velocity, equation::UnitArray{},
+                                     const real_t dt,
+                                     const SourceLayout source_layout) {
+  launch_xy(1, A, B, C, D, source, source_layout, q, advecting_velocity, equation::UnitArray{},
          equation::UnitArray{}, grid, sub, own_axis, viscosity, dt);
 }
 
@@ -247,8 +249,9 @@ void build_z_sweep_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                      const grid::Grid& grid,
                                      const parallel::Subdomain& sub,
                                      const int own_axis, const real_t viscosity,
-                                     const real_t dt) {
-  launch_z(A, B, C, D, source, SourceLayout::Field, q, advecting_velocity, equation::UnitArray{},
+                                     const real_t dt,
+                                     const SourceLayout source_layout) {
+  launch_z(A, B, C, D, source, source_layout, q, advecting_velocity, equation::UnitArray{},
          equation::UnitArray{}, grid, sub, own_axis, viscosity, dt);
 }
 

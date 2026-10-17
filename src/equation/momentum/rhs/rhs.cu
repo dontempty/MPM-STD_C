@@ -154,6 +154,72 @@ __global__ void build_rhs_kernel(real_t* __restrict__ rhs, const real_t* __restr
   }
 }
 
+// [최적화 2026-10-18] OB 형 전용 빌드 (rhs.hpp build_constant_property_rhs / build_variable_viscosity_rhs):
+//   r = dt·R_q → (U: + dt·T_x면) → − dt·∂P/∂q. 부력·구배 식은 temperature_at_x_face / gradient_* 와 글자 그대로
+//   같다(나눗셈 유지) → 분리 패스와 비트 동일.
+template <int Component, class MuArray, class RhoArray>
+__global__ void build_ob_rhs_kernel(real_t* __restrict__ rhs, const real_t* __restrict__ U,
+                                    const real_t* __restrict__ V, const real_t* __restrict__ W,
+                                    const real_t* __restrict__ T, const real_t* __restrict__ P,
+                                    const MuArray mu, const RhoArray invrho,
+                                    const real_t* __restrict__ dx1, const real_t* __restrict__ dmx1,
+                                    const real_t* __restrict__ dx2, const real_t* __restrict__ dmx2,
+                                    const real_t* __restrict__ dx3, const real_t* __restrict__ dmx3,
+                                    const real_t* __restrict__ idx1, const real_t* __restrict__ idmx1,
+                                    const real_t* __restrict__ idx2, const real_t* __restrict__ idmx2,
+                                    const real_t* __restrict__ idx3, const real_t* __restrict__ idmx3,
+                                    const int h, const int ni, const int nj, const int nk,
+                                    const int ny_total, const int nz_total, const real_t Cmu,
+                                    const real_t dt) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(ni) * nj * nk) return;
+  const int k = h + static_cast<int>(idx % nk);
+  const int j = h + static_cast<int>((idx / nk) % nj);
+  const int i = h + static_cast<int>(idx / (static_cast<long long>(nk) * nj));
+  const long long c = stencil::vindex(i, j, k, ny_total, nz_total);
+  real_t r;
+  if (Component == 0) {
+    r = stencil::rhs_u_cell(i, j, k, ny_total, nz_total, U, V, W, mu, invrho, dx1, dmx1, dx2,
+                            dmx2, dx3, dmx3, idx1, idmx1, idx2, idmx2, idx3, idmx3, Cmu, dt);
+    const long long cxm = stencil::vindex(i - 1, j, k, ny_total, nz_total);
+    if (T != nullptr)   // 부력 x (dhvc) — temperature_at_x_face 와 같은 식
+      r += dt * (real_t(0.5) * (dx1[i - 1] * T[c] + dx1[i] * T[cxm]) / dmx1[i]);
+    r -= dt * ((P[c] - P[cxm]) / dmx1[i]);
+  } else if (Component == 1) {
+    r = stencil::rhs_v_cell(i, j, k, ny_total, nz_total, U, V, W, mu, invrho, dx1, dmx1, dx2,
+                            dmx2, dx3, dmx3, idx1, idmx1, idx2, idmx2, idx3, idmx3, Cmu, dt);
+    const long long cym = stencil::vindex(i, j - 1, k, ny_total, nz_total);
+    r -= dt * ((P[c] - P[cym]) / dmx2[j]);
+  } else {
+    r = stencil::rhs_w_cell(i, j, k, ny_total, nz_total, U, V, W, mu, invrho, dx1, dmx1, dx2,
+                            dmx2, dx3, dmx3, idx1, idmx1, idx2, idmx2, idx3, idmx3, Cmu, dt);
+    const long long czm = stencil::vindex(i, j, k - 1, ny_total, nz_total);
+    r -= dt * ((P[c] - P[czm]) / dmx3[k]);
+  }
+  rhs[c] = r;
+}
+
+template <int Component, class MuArray, class RhoArray>
+void launch_build_ob_rhs(real_t* rhs, const field::Field& U, const field::Field& V,
+                         const field::Field& W, const real_t* T, const field::Field& P,
+                         const MuArray mu, const RhoArray invrho, const grid::Grid& grid,
+                         const parallel::Subdomain& sub, const real_t Cmu, const real_t dt) {
+  const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
+  const long long n = static_cast<long long>(ni) * nj * nk;
+  const int threads = 256;
+  const int blocks = static_cast<int>((n + threads - 1) / threads);
+  build_ob_rhs_kernel<Component><<<blocks, threads>>>(
+      rhs, U.data(), V.data(), W.data(), T, P.data(), mu, invrho,
+      grid.x.device_cell_width.data(), grid.x.device_center_distance.data(),
+      grid.y.device_cell_width.data(), grid.y.device_center_distance.data(),
+      grid.z.device_cell_width.data(), grid.z.device_center_distance.data(),
+      grid.x.device_inverse_cell_width.data(), grid.x.device_inverse_center_distance.data(),
+      grid.y.device_inverse_cell_width.data(), grid.y.device_inverse_center_distance.data(),
+      grid.z.device_inverse_cell_width.data(), grid.z.device_inverse_center_distance.data(),
+      halo_width, ni, nj, nk, sub.y().n_total, sub.z().n_total, Cmu, dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
+
 template <int Component>
 void launch_build_rhs(real_t* rhs, const field::Field& U, const field::Field& V,
                       const field::Field& W, const field::Field& T, const field::Field& P,
@@ -255,6 +321,36 @@ void build_variable_property_rhs(field::Field& rhs_u, field::Field& rhs_v, field
                       density_quadratic_ratio, delta_temperature, dt);
   launch_build_rhs<2>(rhs_w.data(), U, V, W, T, P, viscosity, inverse_density, grid, sub, Cmu,
                       density_quadratic_ratio, delta_temperature, dt);
+}
+
+void build_constant_property_rhs(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+                                 const field::Field& U, const field::Field& V,
+                                 const field::Field& W, const field::Field& P,
+                                 const grid::Grid& grid, const parallel::Subdomain& sub,
+                                 const real_t viscosity, const real_t dt,
+                                 const field::Field* buoyancy_x_T) {
+  const char* who = "build_constant_property_rhs";
+  const field::Field* fields[] = {&rhs_u, &rhs_v, &rhs_w, &U, &V, &W, &P};
+  for (const field::Field* f : fields) check_field_matches(who, *f, sub);
+  if (buoyancy_x_T) check_field_matches(who, *buoyancy_x_T, sub);
+  const real_t* T = buoyancy_x_T ? buoyancy_x_T->data() : nullptr;
+  launch_build_ob_rhs<0>(rhs_u.data(), U, V, W, T, P, equation::UnitArray{}, equation::UnitArray{}, grid, sub, viscosity, dt);
+  launch_build_ob_rhs<1>(rhs_v.data(), U, V, W, nullptr, P, equation::UnitArray{}, equation::UnitArray{}, grid, sub, viscosity, dt);
+  launch_build_ob_rhs<2>(rhs_w.data(), U, V, W, nullptr, P, equation::UnitArray{}, equation::UnitArray{}, grid, sub, viscosity, dt);
+}
+
+void build_variable_viscosity_rhs(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+                                  const field::Field& U, const field::Field& V,
+                                  const field::Field& W, const field::Field& P,
+                                  const field::Field& viscosity, const field::Field& inverse_density,
+                                  const grid::Grid& grid, const parallel::Subdomain& sub,
+                                  const real_t Cmu, const real_t dt) {
+  const char* who = "build_variable_viscosity_rhs";
+  const field::Field* fields[] = {&rhs_u, &rhs_v, &rhs_w, &U, &V, &W, &P, &viscosity, &inverse_density};
+  for (const field::Field* f : fields) check_field_matches(who, *f, sub);
+  launch_build_ob_rhs<0>(rhs_u.data(), U, V, W, nullptr, P, viscosity.data(), inverse_density.data(), grid, sub, Cmu, dt);
+  launch_build_ob_rhs<1>(rhs_v.data(), U, V, W, nullptr, P, viscosity.data(), inverse_density.data(), grid, sub, Cmu, dt);
+  launch_build_ob_rhs<2>(rhs_w.data(), U, V, W, nullptr, P, viscosity.data(), inverse_density.data(), grid, sub, Cmu, dt);
 }
 
 }  // namespace mpmstd::equation::momentum

@@ -310,14 +310,8 @@ int main(int argc, char** argv) {
       sync_temperature(T, sub);
 
       // ── 운동량 예측자 (상수 ν) + 부력_x(Tⁿ⁺¹) − ∇Pⁿ ──
-      rhs_U.fill(0);
-      rhs_V.fill(0);
-      rhs_W.fill(0);
-      momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, nu, dt);
-      momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, nu, dt);
-      momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, nu, dt);
-      physics::add_buoyancy_x_constant_property(rhs_U, T, grid, sub, dt);
-      pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
+      // [최적화 2026-10-18] 전용 RHS 빌드 — fill·이송확산 ×3·부력 x·∇P 를 성분당 한 패스로 (순서·식 동일)
+      momentum::build_constant_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, P, grid, sub, nu, dt, &T);
       momentum::solve_constant_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W,
                                         U, V, W, nu, dt);
       sync_velocity(U, V, W, sub, mirror_wall);

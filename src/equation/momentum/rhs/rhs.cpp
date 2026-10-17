@@ -1,5 +1,6 @@
 #include "equation/momentum/rhs/rhs.hpp"
 
+
 #include "common/field_checks.hpp"
 #include "equation/momentum/momentum_stencil.hpp"
 #include "equation/pressure/rhs/rhs.hpp"
@@ -163,6 +164,34 @@ void build_variable_property_rhs(field::Field& rhs_u, field::Field& rhs_v, field
   physics::add_buoyancy_z_variable_property(rhs_w, T, inverse_density, grid, sub,
                                             density_quadratic_ratio, delta_temperature, dt);
   pressure::add_gradient_variable_property(rhs_u, rhs_v, rhs_w, P, inverse_density, grid, sub, dt);
+}
+
+// OB 형 전용 빌드의 CPU 참조 구현 — 기존 호출을 그 순서로
+void build_constant_property_rhs(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+                                 const field::Field& U, const field::Field& V,
+                                 const field::Field& W, const field::Field& P,
+                                 const grid::Grid& grid, const parallel::Subdomain& sub,
+                                 const real_t viscosity, const real_t dt,
+                                 const field::Field* buoyancy_x_T) {
+  rhs_u.fill(0); rhs_v.fill(0); rhs_w.fill(0);
+  add_advection_diffusion_u_constant_property(rhs_u, U, V, W, grid, sub, viscosity, dt);
+  add_advection_diffusion_v_constant_property(rhs_v, U, V, W, grid, sub, viscosity, dt);
+  add_advection_diffusion_w_constant_property(rhs_w, U, V, W, grid, sub, viscosity, dt);
+  if (buoyancy_x_T) physics::add_buoyancy_x_constant_property(rhs_u, *buoyancy_x_T, grid, sub, dt);
+  pressure::add_gradient_constant_property(rhs_u, rhs_v, rhs_w, P, grid, sub, dt);
+}
+
+void build_variable_viscosity_rhs(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+                                  const field::Field& U, const field::Field& V,
+                                  const field::Field& W, const field::Field& P,
+                                  const field::Field& viscosity, const field::Field& inverse_density,
+                                  const grid::Grid& grid, const parallel::Subdomain& sub,
+                                  const real_t Cmu, const real_t dt) {
+  rhs_u.fill(0); rhs_v.fill(0); rhs_w.fill(0);
+  add_advection_diffusion_u_variable_property(rhs_u, U, V, W, viscosity, inverse_density, grid, sub, Cmu, dt);
+  add_advection_diffusion_v_variable_property(rhs_v, U, V, W, viscosity, inverse_density, grid, sub, Cmu, dt);
+  add_advection_diffusion_w_variable_property(rhs_w, U, V, W, viscosity, inverse_density, grid, sub, Cmu, dt);
+  pressure::add_gradient_constant_property(rhs_u, rhs_v, rhs_w, P, grid, sub, dt);
 }
 
 }  // namespace mpmstd::equation::momentum

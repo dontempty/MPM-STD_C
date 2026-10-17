@@ -521,7 +521,6 @@ int main(int argc, char** argv) {
         sync_scalar(n);
       }
 
-      rhs_U.fill(0); rhs_V.fill(0); rhs_W.fill(0);
       if (les) {
         if (les_wale)
           mpmstd::physics::les::calculate_eddy_viscosity_wale(*mu_hat, U, V, W, grid, sub, flow.nu,
@@ -531,19 +530,13 @@ int main(int argc, char** argv) {
               *mu_hat, U, V, W, grid, sub, flow.nu,
               static_cast<real_t>(2.5 * s.les.c_s * s.les.c_s));
         mpmstd::physics::les::synchronize_viscosity_ratio(*mu_hat, sub);  // 비주기 축 ghost μ̂ = 1
-        momentum::add_advection_diffusion_u_variable_property(rhs_U, U, V, W, *mu_hat,
-                                                              *unit_inverse_density, grid, sub, flow.nu, dt);
-        momentum::add_advection_diffusion_v_variable_property(rhs_V, U, V, W, *mu_hat,
-                                                              *unit_inverse_density, grid, sub, flow.nu, dt);
-        momentum::add_advection_diffusion_w_variable_property(rhs_W, U, V, W, *mu_hat,
-                                                              *unit_inverse_density, grid, sub, flow.nu, dt);
+        // [최적화 2026-10-18] 전용 RHS 빌드 — 이송확산 ×3 + ∇P 를 성분당 한 패스로 (트립은 그 뒤에 += ; 트립이 켜지면 덧셈 순서만 다름)
+        momentum::build_variable_viscosity_rhs(rhs_U, rhs_V, rhs_W, U, V, W, P, *mu_hat,
+                                               *unit_inverse_density, grid, sub, flow.nu, dt);
       } else {
-        momentum::add_advection_diffusion_u_constant_property(rhs_U, U, V, W, grid, sub, flow.nu, dt);
-        momentum::add_advection_diffusion_v_constant_property(rhs_V, U, V, W, grid, sub, flow.nu, dt);
-        momentum::add_advection_diffusion_w_constant_property(rhs_W, U, V, W, grid, sub, flow.nu, dt);
+        momentum::build_constant_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, P, grid, sub, flow.nu, dt);
       }
       apply_trip(t, dt);  // 난류 트립 (옵션)
-      pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
       if (les)
         momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W,
                                           *mu_hat, *unit_inverse_density, flow.nu, dt);

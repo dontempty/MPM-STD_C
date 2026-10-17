@@ -140,8 +140,8 @@ void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
       real_t* A, real_t* B, real_t* C, real_t* D, const real_t* source,               \
       const real_t* q, const real_t* advecting_velocity, const grid::Grid& grid,      \
       const parallel::Subdomain& sub, const int own_axis, const real_t viscosity,     \
-      const real_t dt) {                                                              \
-    build_##AXIS##_sweep_impl(A, B, C, D, source, SourceLayout::Field, q, advecting_velocity, \
+      const real_t dt, const SourceLayout source_layout) {                            \
+    build_##AXIS##_sweep_impl(A, B, C, D, source, source_layout, q, advecting_velocity, \
                               equation::UnitArray{}, equation::UnitArray{}, grid,     \
                               sub, own_axis, viscosity, dt);                          \
   }

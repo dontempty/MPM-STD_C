@@ -176,18 +176,28 @@ __global__ void subtract_kernel(const field::View p, const int h, const int i1,
 
 
 // ── x Neumann(DCT) 경로 커널 (solve_kernels.hpp 의 식; CPU 쌍둥이와 같은 산술) ──
+// [최적화 2026-10-18] 거울(DCT) 팩도 타일 전치 — pack_rhs_kernel 과 같고 라인 뒤쪽에 거울 사본을 하나 더 쓴다.
 __global__ void pack_mirrored_kernel(real_t* lines, const field::ConstView r, const int h,
                                      const int n_x, const int n_y, const int nz_local) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_x) * n_y * nz_local) return;
-  const int ii = static_cast<int>(idx % n_x);
-  const int kk = static_cast<int>((idx / n_x) % nz_local);
-  const int jj = static_cast<int>(idx / (static_cast<long long>(n_x) * nz_local));
+  __shared__ real_t tile[kTile][kTile + 1];
+  const int jj = static_cast<int>(blockIdx.z);
+  const int i0 = static_cast<int>(blockIdx.x) * kTile, k0 = static_cast<int>(blockIdx.y) * kTile;
+  const int tx = static_cast<int>(threadIdx.x), ty = static_cast<int>(threadIdx.y);
   const int n2 = 2 * n_x;
-  real_t* line = lines + (static_cast<std::size_t>(jj) * nz_local + kk) * n2;
-  const real_t v = r(ii + h, jj + h, kk + h);
-  line[ii] = v;
-  line[n2 - 1 - ii] = v;  // 거울
+  for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 k 를 걷는다
+    const int ii = i0 + ty + q, kk = k0 + tx;
+    if (ii < n_x && kk < nz_local) tile[ty + q][tx] = r(ii + h, jj + h, kk + h);
+  }
+  __syncthreads();
+  for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 i 를 걷는다
+    const int ii = i0 + tx, kk = k0 + ty + q;
+    if (ii < n_x && kk < nz_local) {
+      real_t* line = lines + (static_cast<std::size_t>(jj) * nz_local + kk) * n2;
+      const real_t v = tile[tx][ty + q];
+      line[ii] = v;
+      line[n2 - 1 - ii] = v;  // 거울
+    }
+  }
 }
 
 __global__ void dct_forward_kernel(real_t* sx, const real_t* ms, const int n_lines,
@@ -223,16 +233,24 @@ __global__ void dct_backward_kernel(real_t* ms, const real_t* sx, const int n_li
   ms[dst + 1] = x * sin(angle);
 }
 
+// [최적화 2026-10-18] 거울(DCT) 산포도 타일 전치 — scatter_lines_kernel 과 같고 라인 길이만 2Nx.
 __global__ void scatter_mirrored_kernel(const field::View p, const real_t* lines,
                                         const real_t scale, const int h, const int n_x,
                                         const int n_y, const int nz_local) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_x) * n_y * nz_local) return;
-  const int ii = static_cast<int>(idx % n_x);
-  const int kk = static_cast<int>((idx / n_x) % nz_local);
-  const int jj = static_cast<int>(idx / (static_cast<long long>(n_x) * nz_local));
-  const real_t* line = lines + (static_cast<std::size_t>(jj) * nz_local + kk) * (2 * n_x);
-  p(ii + h, jj + h, kk + h) = line[ii] * scale;
+  __shared__ real_t tile[kTile][kTile + 1];
+  const int jj = static_cast<int>(blockIdx.z);
+  const int k0 = static_cast<int>(blockIdx.x) * kTile, i0 = static_cast<int>(blockIdx.y) * kTile;
+  const int tx = static_cast<int>(threadIdx.x), ty = static_cast<int>(threadIdx.y);
+  for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 i 를 걷는다
+    const int ii = i0 + tx, kk = k0 + ty + q;
+    if (ii < n_x && kk < nz_local)
+      tile[ty + q][tx] = lines[(static_cast<std::size_t>(jj) * nz_local + kk) * (2 * n_x) + ii];
+  }
+  __syncthreads();
+  for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 k 를 걷는다
+    const int ii = i0 + ty + q, kk = k0 + tx;
+    if (ii < n_x && kk < nz_local) p(ii + h, jj + h, kk + h) = tile[tx][ty + q] * scale;
+  }
 }
 
 }  // namespace
@@ -292,8 +310,9 @@ void pack_rhs_to_mirrored_lines(real_t* lines, const field::Field& rhs,
                                 const parallel::Subdomain& sub, const int n_x,
                                 const int n_y, const int nz_local) {
   (void)sub;
-  const long long n = static_cast<long long>(n_x) * n_y * nz_local;
-  pack_mirrored_kernel<<<blocks_for(n), kThreads>>>(lines, rhs.view(), halo_width, n_x,
+  const dim3 threads(kTile, kTileRows);
+  const dim3 blocks((n_x + kTile - 1) / kTile, (nz_local + kTile - 1) / kTile, n_y);
+  pack_mirrored_kernel<<<blocks, threads>>>(lines, rhs.view(), halo_width, n_x,
                                                     n_y, nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
@@ -318,8 +337,9 @@ void scatter_mirrored_lines_to_field(field::Field& phi, const real_t* lines,
                                      const real_t scale, const parallel::Subdomain& sub,
                                      const int n_x, const int n_y, const int nz_local) {
   (void)sub;
-  const long long n = static_cast<long long>(n_x) * n_y * nz_local;
-  scatter_mirrored_kernel<<<blocks_for(n), kThreads>>>(phi.view(), lines, scale,
+  const dim3 threads(kTile, kTileRows);
+  const dim3 blocks((nz_local + kTile - 1) / kTile, (n_x + kTile - 1) / kTile, n_y);
+  scatter_mirrored_kernel<<<blocks, threads>>>(phi.view(), lines, scale,
                                                        halo_width, n_x, n_y, nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }

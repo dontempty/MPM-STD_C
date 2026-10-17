@@ -58,6 +58,24 @@ void build_variable_property_rhs(field::Field& rhs_u, field::Field& rhs_v, field
                                  real_t density_quadratic_ratio, real_t delta_temperature,
                                  real_t dt);
 
+// [최적화 2026-10-18] OB 형 앱(dhvc·channel·boundary_layer·thermal_boundary_layer)용 전용 RHS 빌드 — 성분당 커널 한 번:
+//   rhs_q = dt·R_q(이송·확산)  [+ dt·T_x면 (U, buoyancy_x_T 가 있을 때 — dhvc)]  − dt·∂P/∂q (상수 밀도 구배).
+//   main 의 fill → add ×3 → (부력 x) → add_gradient_constant_property 와 같은 식·같은 순서 → 비트 동일.
+//   평균 압력 구배·트립 등 추가 힘은 이 뒤에 += 한다.
+void build_constant_property_rhs(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+                                 const field::Field& U, const field::Field& V,
+                                 const field::Field& W, const field::Field& P,
+                                 const grid::Grid& grid, const parallel::Subdomain& sub,
+                                 real_t viscosity, real_t dt,
+                                 const field::Field* buoyancy_x_T = nullptr);
+// LES: μ̂ 배열(가변 점성) + 단위 1/ρ̂, 구배는 상수 밀도 — add_advection_diffusion_*_variable_property + add_gradient_constant_property 와 동일.
+void build_variable_viscosity_rhs(field::Field& rhs_u, field::Field& rhs_v, field::Field& rhs_w,
+                                  const field::Field& U, const field::Field& V,
+                                  const field::Field& W, const field::Field& P,
+                                  const field::Field& viscosity, const field::Field& inverse_density,
+                                  const grid::Grid& grid, const parallel::Subdomain& sub,
+                                  real_t Cmu, real_t dt);
+
 // ── 상수물성 판 (plan §18-1) — 물성 배열 없이 같은 수식 (viscosity = 스칼라 ν).
 void add_advection_diffusion_u_constant_property(field::Field& rhs,
                                                  const field::Field& U,

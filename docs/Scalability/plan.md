@@ -292,7 +292,12 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
 | 9 | 조립 `sweep_band`·`own_face_blend`, 커플링 `couple_*_cell`, scalar `axis_band` 역수 | `momentum_stencil.hpp`, `scalar_stencil.hpp`, 두 `system.{cu,cpp}`, `momentum/solve_kernels.{cu,cpp}` |
 | 10 (10-18) | scatter_z 타일 전치 + 선택적 `q += δ` | `src/equation/sweep_kernels.{hpp,cu,cpp}` |
 | 10 | 밴드 핑퐁(`SourceLayout`, scatter_x/y 제거) | `src/equation/band_layout.hpp`, momentum·scalar `system.{cu,cpp}`·`solve.cpp` |
-| 11 | pressure 전치 복사 4개 타일화 | `src/equation/pressure/solve_kernels.cu` |
+| 11 | pressure 전치 복사 4개 타일화 (+ DCT 거울 팩·산포 2개) | `src/equation/pressure/solve_kernels.cu` |
+| 12 | 상수물성 풀이 밴드 핑퐁·융합, OB 형 전용 RHS 빌드(`build_constant_property_rhs`·`build_variable_viscosity_rhs`) | momentum·scalar `solve.cpp`, `momentum/rhs/rhs.{hpp,cu,cpp}`, 네 앱 `main.cpp` |
 | 계측 | PhaseTimer·단계 타이머(수치 불변) | `src/common/phase_timer.hpp`, momentum·scalar·pressure `solve.{hpp,cpp}` |
 - **2026-10-18 (2)**: pressure 전치 복사 4개 타일화(`pressure/solve_kernels.cu`). 비트 동일. V100 pressure_solve 256³ np 1 13.4 → 7.5 (−44 %), 512³ np 2 85.5 → 38.8 (−55 %);
   스텝 −7 % / −9 %. 꼬리표 `v100pt`. 누적 원본 대비 256³ np 1 **198 → 87.5 ms (×2.26)**. `main_scalability.md` §2i. 코드의 최적화 지점은 전부 `[최적화 날짜]` 주석 + plan §10 표.
+- **2026-10-18 (3)**: rbc_nob 전용이던 세 가지를 다른 앱(dhvc·channel·boundary_layer·thermal_boundary_layer; 공용 경로라 cavity·rbc_ob 도)으로 확장 —
+  ① 상수물성 momentum·scalar 풀이의 밴드 핑퐁·scatter_z 융합(`solve_constant_property`), ② OB 형 전용 RHS 빌드 `build_constant_property_rhs`(부력 x 옵션)·
+  `build_variable_viscosity_rhs`(LES) — 기존 fill·add·부력·∇P 와 같은 식·순서(비트 동일), ③ pressure x 벽(DCT) 경로의 거울 팩·산포 타일 전치.
+  게이트: 각 앱 짧은 런(30~40 스텝)의 모니터를 변경 전 바이너리와 비교.

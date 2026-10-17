@@ -134,29 +134,29 @@ void adi_sweeps_constant(Solver& solver, const grid::Grid& grid,
                          const field::Field& q, const field::Field& U,
                          const field::Field& V, const field::Field& W,
                          const int own_axis, const real_t viscosity, const real_t dt,
-                         real_t* delta_out) {
+                         real_t* delta_out, real_t* accumulate_into) {
   const int i1 = sub.x().n_local;
   const int i2 = sub.y().n_local;
   const int i3 = sub.z().n_local;
   real_t* A = solver.band_a.data();
   real_t* B = solver.band_b.data();
   real_t* C = solver.band_c.data();
-  real_t* D = solver.band_d.data();
+  // [최적화 2026-10-18] 가변물성 판과 같은 D 밴드 핑퐁(scatter_x/y 없음) + 타일 scatter_z(+ q += δ)
+  real_t* D0 = solver.band_d.data();
+  real_t* D1 = solver.band_d2.data();
 
-  build_x_sweep_constant_property(A, B, C, D, rhs_data, q.data(), U.data(), grid, sub,
+  build_x_sweep_constant_property(A, B, C, D0, rhs_data, q.data(), U.data(), grid, sub,
                                   own_axis, viscosity, dt);
-  solve_sweep(solver, solver.plan_x, A, B, C, D, sub, 0, own_axis, i2 * i3, i1);
-  equation::scatter_x(solver.stage_first.data(), D, sub);
+  solve_sweep(solver, solver.plan_x, A, B, C, D0, sub, 0, own_axis, i2 * i3, i1);
 
-  build_y_sweep_constant_property(A, B, C, D, solver.stage_first.data(), q.data(),
-                                  V.data(), grid, sub, own_axis, viscosity, dt);
-  solve_sweep(solver, solver.plan_y, A, B, C, D, sub, 1, own_axis, i1 * i3, i2);
-  equation::scatter_y(solver.stage_second.data(), D, sub);
+  build_y_sweep_constant_property(A, B, C, D1, D0, q.data(), V.data(), grid, sub, own_axis,
+                                  viscosity, dt, SourceLayout::BandX);
+  solve_sweep(solver, solver.plan_y, A, B, C, D1, sub, 1, own_axis, i1 * i3, i2);
 
-  build_z_sweep_constant_property(A, B, C, D, solver.stage_second.data(), q.data(),
-                                  W.data(), grid, sub, own_axis, viscosity, dt);
-  solve_sweep(solver, solver.plan_z, A, B, C, D, sub, 2, own_axis, i1 * i2, i3);
-  equation::scatter_z(delta_out, D, sub);
+  build_z_sweep_constant_property(A, B, C, D0, D1, q.data(), W.data(), grid, sub, own_axis,
+                                  viscosity, dt, SourceLayout::BandY);
+  solve_sweep(solver, solver.plan_z, A, B, C, D0, sub, 2, own_axis, i1 * i2, i3);
+  equation::scatter_z(delta_out, D0, sub, accumulate_into);
 }
 
 }  // namespace
@@ -205,21 +205,21 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
 
   // 전진 대입 dU → dV → dW (solve_variable_property 1:1 — 물성 자리만 상수)
   adi_sweeps_constant(solver, grid, sub, rhs_u.data(), U, U, V, W, /*own_axis=*/0,
-                      viscosity, dt, solver.delta_u.data());
+                      viscosity, dt, solver.delta_u.data(), nullptr);
   sub.exchange_halo(solver.delta_u.data());
   close_delta_wall_ghosts(solver, solver.delta_u, 0, sub);
 
   couple_rhs_v_from_delta_u_constant_property(rhs_v, solver.delta_u, V, grid, sub,
                                               viscosity, dt);
   adi_sweeps_constant(solver, grid, sub, rhs_v.data(), V, U, V, W, /*own_axis=*/1,
-                      viscosity, dt, solver.delta_v.data());
+                      viscosity, dt, solver.delta_v.data(), nullptr);
   sub.exchange_halo(solver.delta_v.data());
   close_delta_wall_ghosts(solver, solver.delta_v, 1, sub);
 
   couple_rhs_w_from_delta_uv_constant_property(rhs_w, solver.delta_u, solver.delta_v,
                                                W, grid, sub, viscosity, dt);
   adi_sweeps_constant(solver, grid, sub, rhs_w.data(), W, U, V, W, /*own_axis=*/2,
-                      viscosity, dt, solver.delta_w.data());
+                      viscosity, dt, solver.delta_w.data(), W.data());   // W += δW 를 scatter_z 에서
   sub.exchange_halo(solver.delta_w.data());
   close_delta_wall_ghosts(solver, solver.delta_w, 2, sub);
 
@@ -232,7 +232,7 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
 
   equation::add_increment(U, solver.delta_u.data(), sub);
   equation::add_increment(V, solver.delta_v.data(), sub);
-  equation::add_increment(W, solver.delta_w.data(), sub);
+  // W += δW 는 dW 의 scatter_z 에서 이미
 }
 
 void solve_variable_property(Solver& solver, const grid::Grid& grid,
