@@ -1,5 +1,7 @@
 #include "equation/momentum/system/system.hpp"
 
+#include "equation/band_layout.hpp"
+
 #include <cstddef>
 
 #include "equation/momentum/momentum_stencil.hpp"
@@ -34,7 +36,7 @@ OwnSpec own_spec(const int own_axis, const grid::Grid& grid,
 
 template <class MuArray, class RhoArray>
 void build_x_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
-                        const real_t* source, const real_t* q,
+                        const real_t* source, const SourceLayout source_layout, const real_t* q,
                         const real_t* advecting_velocity, const MuArray viscosity,
                         const RhoArray inverse_density, const grid::Grid& grid,
                         const parallel::Subdomain& sub, const int own_axis,
@@ -58,13 +60,13 @@ void build_x_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
                                      inverse_density, grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
                                      grid.x.inverse_center_distance.data(), own.dx, own.idmx,
                                      Cmu, dt, A[p], B[p], C[p]);
-        D[p] = source[gi];
+        D[p] = source[source_index(source_layout, i - h, j - h, k - h, i1, i2, i3, gi)];
       }
 }
 
 template <class MuArray, class RhoArray>
 void build_y_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
-                        const real_t* source, const real_t* q,
+                        const real_t* source, const SourceLayout source_layout, const real_t* q,
                         const real_t* advecting_velocity, const MuArray viscosity,
                         const RhoArray inverse_density, const grid::Grid& grid,
                         const parallel::Subdomain& sub, const int own_axis,
@@ -88,13 +90,13 @@ void build_y_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
                                      inverse_density, grid.y.cell_width.data(), grid.y.inverse_cell_width.data(),
                                      grid.y.inverse_center_distance.data(), own.dx, own.idmx,
                                      Cmu, dt, A[p], B[p], C[p]);
-        D[p] = source[gi];
+        D[p] = source[source_index(source_layout, i - h, j - h, k - h, i1, i2, i3, gi)];
       }
 }
 
 template <class MuArray, class RhoArray>
 void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
-                        const real_t* source, const real_t* q,
+                        const real_t* source, const SourceLayout source_layout, const real_t* q,
                         const real_t* advecting_velocity, const MuArray viscosity,
                         const RhoArray inverse_density, const grid::Grid& grid,
                         const parallel::Subdomain& sub, const int own_axis,
@@ -118,7 +120,7 @@ void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
                                      inverse_density, grid.z.cell_width.data(), grid.z.inverse_cell_width.data(),
                                      grid.z.inverse_center_distance.data(), own.dx, own.idmx,
                                      Cmu, dt, A[p], B[p], C[p]);
-        D[p] = source[gi];
+        D[p] = source[source_index(source_layout, i - h, j - h, k - h, i1, i2, i3, gi)];
       }
 }
 
@@ -130,8 +132,8 @@ void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
       const real_t* q, const real_t* advecting_velocity, const real_t* viscosity,     \
       const real_t* inverse_density, const grid::Grid& grid,                          \
       const parallel::Subdomain& sub, const int own_axis, const real_t Cmu,           \
-      const real_t dt) {                                                              \
-    build_##AXIS##_sweep_impl(A, B, C, D, source, q, advecting_velocity, viscosity,   \
+      const real_t dt, const SourceLayout source_layout) {                            \
+    build_##AXIS##_sweep_impl(A, B, C, D, source, source_layout, q, advecting_velocity, viscosity, \
                               inverse_density, grid, sub, own_axis, Cmu, dt);         \
   }                                                                                   \
   void build_##AXIS##_sweep_constant_property(                                        \
@@ -139,7 +141,7 @@ void build_z_sweep_impl(real_t* A, real_t* B, real_t* C, real_t* D,
       const real_t* q, const real_t* advecting_velocity, const grid::Grid& grid,      \
       const parallel::Subdomain& sub, const int own_axis, const real_t viscosity,     \
       const real_t dt) {                                                              \
-    build_##AXIS##_sweep_impl(A, B, C, D, source, q, advecting_velocity,              \
+    build_##AXIS##_sweep_impl(A, B, C, D, source, SourceLayout::Field, q, advecting_velocity, \
                               equation::UnitArray{}, equation::UnitArray{}, grid,     \
                               sub, own_axis, viscosity, dt);                          \
   }

@@ -11,13 +11,16 @@ SPECS = {
     nb="main_scalability.ipynb", title="rbc_nob 전체 스텝 프로파일 — 최적화 전 / 후 / 전·후 비교",
     what="`apps/rbc_nob/main.cpp` 시간 루프의 호출 단위 구간(plan.md §1 표). 분산 TDMA 의 MPI 시간 3개(`tdma_comm_*_z`, 풀이 안에 포함)는 참고용으로 같이 그린다.",
     before={"h200": "h200", "v100": "v100", "a100": "a100"},
-    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100"},
+    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100", "v100p": "v100", "v100pt": "v100"},
     before_note="원본 바이너리(최적화 전). H200 gpu55 4장·V100 gpu04 4장·A100 gpu36 1장 (np ≤ 4).",
-    after_note="최신 바이너리 = momentum build_kernel_z 타일 전치 + 순환 Thomas 레지스터화 + scalar build_z 타일 전치 + halo 자기 이웃 디바이스 복사 + momentum_rhs 역수·융합 + 조립·커플링·scalar 스텐실 역수(`v100s`; H200 은 `h200h` 까지 — H200 잡 취소). V100 gpu04 8장 (np ≤ 8).",
+    after_note="최신 바이너리 = momentum build_kernel_z 타일 전치 + 순환 Thomas 레지스터화 + scalar build_z 타일 전치 + halo 자기 이웃 디바이스 복사 + momentum_rhs 역수·융합 + 조립·커플링·scalar 스텐실 역수 + 패스 제거(scatter_z 타일 전치·밴드 핑퐁·증분 융합) + pressure 전치 커널 타일화(`v100pt`; H200 은 `h200h` 까지 — H200 잡 취소). V100 8장 (np ≤ 8).",
     events=["dt_cfl", "dt_viscous", "properties_1", "scalar_solve", "sync_T", "momentum_rhs", "momentum_solve", "sync_UVW_1",
             "properties_2", "pressure_rhs", "pressure_solve", "pressure_correct", "sync_UVW_2", "predictor", "clip", "monitor",
             "tdma_comm_scalar_z", "tdma_comm_momentum_z", "tdma_comm_pressure_z"],
     prefix="", total="step_total", require=None,
+    breakdown=("I. pressure_solve 단계별 분해 (최신 바이너리 + 단계 타이머, `v100q`)",
+               "`pressure::Solver::timer` 로 잰 14단계 (팩·FFT·재배열·밴드 팩·z TDMA·언팩·산포·평균 제거·halo). np 1 에서 reorder_x_to_y·pack/scatter_lines·reorder_y_to_x 가 전치 복사라 크고, np 8 에서는 tdma_z(Alltoallv)가 전부.",
+               {"v100q": "v100", "v100pt": "v100"}, "pressure."),
     extra=[("E. 통신(halo 자기 전송) 수정 전 vs 후 — np 8 포함",
             "A/B 의 '전' 은 원본 바이너리라 np ≤ 4 뿐이어서 halo 수정 효과(np 8 에서 큼)가 안 보인다. 여기서는 **halo 수정 직전 바이너리**(다른 최적화는 모두 적용, 꼬리표 `h200z`·`v100z`)를 '전' 으로 두고 같은 세 그림을 그린다. 차이는 전부 halo 교환(sync_*, predictor, momentum 내부 halo)에서 나야 한다.",
             {"h200z": "h200", "v100z": "v100"}),
@@ -26,34 +29,57 @@ SPECS = {
             {"v100h": "v100"}),
            ("G. 조립·커플링·scalar 스텐실 역수 직전 vs 최종 — V100",
             "전 = momentum_rhs 까지 적용된 바이너리(`v100r1`), 후 = sweep_band·couple_*·axis_band 의 나눗셈을 격자 역수 곱으로 바꾼 최종(`v100s`). 차이는 momentum_solve(build_*·couple·block_couple)와 scalar_solve(build_*)에서 나야 한다.",
-            {"v100r1": "v100"})],
+            {"v100r1": "v100"}, [("momentum_solve", ["momentum_solve"]), ("scalar_solve", ["scalar_solve"]), ("momentum_rhs", ["momentum_rhs"])]),
+           ("H. 패스 제거(scatter_z 타일 전치·밴드 핑퐁·증분 융합) 직전 vs 최종 — V100",
+            "전 = `v100s`, 후 = `v100p`. 차이는 momentum_solve(scatter_*·add_increment)와 scalar_solve(scatter_*·add_increment)에서만 나야 한다.",
+            {"v100s": "v100"}, [("momentum_solve", ["momentum_solve"]), ("scalar_solve", ["scalar_solve"]), ("pressure_solve", ["pressure_solve"])]),
+           ("J. pressure 전치 커널 타일화 직전 vs 최종 — V100",
+            "전 = `v100q`(단계 타이머만), 후 = `v100pt`(pack_lines·reorder_x_to_y·reorder_y_to_x·scatter_lines 를 32×32 타일 전치로). 차이는 pressure_solve 에서만 나야 한다.",
+            {"v100q": "v100"}, [("pressure_solve", ["pressure_solve"]), ("reorder x↔y", ["pressure.reorder_x_to_y", "pressure.reorder_y_to_x"]), ("pack+scatter_lines", ["pressure.pack_lines", "pressure.scatter_lines"]), ("fft ×4", ["pressure.fft_x_fwd", "pressure.fft_y_fwd", "pressure.fft_y_bwd", "pressure.fft_x_bwd"])])],
   ),
   "momentum": dict(
     nb="momentum_scalability.ipynb", title="momentum_solve 이벤트별 프로파일 — 최적화 전 / 후 / 전·후 비교",
     what="`momentum::solve_variable_property` 가 부르는 호출 (`momentum.<dU|dV|dW>.<호출>` 을 세 성분 합으로, `momentum.post.*` 는 그대로). 상위 구간 `momentum_solve` 도 첫 막대로.",
     before={"h200m": "h200", "v100m": "v100"},
-    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100"},
+    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100", "v100p": "v100", "v100pt": "v100"},
     before_note="momentum 분해 측정 시점의 바이너리(최적화 전). H200 gpu55 4장·V100 gpu04 4장.",
-    after_note="최신 바이너리(위 네 가지 최적화 + momentum_rhs 역수·융합 + 조립·커플링 스텐실 역수 `v100s`). H200 gpu55, V100 gpu04 8장.",
+    after_note="최신 바이너리(위 네 가지 최적화 + momentum_rhs 역수·융합 + 조립·커플링 스텐실 역수 + 패스 제거 `v100p`). H200 gpu55, V100 8장.",
     events=["momentum_solve", "build_x", "tdma_x", "scatter_x", "build_y", "tdma_y", "scatter_y", "build_z", "tdma_z", "scatter_z",
             "halo", "wall_ghost", "couple_rhs", "block_couple_v", "halo_dV", "wall_ghost_dV", "block_couple_u", "add_increment"],
     prefix="momentum", total="momentum_solve", require="momentum.",
     extra=[("E. 조립·커플링 스텐실 역수 직전 vs 최종 — V100",
             "전 = `v100r1`(momentum_rhs 까지), 후 = `v100s`(sweep_band·own_face_blend·couple_* 의 나눗셈을 역수 곱으로). 차이는 build_x/y/z·couple_rhs·block_couple_* 에서만 나야 한다.",
-            {"v100r1": "v100"})],
+            {"v100r1": "v100"}, [("build_x+y+z (3성분 합)", ['momentum.dU.build_x', 'momentum.dU.build_y', 'momentum.dU.build_z', 'momentum.dV.build_x', 'momentum.dV.build_y', 'momentum.dV.build_z', 'momentum.dW.build_x', 'momentum.dW.build_y', 'momentum.dW.build_z']), ("couple_rhs+block_couple", ['momentum.dV.couple_rhs', 'momentum.dW.couple_rhs', 'momentum.post.block_couple_v', 'momentum.post.block_couple_u']), ("tdma_x+y+z (3성분 합)", ['momentum.dU.tdma_x', 'momentum.dU.tdma_y', 'momentum.dU.tdma_z', 'momentum.dV.tdma_x', 'momentum.dV.tdma_y', 'momentum.dV.tdma_z', 'momentum.dW.tdma_x', 'momentum.dW.tdma_y', 'momentum.dW.tdma_z'])]),
+           ("F. 패스 제거 직전 vs 최종 — V100",
+            "전 = `v100s`, 후 = `v100p`(scatter_z 타일 전치, scatter_x/y 제거, W += 융합). 차이는 scatter_*·add_increment 에서만 나야 한다.",
+            {"v100s": "v100"}, [("scatter_x+y+z (3성분 합)", ['momentum.dU.scatter_x', 'momentum.dU.scatter_y', 'momentum.dU.scatter_z', 'momentum.dV.scatter_x', 'momentum.dV.scatter_y', 'momentum.dV.scatter_z', 'momentum.dW.scatter_x', 'momentum.dW.scatter_y', 'momentum.dW.scatter_z']), ("add_increment", ["momentum.post.add_increment"]), ("build_x+y+z (3성분 합)", ['momentum.dU.build_x', 'momentum.dU.build_y', 'momentum.dU.build_z', 'momentum.dV.build_x', 'momentum.dV.build_y', 'momentum.dV.build_z', 'momentum.dW.build_x', 'momentum.dW.build_y', 'momentum.dW.build_z'])])],
   ),
   "scalar": dict(
     nb="scalar_scalability.ipynb", title="scalar_solve(에너지 방정식) 이벤트별 프로파일 — 최적화 전 / 후 / 전·후 비교",
     what="`scalar::solve_variable_property` 가 부르는 호출 (`scalar.<build|tdma|scatter>_<x|y|z>`, `scalar.add_increment`). 상위 구간 `scalar_solve` 도 첫 막대로.",
     before={"h200k": "h200", "v100e": "v100"},
-    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100"},
+    after={"h200h": "h200", "v100h": "v100", "v100r1": "v100", "v100s": "v100", "v100p": "v100", "v100pt": "v100"},
     before_note="scalar 분해 측정 시점의 바이너리(scalar build_z 수정 전, momentum 최적화는 적용됨). H200 gpu55 4장·V100 gpu04 8장.",
-    after_note="최신 바이너리(scalar build_z 타일 전치 + halo 자기 이웃 복사 + axis_band 스텐실 역수 `v100s`). H200 gpu55, V100 gpu04 8장.",
+    after_note="최신 바이너리(scalar build_z 타일 전치 + halo 자기 이웃 복사 + axis_band 스텐실 역수 + 패스 제거 `v100p`). H200 gpu55, V100 8장.",
     events=["scalar_solve", "build_x", "tdma_x", "scatter_x", "build_y", "tdma_y", "scatter_y", "build_z", "tdma_z", "scatter_z", "add_increment"],
     prefix="scalar", total="scalar_solve", require="scalar.",
     extra=[("E. scalar 스텐실 역수 직전 vs 최종 — V100",
             "전 = `v100r1`, 후 = `v100s`(axis_band 의 `/dx`·`/dmx` 를 역수 곱으로). 차이는 build_x/y/z 에서만 나야 한다.",
-            {"v100r1": "v100"})],
+            {"v100r1": "v100"}, [("build_x", ["scalar.build_x"]), ("build_y", ["scalar.build_y"]), ("build_z", ["scalar.build_z"]), ("tdma_x+y+z", ["scalar.tdma_x", "scalar.tdma_y", "scalar.tdma_z"])]),
+           ("F. 패스 제거 직전 vs 최종 — V100",
+            "전 = `v100s`, 후 = `v100p`(scatter_z 타일 전치 + T += 융합, scatter_x/y 제거). 차이는 scatter_*·add_increment 에서만 나야 한다.",
+            {"v100s": "v100"}, [("scatter_x+y+z", ["scalar.scatter_x", "scalar.scatter_y", "scalar.scatter_z"]), ("add_increment", ["scalar.add_increment"]), ("build_x+y+z", ["scalar.build_x", "scalar.build_y", "scalar.build_z"])])],
+  ),
+  "present": dict(
+    nb="present.ipynb", title="rbc_nob 전체 스텝 — 제일 처음 결과 vs 최신 결과",
+    what="`apps/rbc_nob/main.cpp` 시간 루프의 호출 단위 구간(plan.md §1 표). 두 바이너리만 비교한다: **처음** = 최적화 전 원본, **최신** = 현재 본 코드. 최신 바이너리로 잰 기종은 V100 뿐이라 V100 만 싣는다 (H200 은 10-17 중간 판까지만 있어 제외).",
+    before={"v100": "v100"},
+    after={"v100pt": "v100"},
+    before_note="원본 바이너리(최적화 전). V100 gpu04 4장 (np ≤ 4).",
+    after_note="최신 바이너리(모든 최적화 적용: build_z 타일 전치 · 순환 Thomas 레지스터화 · scalar build_z · halo 자기 이웃 복사 · momentum_rhs 역수·융합 · 조립·커플링·scalar 스텐실 역수 · 패스 제거 · pressure 전치 타일화). V100 8장 gpu02 (np ≤ 8).",
+    events=["dt_cfl", "dt_viscous", "properties_1", "scalar_solve", "sync_T", "momentum_rhs", "momentum_solve", "sync_UVW_1",
+            "properties_2", "pressure_rhs", "pressure_solve", "pressure_correct", "sync_UVW_2", "predictor", "clip", "monitor"],
+    prefix="", total="step_total", require=None, present=True,
   ),
 }
 
@@ -303,7 +329,34 @@ for hw in ("h200", "v100", "a100"):
                 tb, ta = event_time(b, TOTAL), event_time(a, TOTAL)
                 print(f"{hw:5s} {mode:6s} {n:<4d} {np_:<3d} | {b['step_total']:11.1f} {a['step_total']:8.1f} {100*(1-a['step_total']/b['step_total']):5.0f}% | "
                       f"{tb:15.2f} {ta:8.2f} {100*(1-ta/tb) if tb>0 else 0:5.0f}% | " + ", ".join(f"{e} −{v:.2f}" for v, e in d))''')
-    for title, note, before_tags in S.get("extra", []):
+    if S.get("breakdown"):
+        title, note, tags, pfx = S["breakdown"]
+        md(f"## {title}\n\n{note}")
+        code(f"""BD, BD_TAG = load({tags!r}); describe("breakdown", BD, BD_TAG)
+PFX = {pfx!r}
+for hw in ("h200", "v100"):
+    for mode in ("strong", "weak"):
+        for n in (256, 512):
+            keys = sorted(k for k in BD if k[:3] == (hw, mode, n))
+            if not keys:
+                continue
+            names = sorted({{e for k in keys for e in BD[k] if e.startswith(PFX)}}, key=lambda e: -BD[keys[0]].get(e, 0))
+            fig, ax = plt.subplots(figsize=(12.5, 4.0)); xs = np.arange(len(names)); w = 0.8 / len(keys); vmax = 0
+            for j, k in enumerate(keys):
+                vals = np.array([BD[k].get(e, 0.0) for e in names]); vmax = max(vmax, vals.max())
+                tot = BD[k].get(PFX.rstrip('.') + '_solve', 0.0)
+                ax.bar(xs - 0.4 + w * (j + 0.5), vals, w * 0.92, color=NP_COLOR.get(k[3], "#164a8a"), label=f"np {{k[3]}}  ({{PFX.rstrip('.')}}_solve {{tot:.2f}} ms, step {{BD[k]['step_total']:.1f}})")
+            ax.set_xticks(xs); ax.set_xticklabels([e[len(PFX):] for e in names], rotation=40, ha="right"); ax.set_ylabel("ms / step (rank max)")
+            ax.set_title(f"[breakdown] {{hw_desc('breakdown', hw)}} — {{mode}} {{n}}³: {{PFX.rstrip('.')}}_solve stages by np", fontsize=10, loc="left")
+            ax.set_ylim(0, vmax * 1.15); ax.legend(frameon=False, ncol=len(keys), loc="upper center", bbox_to_anchor=(0.5, -0.5), fontsize=7.5); plt.tight_layout()
+plt.show()
+print(f"{{'hw':5s}} {{'mode':6s}} {{'n':4s}} {{'np':3s}} | {{PFX.rstrip('.')}}_solve | 상위 5단계 (ms)")
+for k in sorted(BD):
+    names = sorted((e for e in BD[k] if e.startswith(PFX)), key=lambda e: -BD[k][e])[:5]
+    print(f"{{k[0]:5s}} {{k[1]:6s}} {{k[2]:<4d}} {{k[3]:<3d}} | {{BD[k].get(PFX.rstrip('.') + '_solve', 0):8.2f}} | " + ", ".join(f"{{e[len(PFX):]}} {{BD[k][e]:.2f}}" for e in names))""")
+    DEFAULT_COLS = [("halo 계열 합(sync_T+sync_UVW×2+predictor)", ["sync_T", "sync_UVW_1", "sync_UVW_2", "predictor"]), ("momentum_rhs", ["momentum_rhs"])]
+    for title, note, before_tags, *rest in S.get("extra", []):
+        cols = rest[0] if rest else DEFAULT_COLS   # 요약표 열: (라벨, CSV 이벤트 키 목록 — 합산)
         md(f"## {title}\n\n{note}")
         code(f"""BEFORE2, BEFORE2_TAG = load({before_tags!r})
 describe("before2", BEFORE2, BEFORE2_TAG)
@@ -322,7 +375,8 @@ for hw in ("h200", "v100"):
             for np_ in (4, 8):
                 plot_before_after(mode, hw, n, np_)
 plt.show()
-print(f"{{'hw':5s}} {{'mode':6s}} {{'n':4s}} {{'np':3s}} | {{'step before':>11s}} {{'after':>8s}} {{'gain':>6s}} | halo 계열 합(sync_T+sync_UVW×2+predictor) 전 → 후 | momentum_rhs 전 → 후")
+COLS = {cols!r}
+print(f"{{'hw':5s}} {{'mode':6s}} {{'n':4s}} {{'np':3s}} | {{TOTAL + ' before':>22s}} {{'after':>8s}} {{'gain':>6s}} | " + " | ".join(f"{{lab}} 전 → 후" for lab, _ in COLS))
 for hw in ("h200", "v100"):
     for mode in ("strong", "weak"):
         for n in (256, 512):
@@ -331,15 +385,114 @@ for hw in ("h200", "v100"):
                 if k not in BEFORE or k not in AFTER:
                     continue
                 b, a = BEFORE[k], AFTER[k]
-                hb = sum(b.get(e, 0) for e in ("sync_T", "sync_UVW_1", "sync_UVW_2", "predictor")); ha = sum(a.get(e, 0) for e in ("sync_T", "sync_UVW_1", "sync_UVW_2", "predictor"))
-                print(f"{{hw:5s}} {{mode:6s}} {{n:<4d}} {{np_:<3d}} | {{b['step_total']:11.1f}} {{a['step_total']:8.1f}} {{100*(1-a['step_total']/b['step_total']):5.0f}}% | {{hb:6.2f}} → {{ha:6.2f}} ms | {{b.get('momentum_rhs', 0):6.2f}} → {{a.get('momentum_rhs', 0):6.2f}} ms")
+                cells_ = " | ".join(f"{{sum(b.get(e, 0) for e in keys):7.2f}} → {{sum(a.get(e, 0) for e in keys):7.2f}} ms" for _, keys in COLS)
+                print(f"{{hw:5s}} {{mode:6s}} {{n:<4d}} {{np_:<3d}} | {{b[TOTAL]:22.1f}} {{a[TOTAL]:8.1f}} {{100*(1-a[TOTAL]/b[TOTAL]):5.0f}}% | {{cells_}}")
 BEFORE, BEFORE_TAG = _B, _BT""")
     return cells
+
+def make_present_cells(S):
+    """처음 vs 최신 두 바이너리만: ① step_total scaling·효율, ② 조합별 이벤트 막대(처음·최신 나란히 + 감소량), ③ 요약표"""
+    cells = make_cells(S)[:3]          # 머리말·데이터 적재·그림 도우미는 공용
+    md = lambda s: cells.append(("markdown", s))
+    code = lambda s: cells.append(("code", s))
+    md("""## 1. step_total scaling — 처음(큰 빈 ○, 파선) vs 최신(작은 채운 ■, 실선)
+
+왼쪽 ms/step, 오른쪽 효율. 색 = 기종, 점선 = 처음 선의 이상선(strong $T_{np_0}\\,np_0/np$, weak 평평). 최신은 np 8 까지 있다(V100).""")
+    code(PRESENT_CELL_1)
+    md("""## 2. 이벤트별 시간 — 처음(회색) vs 최신(파랑), 같은 기종·문제 크기·np
+
+오른쪽은 감소량 = 처음 − 최신 (ms/step), 막대 위 숫자는 감소율 %. 두 바이너리가 모두 있는 조합만(np ≤ 4).""")
+    code(PRESENT_CELL_2)
+    md("## 3. 요약표 — 처음 → 최신")
+    code(PRESENT_CELL_3)
+    return cells
+
+PRESENT_CELL_1 = r"""def plot_total(mode, n):
+    hws = sorted({k[0] for cases in (BEFORE, AFTER) for k in cases if k[1:3] == (mode, n)})
+    if not hws:
+        return
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 3.9))
+    nps_all = sorted({k[3] for cases in (BEFORE, AFTER) for k in cases if k[1:3] == (mode, n)})
+    for hw in hws:
+        for cases, label, name in ((BEFORE, "before", "first"), (AFTER, "after", "latest")):
+            ks = sorted(k for k in cases if k[:3] == (hw, mode, n))
+            if not ks:
+                continue
+            nps = np.array([k[3] for k in ks]); t = np.array([cases[k]["step_total"] for k in ks])
+            st = STYLE[label]; c = HW_COLOR[hw]
+            ax1.plot(nps, t, color=c, marker=st["marker"], ls=st["ls"], mfc=st["mfc"] or c, ms=st["ms"], mew=st["mew"], zorder=st["z"],
+                     label=f"{name}: {hw_desc(label, hw)}")
+            ideal = t[0] * nps[0] / nps if mode == "strong" else np.full_like(t, t[0])
+            if label == "before":
+                ax1.plot(nps, ideal, color=c, ls=":", lw=0.9, alpha=0.6)
+            eff = t[0] / (t * nps / nps[0]) if mode == "strong" else t[0] / t
+            ax2.plot(nps, 100 * eff, color=c, marker=st["marker"], ls=st["ls"], mfc=st["mfc"] or c, ms=st["ms"], mew=st["mew"], zorder=st["z"], label=f"{name} [{hw}]")
+    for ax in (ax1, ax2):
+        ax.set_xscale("log", base=2); ax.xaxis.set_major_locator(FixedLocator(nps_all)); ax.xaxis.set_minor_formatter(NullFormatter())
+        ax.set_xticklabels([str(v) for v in nps_all]); ax.set_xlabel("np (GPUs, z-slab)")
+    ax1.set_yscale("log" if mode == "strong" else "linear"); ax1.set_ylabel("step_total (ms / step)")
+    ax1.set_title(f"{mode} {n}³ — step_total vs np: first (○ dashed) vs latest (■ solid), dotted = ideal", fontsize=10, loc="left")
+    ax2.set_ylabel("efficiency"); ax2.yaxis.set_major_formatter(PercentFormatter()); ax2.set_ylim(0, 110); ax2.axhline(100, color="#52514e", lw=0.6, ls=":")
+    ax2.set_title(f"{mode} {n}³ — efficiency ({'T(np0)/(T(np) np/np0)' if mode == 'strong' else 'T(np0)/T(np)'})", fontsize=10, loc="left")
+    ax1.legend(frameon=False, fontsize=7.2, loc="best"); ax2.legend(frameon=False, fontsize=7.2, loc="lower left")
+    fig.tight_layout()
+
+for mode in ("strong", "weak"):
+    for n in (256, 512):
+        plot_total(mode, n)
+plt.show()"""
+
+PRESENT_CELL_2 = r"""def plot_first_latest(mode, hw, n, np_):
+    k = (hw, mode, n, np_)
+    if k not in BEFORE or k not in AFTER:
+        return
+    b, a = BEFORE[k], AFTER[k]
+    vb = np.array([event_time(b, e) for e in EVENTS]); va = np.array([event_time(a, e) for e in EVENTS])
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 4.0), gridspec_kw={"width_ratios": [1.15, 1]})
+    xs = np.arange(len(EVENTS)); w = 0.38
+    ax1.bar(xs - w / 2, vb, w, color="#9a9a96", label=f"first [{BEFORE_TAG[k]}]  step_total {b['step_total']:.1f} ms")
+    ax1.bar(xs + w / 2, va, w, color="#2a78d6", label=f"latest [{AFTER_TAG[k]}]  step_total {a['step_total']:.1f} ms")
+    ax1.set_xticks(xs); ax1.set_xticklabels(EVENTS, rotation=40, ha="right"); ax1.set_ylabel("ms / step (rank max)")
+    ax1.set_title(f"{hw_desc('after', hw)} — {mode} {n}³, np {np_}: first vs latest", fontsize=10, loc="left")
+    ax1.set_ylim(0, max(vb.max(), va.max()) * 1.12); ax1.legend(frameon=False, fontsize=7.5)
+    d = vb - va; colors = ["#2a78d6" if v >= 0 else "#e34948" for v in d]
+    ax2.bar(xs, d, 0.62, color=colors)
+    for x, v, bv in zip(xs, d, vb):
+        if bv > 0.02 * vb.max():
+            ax2.annotate(f"{100 * v / bv:+.0f}%", (x, v), xytext=(0, 2 if v >= 0 else -9), textcoords="offset points", ha="center", fontsize=6.5, color="#52514e", rotation=90)
+    ax2.axhline(0, color="#52514e", lw=0.8)
+    ax2.set_xticks(xs); ax2.set_xticklabels(EVENTS, rotation=40, ha="right"); ax2.set_ylabel("reduction = first − latest (ms / step)")
+    ax2.set_title(f"reduction per event (step_total {b['step_total']:.1f} → {a['step_total']:.1f} ms, {100*(1-a['step_total']/b['step_total']):+.0f}%)", fontsize=10, loc="left")
+    fig.tight_layout()
+
+for hw in ("h200", "v100", "a100"):
+    for mode in ("strong", "weak"):
+        for n in (256, 512):
+            for np_ in (1, 2, 4, 8):
+                plot_first_latest(mode, hw, n, np_)
+plt.show()"""
+
+PRESENT_CELL_3 = r"""print(f"{'hw':5s} {'mode':6s} {'n':4s} {'np':3s} | {'first':>8s} {'latest':>8s} {'gain':>6s} {'speedup':>8s} | 가장 많이 줄어든 이벤트 (ms)")
+for hw in ("h200", "v100", "a100"):
+    for mode in ("strong", "weak"):
+        for n in (256, 512):
+            for np_ in (1, 2, 4, 8):
+                k = (hw, mode, n, np_)
+                if k not in BEFORE or k not in AFTER:
+                    continue
+                b, a = BEFORE[k], AFTER[k]
+                d = sorted(((event_time(b, e) - event_time(a, e), e) for e in EVENTS if e != TOTAL), reverse=True)[:3]
+                print(f"{hw:5s} {mode:6s} {n:<4d} {np_:<3d} | {b['step_total']:8.1f} {a['step_total']:8.1f} {100*(1-a['step_total']/b['step_total']):5.0f}% {b['step_total']/a['step_total']:7.2f}x | " + ", ".join(f"{e} −{v:.1f}" for v, e in d))
+print()
+print("최신만 있는 조합(np 8 등):")
+for k in sorted(AFTER):
+    if k not in BEFORE:
+        print(f"  {k[0]:5s} {k[1]:6s} {k[2]}^3 np{k[3]:<2d}  step_total {AFTER[k]['step_total']:7.1f} ms  [{AFTER_TAG[k]}]")"""
 
 def run(S):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    cells = make_cells(S); ns = {"__name__": "__main__"}
+    cells = (make_present_cells if S.get("present") else make_cells)(S); ns = {"__name__": "__main__"}
     os.chdir(PLOT_DIR); out_cells = []
     for kind, src in cells:
         cell = {"cell_type": kind, "metadata": {}, "source": src}

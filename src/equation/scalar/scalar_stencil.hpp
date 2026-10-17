@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 // 가변-κ̂ (NOB) 에너지 방정식의 셀 단위 수식 — PaScaL_TCS module_solve_thermal
 // (델타형 3-스윕 ADI) 를 MPM-STD_C 를 거쳐 1:1 이식. CPU 루프(system.cpp)
 // 와 GPU 커널(system.cu)이 이 한 곳의 식을 같이 쓴다 (D3).
@@ -51,6 +52,8 @@ MPMSTD_HD inline long long cell_index(const int i, const int j, const int k,
 }
 
 // ── 한 축의 밴드 + R 기여 (참조 scalar_var_stencil.hpp axis_band 1:1) ─────────
+// [최적화 2026-10-17] axis_band 의 나눗셈(23회) → 역수 곱. 허용오차 게이트. build_x −29 %.
+// [최적화 2026-10-18] build_cell 의 source 인덱스(source_at)를 호출자가 줌 — 직전 스윕 밴드를 직접 읽는 밴드 핑퐁(band_layout.hpp).
 template <class KappaArray, class DKappaArray>
 MPMSTD_HD inline void axis_band(
     const real_t* T, const KappaArray conductivity,
@@ -114,7 +117,7 @@ MPMSTD_HD inline void axis_band(
 template <class KappaArray, class DKappaArray, class HeatCapArray, class DHeatCapArray>
 MPMSTD_HD inline void build_cell(
     const int sweep_axis, const int i, const int j, const int k, const int ny_total,
-    const int nz_total, const real_t* source, const real_t* T, const real_t* U,
+    const int nz_total, const real_t* source, const std::size_t source_at, const real_t* T, const real_t* U,
     const real_t* V, const real_t* W, const KappaArray conductivity,
     const DKappaArray conductivity_derivative, const HeatCapArray inverse_heat_capacity,
     const DHeatCapArray inverse_heat_capacity_derivative, const real_t* dx_x,
@@ -205,7 +208,7 @@ MPMSTD_HD inline void build_cell(
     ac = eAC_d * dt + real_t(1);
     ap = eAP_d * dt;
     am = eAM_d * dt;
-    D_value = source[c];  // 이전 스윕의 전치 증분 통과
+    D_value = source[source_at];  // 이전 스윕의 증분 통과 (source_at: 필드 또는 밴드 인덱스, band_layout.hpp)
   }
 }
 

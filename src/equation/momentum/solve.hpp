@@ -50,6 +50,7 @@ struct Solver {
   linear_solver::TdmaPlan plan_x, plan_y, plan_z;
   // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
   field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
+  field::Buffer band_d2;                         // [최적화 2026-10-18] D 핑퐁 (scatter_x/y 없음)
   field::Buffer stage_first, stage_second;       // 스윕 핑퐁 (전체 모양)
 
   // 증분 δU, δV, δW — 블록 커플링의 스텐실이 이웃 증분을 읽으므로

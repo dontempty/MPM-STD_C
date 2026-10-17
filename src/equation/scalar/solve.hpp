@@ -47,6 +47,7 @@ struct Solver {
   real_t wall_closure[3][2] = {{0, 0}, {0, 0}, {0, 0}};
   // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
   field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
+  field::Buffer band_d2;                         // [최적화 2026-10-18] D 핑퐁 (scatter_x/y 없음)
   field::Buffer stage_first, stage_second;       // 전체 모양 스크래치 (δ 핑퐁)
 
   // 확장성 측정용 (docs/Scalability/plan.md §1.1): nullptr 이 아니면 solve_variable_property 가

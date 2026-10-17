@@ -25,6 +25,7 @@ Solver::Solver(const parallel::Subdomain& sub) {
   band_b.assign(n_band);
   band_c.assign(n_band);
   band_d.assign(n_band);
+  band_d2.assign(n_band);
   stage_first.assign(sub.n_elements());
   stage_second.assign(sub.n_elements());
 }

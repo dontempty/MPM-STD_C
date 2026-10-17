@@ -35,15 +35,19 @@ void scatter_y(real_t* out, const real_t* D, const parallel::Subdomain& sub) {
             D[static_cast<std::size_t>(j - h) * nsys + (i - h) * i3 + (k - h)];
 }
 
-void scatter_z(real_t* out, const real_t* D, const parallel::Subdomain& sub) {
+void scatter_z(real_t* out, const real_t* D, const parallel::Subdomain& sub,
+               real_t* accumulate) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i2;
   for (int i = h; i < h + i1; ++i)
     for (int j = h; j < h + i2; ++j)
-      for (int k = h; k < h + i3; ++k)
-        out[at(i, j, k, sub.y().n_total, sub.z().n_total)] =
-            D[static_cast<std::size_t>(k - h) * nsys + (i - h) * i2 + (j - h)];
+      for (int k = h; k < h + i3; ++k) {
+        const real_t v = D[static_cast<std::size_t>(k - h) * nsys + (i - h) * i2 + (j - h)];
+        const std::size_t g = at(i, j, k, sub.y().n_total, sub.z().n_total);
+        if (out) out[g] = v;
+        if (accumulate) accumulate[g] += v;
+      }
 }
 
 void add_increment(field::Field& q_field, const real_t* delta,

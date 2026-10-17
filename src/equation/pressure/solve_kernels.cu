@@ -20,41 +20,73 @@ inline int blocks_for(const long long n) {
   return static_cast<int>((n + kThreads - 1) / kThreads);
 }
 
+// [최적화 2026-10-18] 배치 전환 4개(필드 ↔ x 라인, x 스펙트럼 ↔ y 배치)는 전치 복사 — 1차원 매핑은 한쪽이 보폭(이상값의 3~7배).
+//   32×32 공유메모리 타일로 양쪽 연속 접근. 복사뿐이라 비트 동일.
+constexpr int kTile = 32;
+constexpr int kTileRows = 8;
+
+// 필드 (i,j,k) k 연속 → 라인 [(jj·nz + kk)·n_x + ii] i 연속: jj 마다 (ii,kk) 전치. 그리드 (⌈n_x/32⌉, ⌈nz/32⌉, n_y)
 __global__ void pack_rhs_kernel(real_t* lines, const field::ConstView r, const int h,
                                 const int n_x, const int n_y, const int nz_local) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_x) * n_y * nz_local) return;
-  const int ii = static_cast<int>(idx % n_x);
-  const int kk = static_cast<int>((idx / n_x) % nz_local);
-  const int jj = static_cast<int>(idx / (static_cast<long long>(n_x) * nz_local));
-  lines[(static_cast<std::size_t>(jj) * nz_local + kk) * n_x + ii]
-      = r(ii + h, jj + h, kk + h);
+  __shared__ real_t tile[kTile][kTile + 1];
+  const int jj = static_cast<int>(blockIdx.z);
+  const int i0 = static_cast<int>(blockIdx.x) * kTile, k0 = static_cast<int>(blockIdx.y) * kTile;
+  const int tx = static_cast<int>(threadIdx.x), ty = static_cast<int>(threadIdx.y);
+  for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 k 를 걷는다
+    const int ii = i0 + ty + q, kk = k0 + tx;
+    if (ii < n_x && kk < nz_local) tile[ty + q][tx] = r(ii + h, jj + h, kk + h);
+  }
+  __syncthreads();
+  for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 i 를 걷는다
+    const int ii = i0 + tx, kk = k0 + ty + q;
+    if (ii < n_x && kk < nz_local)
+      lines[(static_cast<std::size_t>(jj) * nz_local + kk) * n_x + ii] = tile[tx][ty + q];
+  }
 }
 
+// x 스펙트럼 [(jy·nz + kk)·Nxm + mx] (mx 연속) → y 배치 [(kk·Nxm + mx)·Ny + jy] (jy 연속): kk 마다 (jy,mx) 전치.
+// 복소 (실,허) 쌍은 double2 로 한 번에. 그리드 (⌈Nxm/32⌉, ⌈Ny/32⌉, nz)
 __global__ void reorder_x_to_y_kernel(real_t* sxy, const real_t* sx, const int n_y,
                                       const int nz_local, const int n_mode_x) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_y) * nz_local * n_mode_x) return;
-  const int mx = static_cast<int>(idx % n_mode_x);
-  const int kk = static_cast<int>((idx / n_mode_x) % nz_local);
-  const int jy = static_cast<int>(idx / (static_cast<long long>(n_mode_x) * nz_local));
-  const std::size_t dst = 2 * ((static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy);
-  const std::size_t src = 2 * ((static_cast<std::size_t>(jy) * nz_local + kk) * n_mode_x + mx);
-  sxy[dst] = sx[src];
-  sxy[dst + 1] = sx[src + 1];
+  __shared__ double2 tile[kTile][kTile + 1];
+  const double2* src = reinterpret_cast<const double2*>(sx);
+  double2* dst = reinterpret_cast<double2*>(sxy);
+  const int kk = static_cast<int>(blockIdx.z);
+  const int m0 = static_cast<int>(blockIdx.x) * kTile, j0 = static_cast<int>(blockIdx.y) * kTile;
+  const int tx = static_cast<int>(threadIdx.x), ty = static_cast<int>(threadIdx.y);
+  for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 mx 를 걷는다
+    const int mx = m0 + tx, jy = j0 + ty + q;
+    if (mx < n_mode_x && jy < n_y)
+      tile[ty + q][tx] = src[(static_cast<std::size_t>(jy) * nz_local + kk) * n_mode_x + mx];
+  }
+  __syncthreads();
+  for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 jy 를 걷는다
+    const int mx = m0 + ty + q, jy = j0 + tx;
+    if (mx < n_mode_x && jy < n_y)
+      dst[(static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy] = tile[tx][ty + q];
+  }
 }
 
+// 역방향: y 배치 (jy 연속) → x 스펙트럼 (mx 연속). 그리드 (⌈Ny/32⌉, ⌈Nxm/32⌉, nz)
 __global__ void reorder_y_to_x_kernel(real_t* sx, const real_t* sxy, const int n_y,
                                       const int nz_local, const int n_mode_x) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_y) * nz_local * n_mode_x) return;
-  const int mx = static_cast<int>(idx % n_mode_x);
-  const int kk = static_cast<int>((idx / n_mode_x) % nz_local);
-  const int jy = static_cast<int>(idx / (static_cast<long long>(n_mode_x) * nz_local));
-  const std::size_t dst = 2 * ((static_cast<std::size_t>(jy) * nz_local + kk) * n_mode_x + mx);
-  const std::size_t src = 2 * ((static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy);
-  sx[dst] = sxy[src];
-  sx[dst + 1] = sxy[src + 1];
+  __shared__ double2 tile[kTile][kTile + 1];
+  const double2* src = reinterpret_cast<const double2*>(sxy);
+  double2* dst = reinterpret_cast<double2*>(sx);
+  const int kk = static_cast<int>(blockIdx.z);
+  const int j0 = static_cast<int>(blockIdx.x) * kTile, m0 = static_cast<int>(blockIdx.y) * kTile;
+  const int tx = static_cast<int>(threadIdx.x), ty = static_cast<int>(threadIdx.y);
+  for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 jy 를 걷는다
+    const int jy = j0 + tx, mx = m0 + ty + q;
+    if (mx < n_mode_x && jy < n_y)
+      tile[ty + q][tx] = src[(static_cast<std::size_t>(kk) * n_mode_x + mx) * n_y + jy];
+  }
+  __syncthreads();
+  for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 mx 를 걷는다
+    const int jy = j0 + ty + q, mx = m0 + tx;
+    if (mx < n_mode_x && jy < n_y)
+      dst[(static_cast<std::size_t>(jy) * nz_local + kk) * n_mode_x + mx] = tile[tx][ty + q];
+  }
 }
 
 __global__ void pack_bands_kernel(real_t* D, const real_t* sxy, const int nz_local,
@@ -89,16 +121,24 @@ __global__ void unpack_bands_kernel(real_t* sxy, const real_t* D, const int nz_l
   sxy[q + 1] = D[p + 1];
 }
 
+// 라인 (i 연속) → 필드 (k 연속), 정규화 배율 포함. 그리드 (⌈nz/32⌉, ⌈n_x/32⌉, n_y)
 __global__ void scatter_lines_kernel(const field::View p, const real_t* lines,
                                      const real_t scale, const int h, const int n_x,
                                      const int n_y, const int nz_local) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(n_x) * n_y * nz_local) return;
-  const int ii = static_cast<int>(idx % n_x);
-  const int kk = static_cast<int>((idx / n_x) % nz_local);
-  const int jj = static_cast<int>(idx / (static_cast<long long>(n_x) * nz_local));
-  p(ii + h, jj + h, kk + h) =
-      lines[(static_cast<std::size_t>(jj) * nz_local + kk) * n_x + ii] * scale;
+  __shared__ real_t tile[kTile][kTile + 1];
+  const int jj = static_cast<int>(blockIdx.z);
+  const int k0 = static_cast<int>(blockIdx.x) * kTile, i0 = static_cast<int>(blockIdx.y) * kTile;
+  const int tx = static_cast<int>(threadIdx.x), ty = static_cast<int>(threadIdx.y);
+  for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 i 를 걷는다
+    const int ii = i0 + tx, kk = k0 + ty + q;
+    if (ii < n_x && kk < nz_local)
+      tile[ty + q][tx] = lines[(static_cast<std::size_t>(jj) * nz_local + kk) * n_x + ii];
+  }
+  __syncthreads();
+  for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 k 를 걷는다
+    const int ii = i0 + ty + q, kk = k0 + tx;
+    if (ii < n_x && kk < nz_local) p(ii + h, jj + h, kk + h) = tile[tx][ty + q] * scale;
+  }
 }
 
 __global__ void interior_sum_kernel(const field::ConstView p, const int h,
@@ -200,23 +240,25 @@ __global__ void scatter_mirrored_kernel(const field::View p, const real_t* lines
 void pack_rhs_to_lines(real_t* lines, const field::Field& rhs,
                        const parallel::Subdomain& sub, const int n_x, const int n_y,
                        const int nz_local) {
-  const long long n = static_cast<long long>(n_x) * n_y * nz_local;
-  pack_rhs_kernel<<<blocks_for(n), kThreads>>>(lines, rhs.view(), halo_width, n_x,
-                                               n_y, nz_local);
+  const dim3 threads(kTile, kTileRows);
+  const dim3 blocks((n_x + kTile - 1) / kTile, (nz_local + kTile - 1) / kTile, n_y);
+  pack_rhs_kernel<<<blocks, threads>>>(lines, rhs.view(), halo_width, n_x, n_y, nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 void reorder_x_to_y(real_t* sxy, const real_t* sx, const int n_y, const int nz_local,
                     const int n_mode_x) {
-  const long long n = static_cast<long long>(n_y) * nz_local * n_mode_x;
-  reorder_x_to_y_kernel<<<blocks_for(n), kThreads>>>(sxy, sx, n_y, nz_local, n_mode_x);
+  const dim3 threads(kTile, kTileRows);
+  const dim3 blocks((n_mode_x + kTile - 1) / kTile, (n_y + kTile - 1) / kTile, nz_local);
+  reorder_x_to_y_kernel<<<blocks, threads>>>(sxy, sx, n_y, nz_local, n_mode_x);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
 void reorder_y_to_x(real_t* sx, const real_t* sxy, const int n_y, const int nz_local,
                     const int n_mode_x) {
-  const long long n = static_cast<long long>(n_y) * nz_local * n_mode_x;
-  reorder_y_to_x_kernel<<<blocks_for(n), kThreads>>>(sx, sxy, n_y, nz_local, n_mode_x);
+  const dim3 threads(kTile, kTileRows);
+  const dim3 blocks((n_y + kTile - 1) / kTile, (n_mode_x + kTile - 1) / kTile, nz_local);
+  reorder_y_to_x_kernel<<<blocks, threads>>>(sx, sxy, n_y, nz_local, n_mode_x);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 
@@ -239,9 +281,10 @@ void unpack_bands_to_spectrum(real_t* sxy, const real_t* D, const int nz_local,
 void scatter_lines_to_field(field::Field& phi, const real_t* lines, const real_t scale,
                             const parallel::Subdomain& sub, const int n_x,
                             const int n_y, const int nz_local) {
-  const long long n = static_cast<long long>(n_x) * n_y * nz_local;
-  scatter_lines_kernel<<<blocks_for(n), kThreads>>>(phi.view(), lines, scale,
-                                                    halo_width, n_x, n_y, nz_local);
+  const dim3 threads(kTile, kTileRows);
+  const dim3 blocks((nz_local + kTile - 1) / kTile, (n_x + kTile - 1) / kTile, n_y);
+  scatter_lines_kernel<<<blocks, threads>>>(phi.view(), lines, scale, halo_width, n_x, n_y,
+                                            nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 

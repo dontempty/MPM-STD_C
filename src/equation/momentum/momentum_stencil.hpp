@@ -31,7 +31,7 @@ MPMSTD_HD inline real_t face_blend(const real_t dxA, const real_t fA, const real
                                    const real_t fB, const real_t dmx) {
   return real_t(0.5) * (dxA * fA + dxB * fB) / dmx;
 }
-// 같은 식, 나눗셈 대신 역수 곱 (grid::Axis1D::inverse_center_distance) — 운동량 RHS 전용 (최적화 1, 2026-10-17)
+// [최적화 2026-10-17] 같은 식, 나눗셈 대신 역수 곱 (idmx = grid inverse_center_distance)
 MPMSTD_HD inline real_t face_blend_inverse(const real_t dxA, const real_t fA, const real_t dxB,
                                            const real_t fB, const real_t idmx) {
   return real_t(0.5) * (dxA * fA + dxB * fB) * idmx;
@@ -39,9 +39,7 @@ MPMSTD_HD inline real_t face_blend_inverse(const real_t dxA, const real_t fA, co
 
 // ── ① stage-1 델타형 잔차  R·dt (성분별 — 참조 compute_mpmstd_rhs_var) ──────
 // 반환값을 rhs 에 += 한다 (호출 전 rhs 는 0 또는 다른 명시항).
-// 2026-10-17: 격자 간격 나눗셈("/ dx", "/ dmx", 셀당 ~60회)을 역수 배열 곱(idx·idmx)으로 바꿨다 —
-// FP64 나눗셈이 커널 비용의 1/3 이었다(docs/Scalability/main_scalability.md). 값은 마지막 비트에서
-// 달라질 수 있어 이 함수를 쓰는 경로의 게이트는 허용오차(check_gate.py). 인자 idx1…idmx3 = grid 의 inverse_* 배열.
+// [최적화 2026-10-17] 격자 나눗셈(셀당 ~60회) → 역수 곱 idx·idmx (grid inverse_*). 허용오차 게이트. V100 momentum_rhs ×2.
 
 template <class MuArray, class RhoArray>
 MPMSTD_HD inline real_t rhs_u_cell(
@@ -268,6 +266,7 @@ MPMSTD_HD inline real_t rhs_w_cell(
 }
 
 // ── ② 스윕 밴드 한 행 (참조 build_adi_bands_var 의 emit 1:1) ─────────────────
+// [최적화 2026-10-17] own_face_blend·sweep_band 의 나눗셈(행당 28회) → 역수 곱. 허용오차 게이트. build_x/y/z −10~−16 %.
 // own 축 체적가중 면 보간 (셀 필드 f 를 own-마이너스 면으로):
 template <class Array>
 MPMSTD_HD inline real_t own_face_blend(const Array f, const long long cell,
@@ -343,6 +342,7 @@ MPMSTD_HD inline void sweep_band(
 
 // ── ③ 증분 커플링 (참조 couple_dd_* / block_couple_*_var 1:1) ────────────────
 // 반환값만큼 대상에서 **빼면** 된다 (dV[c] -= ..., rhs_v[c] -= ...).
+// [최적화 2026-10-17] 커플링 4개의 face_blend(32회)·나눗셈(42회) → 역수 곱. 허용오차 게이트. V100 −30~−40 %.
 
 // M21: δU 가 dV 방정식 우변으로 (dV 스윕 전에 주입)
 template <class MuArray, class RhoArray>

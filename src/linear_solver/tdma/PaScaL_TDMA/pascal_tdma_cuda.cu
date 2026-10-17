@@ -196,12 +196,8 @@ __global__ void tdma_modified_kernel(double* a,
 // (d 와 z)를 한 소거로 풀고 되섞는다. gamma/factor 는 스레드-로컬 스칼라,
 // 보조 RHS z 만 전역 스크래치 [nsys*nrow].
 //
-// 2026-10-17 레지스터 상주 두 행 버퍼링 (논문 PaScaL_TDMA 2.1 Algorithm 2 와 같은
-// 방식 — 비주기 tdma_many_kernel 과 동일한 틀). 이전 행의 c·d·z 를 레지스터에
-// 들고 가서 현재 행의 a·b·c·d 만 읽고, z 는 내부 행이 0 이라 읽지 않고 생성만
-// 한다(0 채우기 패스 삭제). 산술 식과 평가 순서는 이전 판과 같아 결과는 비트
-// 동일. 행당 전역 접근 ~22 → 15 (전진 4+3, 후진 3+2, 보정 2+1). b 는 쓰지 않는다
-// (밴드는 매 스윕 재조립; 수정된 b[0]·b[last] 는 레지스터에만).
+// [최적화 2026-10-17] 이전 행의 c·d·z 를 레지스터에 들고 가는 두 행 버퍼링(논문 PaScaL_TDMA Algorithm 2, 비주기 커널과 같은 틀).
+//   z 는 내부 행이 0 이라 읽지 않고 생성, b 는 쓰지 않음. 행당 전역 접근 ~22 → 15. 식·순서 동일(비트 동일). V100 ×1.4.
 __global__ void tdma_cycl_many_kernel(double* a,
                                       double* b,
                                       double* c,

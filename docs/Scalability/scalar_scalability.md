@@ -93,6 +93,16 @@ momentum 과 같은 변경을 scalar 조립 스텐실에 적용했다: `scalar_s
 
 - build_x 가 가장 많이 준다: 첫 스윕이라 세 축 `axis_band` 를 다 계산(R 포함)해 나눗셈이 가장 많다 (§1 의 "build_x 가 큰 이유" 그대로). tdma·scatter 는 변화 없음.
 
+## 7. 패스 제거 — 밴드 핑퐁 · scatter_z 타일 전치 · T += 융합 (2026-10-18)
+
+momentum 과 같은 변경 (`momentum_scalability.md` §9). scalar 는 δT 가 다른 곳에서 쓰이지 않아 **scatter_z 가 T 에 바로 더한다**(δT 버퍼·add_increment 패스 없음).
+
+| V100 256³ np 1 | scatter_x | scatter_y | scatter_z (+T +=) | add_increment | build_y/z | scalar_solve |
+|---|---|---|---|---|---|---|
+| 전 `v100s` → 후 `v100p` | 0.37 → 0 | 0.37 → 0 | 1.36 → 0.52 | 0.52 → 0 | 3.05/1.93 → 3.15/1.79 | 18.3 → **16.0 (−13 %)** |
+
+np 4 5.2 → 4.9, weak np 4 20.4 → 18.0. np 8(gpu02): strong 256³ 4.86 → 4.73, weak 21.9 → 19.5, 512³ 26.9 → 25.5. 비트 동일.
+
 ## 노트북 양식 (2026-10-17 밤)
 `apps/rbc_nob/plot/scalar_scalability.ipynb`: §A 최적화 전(`h200k`·`v100e`) 이벤트별 막대 → 이벤트별 scaling, §B 최적화 후(최신 바이너리 `h200h`·`v100h`) 같은 그림,
 §C 전 vs 후 — 이벤트별 전/후 막대 + 감소량(전 − 후) 막대 + 요약표, §E 스텐실 역수 직전(`v100r1`) vs 최종(`v100s`). 기종·노드·꼬리표·문제 크기를 제목·범례에, 그림 저장 없음.

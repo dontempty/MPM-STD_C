@@ -18,6 +18,11 @@
 // 오케스트레이션 전용 TU — 양쪽 빌드 공용. 팩·산포·축소는 solve_kernels.{cpp,cu},
 // 밴드 조립은 system.{cpp,cu} 가 백엔드별로 구현한다. FFT 실행 래퍼만 ifdef.
 
+#define PRESSURE_TIMER_BEGIN(name) \
+  do { if (solver.timer) solver.timer->begin(name); } while (0)
+#define PRESSURE_TIMER_END(name) \
+  do { if (solver.timer) solver.timer->end(name); } while (0)
+
 namespace mpmstd::equation::pressure {
 
 namespace {
@@ -192,65 +197,93 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
 
   // ① rhs 내부 → x-라인 팩 → x 변환(주기 r2c / 벽 거울 r2c+트위들 = DCT-II)
   //    → y-라인 재배열 → y c2c
+  PRESSURE_TIMER_BEGIN("pressure.pack_lines");
   if (solver.x_neumann) {
     pack_rhs_to_mirrored_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
-    run_forward_x(solver);
-    dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
-                        n_y * nz_local, n_x);
   } else {
     pack_rhs_to_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
-    run_forward_x(solver);
   }
+  PRESSURE_TIMER_END("pressure.pack_lines");
+  PRESSURE_TIMER_BEGIN("pressure.fft_x_fwd");
+  run_forward_x(solver);
+  if (solver.x_neumann)
+    dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
+                        n_y * nz_local, n_x);
+  PRESSURE_TIMER_END("pressure.fft_x_fwd");
+  PRESSURE_TIMER_BEGIN("pressure.reorder_x_to_y");
   reorder_x_to_y(solver.spectrum_xy.data(), solver.spectrum_x.data(), n_y, nz_local,
                  n_mode_x);
+  PRESSURE_TIMER_END("pressure.reorder_x_to_y");
+  PRESSURE_TIMER_BEGIN("pressure.fft_y_fwd");
   run_forward_y(solver);
+  PRESSURE_TIMER_END("pressure.fft_y_fwd");
 
   // ② 모드별 z 삼중대각 — 실·허를 나란한 시스템으로 한 번에 (분산 TDMA, 비주기)
+  PRESSURE_TIMER_BEGIN("pressure.pack_bands");
   pack_spectrum_to_bands(solver.band_d.data(), solver.spectrum_xy.data(), nz_local,
                          n_mode_x, n_y, owns_bottom);
+  PRESSURE_TIMER_END("pressure.pack_bands");
+  PRESSURE_TIMER_BEGIN("pressure.build_z");
   build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
                        solver.band_c.data(), grid, sub, solver.lambda_x.data(),
                        n_mode_x, solver.lambda_y.data(), n_y);
+  PRESSURE_TIMER_END("pressure.build_z");
+  PRESSURE_TIMER_BEGIN("pressure.tdma_z");
   linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
                             solver.band_b.data(), solver.band_c.data(),
                             solver.band_d.data(), nsys, nz_local);
+  PRESSURE_TIMER_END("pressure.tdma_z");
 
   // ③ 해를 스펙트럼으로 되돌리고 역 y → 역 x → 정규화 산포
+  PRESSURE_TIMER_BEGIN("pressure.unpack_bands");
   unpack_bands_to_spectrum(solver.spectrum_xy.data(), solver.band_d.data(), nz_local,
                            n_mode_x, n_y);
+  PRESSURE_TIMER_END("pressure.unpack_bands");
+  PRESSURE_TIMER_BEGIN("pressure.fft_y_bwd");
   run_backward_y(solver);
+  PRESSURE_TIMER_END("pressure.fft_y_bwd");
+  PRESSURE_TIMER_BEGIN("pressure.reorder_y_to_x");
   reorder_y_to_x(solver.spectrum_x.data(), solver.spectrum_xy.data(), n_y, nz_local,
                  n_mode_x);
-  if (solver.x_neumann) {  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
+  PRESSURE_TIMER_END("pressure.reorder_y_to_x");
+  PRESSURE_TIMER_BEGIN("pressure.fft_x_bwd");
+  if (solver.x_neumann)  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
     dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
                          n_y * nz_local, n_x);
-    run_backward_x(solver);
+  run_backward_x(solver);
+  PRESSURE_TIMER_END("pressure.fft_x_bwd");
+  PRESSURE_TIMER_BEGIN("pressure.scatter_lines");
+  if (solver.x_neumann) {
     scatter_mirrored_lines_to_field(phi, solver.real_lines.data(),
                                     1 / (static_cast<real_t>(2 * n_x) * n_y), sub, n_x,
                                     n_y, nz_local);
   } else {
-    run_backward_x(solver);
     scatter_lines_to_field(phi, solver.real_lines.data(),
                            1 / (static_cast<real_t>(n_x) * n_y), sub, n_x, n_y,
                            nz_local);
   }
+  PRESSURE_TIMER_END("pressure.scatter_lines");
 
   // ④ 전역 평균 제거 — 순수 게이지 (∇φ 불변). 누적 P 의 상수 드리프트 방지.
+  PRESSURE_TIMER_BEGIN("pressure.mean_remove");
   real_t local_sum = interior_sum(phi, sub);
   real_t global_sum = 0;
   MPI_Allreduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM,
                 sub.topology().cart_comm());
   subtract_constant(phi, sub,
                     global_sum / (static_cast<real_t>(n_x) * n_y * sub.z().n_global));
+  PRESSURE_TIMER_END("pressure.mean_remove");
 
   // ⑤ ghost 완성: 이음새·주기 랩 → 벽 축 Neumann (조립 시 접은 벽 / DCT 와 같은
   //    정책의 ghost 짝 — conventions.md §6). 이 상태로 correct_velocity_* 에 바로 쓴다.
+  PRESSURE_TIMER_BEGIN("pressure.halo");
   sub.exchange_halo(phi.data());
   for (int axis = 0; axis < 3; ++axis) {
     if (sub.topology().axis(axis).periodic) continue;
     boundary::fill_wall_zero_gradient(phi, sub, axis, 0);
     boundary::fill_wall_zero_gradient(phi, sub, axis, 1);
   }
+  PRESSURE_TIMER_END("pressure.halo");
 }
 
 }  // namespace mpmstd::equation::pressure

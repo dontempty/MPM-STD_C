@@ -51,7 +51,7 @@ if [[ -n "${GPU_ORDER:-}" ]]; then export CUDA_VISIBLE_DEVICES="$GPU_ORDER"; ech
 BASE_TAG=$TAG
 for seg in ${SEG_LIST:-_}; do
   if [[ "$seg" != "_" ]]; then export PASCAL_TDMA_SEGMENTS=$seg; TAG="${BASE_TAG}s${seg}"; fi
-  SEGX="${PASCAL_TDMA_SEGMENTS:+-x PASCAL_TDMA_SEGMENTS} ${GPU_ORDER:+-x CUDA_VISIBLE_DEVICES}"   # 랭크→GPU 순서 실험용 (예: 0,1,2,3,7,6,5,4 = NVLink 링)
+  SEGX="${PASCAL_TDMA_SEGMENTS:+-x PASCAL_TDMA_SEGMENTS} ${GPU_ORDER:+-x CUDA_VISIBLE_DEVICES} ${PASCAL_TDMA_MPI_MODE:+-x PASCAL_TDMA_MPI_MODE}"   # 랭크→GPU 순서 실험용 (예: 0,1,2,3,7,6,5,4 = NVLink 링)
   for case in $CASES; do
     for np in $NP_LIST; do
       name="scal_${case}_np${np}"

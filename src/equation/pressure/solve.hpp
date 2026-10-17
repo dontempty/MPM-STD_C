@@ -41,6 +41,7 @@
 #include "grid/grid.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
+#include "common/phase_timer.hpp"
 
 namespace mpmstd::equation::pressure {
 
@@ -74,6 +75,11 @@ struct Solver {
   fftw_plan forward_x = nullptr, backward_x = nullptr;
   fftw_plan forward_y = nullptr, backward_y = nullptr;
 #endif
+
+  // 확장성 측정용 (docs/Scalability/plan.md §1.1): nullptr 이 아니면 solve 가 자기 안의
+  // 단계(팩·FFT·재배열·밴드 팩·z TDMA·언팩·산포·평균 제거·halo)를 "pressure.<단계>" 구간으로
+  // 잰다. 수치는 불변 — 경계마다 동기화만 추가된다.
+  mpmstd::common::PhaseTimer* timer = nullptr;
 };
 
 // δp 를 구한다. 반환 시 phi 는 내부 + ghost(이음새·주기 랩·z Neumann)까지 완성 —

@@ -165,6 +165,23 @@ momentum_rhs(`main_scalability.md` §2d)에서 격자 역수가 시간을 절반
 
 누적 (원본 → 4회차, V100 256³ np 1): momentum_solve 139.9(2회차) → 56.1(halo·rhs 후 `v100r1`) → **50.5 ms**.
 
+## 9. 5회차 — 패스 제거: scatter_z 타일 전치 · 밴드 핑퐁 · W += 융합 (2026-10-18)
+
+4회차 뒤 재분석(V100 256³ np 1, momentum_solve 50.5 ms): tdma_x+y 30 %(대역폭의 88 %), build 32 %(70 %), tdma_z 9 %(86 %) — 커널 단위로는 끝이고, 남은 것은 **패스 수**였다.
+scatter_z 가 성분당 1.36 ms 로 scatter_x(0.37)의 3.7 배 = build_z 와 같은 전치 읽기. scatter_x/y 는 밴드 → 필드 복사일 뿐인데 다음 조립이 그 필드를 다시 읽는다.
+
+- ① `scatter_z_kernel` 32×32 타일 전치 (sweep_kernels.cu). 성분당 1.36 → 0.39 ms.
+- ② 밴드 핑퐁: `build_y`(source = x 밴드 D0, `SourceLayout::BandX`) → D1, `build_z`(source = y 밴드 D1, `BandY`) → D0. scatter_x/y·stage 버퍼 사용 없음.
+- ③ dW 의 scatter_z 가 δW 를 쓰면서 W += δW (이후 block_couple_v/u 는 δW 만 읽는다). δU·δV 는 커플링이 U·V 이웃을 읽으므로 add_increment 유지 (1.53 → 1.02).
+
+| V100 256³ np 1 (성분 U) | scatter_x | scatter_y | scatter_z | add_increment(3성분) | momentum_solve |
+|---|---|---|---|---|---|
+| 전 `v100s` → 후 `v100p` | 0.37 → 0 | 0.37 → 0 | 1.36 → 0.39 | 1.53 → 1.02 | 50.5 → **45.5 (−10 %)** |
+
+np 4(동시 배정 잡음 포함) 16.6 → 15.9, weak np 4 57.0 → 52.0. np 8(gpu02): strong 256³ 15.9 → 15.4, weak 61.7 → 56.5, 512³ 81.5 → 78.9 — 통신(Alltoallv 5.5~5.7 ms) 불변. 비트 동일(스모크·모니터 일치). 3차원 분할과 무관(로컬 밴드 ↔ 로컬 셀 대응만 씀).
+
+남은 momentum 항목: 커플링(ncu 필요), 조립+풀이 융합(z-슬랩 전제라 제외), np 8 의 Alltoallv(`main_scalability.md` 4번 측정).
+
 ## 노트북 양식 (2026-10-17 밤)
 `apps/rbc_nob/plot/momentum_scalability.ipynb`: §A 최적화 전(`h200m`·`v100m`) 이벤트별 막대 → 이벤트별 scaling, §B 최적화 후(최신 바이너리 `h200h`·`v100h`) 같은 그림,
 §C 전 vs 후 — 이벤트별 전/후 막대 + 감소량(전 − 후) 막대 + 요약표, §E 스텐실 역수 직전(`v100r1`) vs 최종(`v100s`). 기종·노드·꼬리표·문제 크기를 제목·범례에, 그림 저장 없음.

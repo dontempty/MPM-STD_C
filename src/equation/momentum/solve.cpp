@@ -16,6 +16,8 @@
 #include "equation/momentum/wall_rows.hpp"
 #include "equation/momentum/system/system.hpp"
 #include "equation/sweep_kernels.hpp"
+#include "equation/band_layout.hpp"
+// [최적화 2026-10-18] adi_sweeps_variable_property: D 밴드 핑퐁(scatter_x/y 제거), scatter_z 타일 전치, dW 는 W += δW 융합.
 
 // 가변 점성(NOB) 운동량 solve — 오케스트레이션 전용 TU (CPU/GPU 공용).
 //
@@ -77,55 +79,53 @@ void adi_sweeps_variable_property(Solver& solver, const grid::Grid& grid,
                          const field::Field& V, const field::Field& W,
                          const field::Field& viscosity,
                          const field::Field& inverse_density, const int own_axis,
-                         const real_t Cmu, const real_t dt, real_t* delta_out) {
+                         const real_t Cmu, const real_t dt, real_t* delta_out,
+                         real_t* accumulate_into) {
   const int i1 = sub.x().n_local;
   const int i2 = sub.y().n_local;
   const int i3 = sub.z().n_local;
   real_t* A = solver.band_a.data();
   real_t* B = solver.band_b.data();
   real_t* C = solver.band_c.data();
-  real_t* D = solver.band_d.data();
+  // D 핑퐁: x → D0, y 는 D0 를 읽어 D1, z 는 D1 을 읽어 D0 (band_layout.hpp).
+  real_t* D0 = solver.band_d.data();
+  real_t* D1 = solver.band_d2.data();
   // 구간 이름 "momentum.dU.build_x" 등 (own_axis 0/1/2 = dU/dV/dW)
   const std::string prefix =
       std::string("momentum.") + (own_axis == 0 ? "dU" : own_axis == 1 ? "dV" : "dW") + ".";
   const auto name = [&](const char* call) { return prefix + call; };
 
-  // x 스윕 (이송 = U)
+  // x 스윕 (이송 = U) — source = rhs 필드
   MOMENTUM_TIMER_BEGIN(name("build_x").c_str());
-  build_x_sweep_variable_property(A, B, C, D, rhs_data, q.data(), U.data(), viscosity.data(),
+  build_x_sweep_variable_property(A, B, C, D0, rhs_data, q.data(), U.data(), viscosity.data(),
                          inverse_density.data(), grid, sub, own_axis, Cmu, dt);
   MOMENTUM_TIMER_END(name("build_x").c_str());
   MOMENTUM_TIMER_BEGIN(name("tdma_x").c_str());
-  solve_sweep(solver, solver.plan_x, A, B, C, D, sub, 0, own_axis, i2 * i3, i1);
+  solve_sweep(solver, solver.plan_x, A, B, C, D0, sub, 0, own_axis, i2 * i3, i1);
   MOMENTUM_TIMER_END(name("tdma_x").c_str());
-  MOMENTUM_TIMER_BEGIN(name("scatter_x").c_str());
-  equation::scatter_x(solver.stage_first.data(), D, sub);
-  MOMENTUM_TIMER_END(name("scatter_x").c_str());
 
-  // y 스윕 (이송 = V)
+  // y 스윕 (이송 = V) — source = x 밴드 D0
   MOMENTUM_TIMER_BEGIN(name("build_y").c_str());
-  build_y_sweep_variable_property(A, B, C, D, solver.stage_first.data(), q.data(), V.data(),
+  build_y_sweep_variable_property(A, B, C, D1, D0, q.data(), V.data(),
                          viscosity.data(), inverse_density.data(), grid, sub,
-                         own_axis, Cmu, dt);
+                         own_axis, Cmu, dt, SourceLayout::BandX);
   MOMENTUM_TIMER_END(name("build_y").c_str());
   MOMENTUM_TIMER_BEGIN(name("tdma_y").c_str());
-  solve_sweep(solver, solver.plan_y, A, B, C, D, sub, 1, own_axis, i1 * i3, i2);
+  solve_sweep(solver, solver.plan_y, A, B, C, D1, sub, 1, own_axis, i1 * i3, i2);
   MOMENTUM_TIMER_END(name("tdma_y").c_str());
-  MOMENTUM_TIMER_BEGIN(name("scatter_y").c_str());
-  equation::scatter_y(solver.stage_second.data(), D, sub);
-  MOMENTUM_TIMER_END(name("scatter_y").c_str());
 
-  // z 스윕 (이송 = W) — 벽 닫기는 OB 와 동일 (system.hpp ⚠)
+  // z 스윕 (이송 = W) — source = y 밴드 D1. 벽 닫기는 OB 와 동일 (system.hpp ⚠)
   MOMENTUM_TIMER_BEGIN(name("build_z").c_str());
-  build_z_sweep_variable_property(A, B, C, D, solver.stage_second.data(), q.data(), W.data(),
+  build_z_sweep_variable_property(A, B, C, D0, D1, q.data(), W.data(),
                          viscosity.data(), inverse_density.data(), grid, sub,
-                         own_axis, Cmu, dt);
+                         own_axis, Cmu, dt, SourceLayout::BandY);
   MOMENTUM_TIMER_END(name("build_z").c_str());
   MOMENTUM_TIMER_BEGIN(name("tdma_z").c_str());
-  solve_sweep(solver, solver.plan_z, A, B, C, D, sub, 2, own_axis, i1 * i2, i3);
+  solve_sweep(solver, solver.plan_z, A, B, C, D0, sub, 2, own_axis, i1 * i2, i3);
   MOMENTUM_TIMER_END(name("tdma_z").c_str());
+  // 산포(타일 전치) — accumulate_into 가 있으면 q += δ 도 여기서 (δW: 이후 커플링은 δW 만 읽고 W 는 안 읽는다)
   MOMENTUM_TIMER_BEGIN(name("scatter_z").c_str());
-  equation::scatter_z(delta_out, D, sub);
+  equation::scatter_z(delta_out, D0, sub, accumulate_into);
   MOMENTUM_TIMER_END(name("scatter_z").c_str());
 }
 
@@ -254,7 +254,7 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   // ① dU (own x) — 커플링 없음
   adi_sweeps_variable_property(solver, grid, sub, rhs_u.data(), U, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/0, Cmu, dt,
-                      solver.delta_u.data());
+                      solver.delta_u.data(), nullptr);
   MOMENTUM_TIMER_BEGIN("momentum.dU.halo");
   sub.exchange_halo(solver.delta_u.data());
   MOMENTUM_TIMER_END("momentum.dU.halo");
@@ -269,7 +269,7 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   MOMENTUM_TIMER_END("momentum.dV.couple_rhs");
   adi_sweeps_variable_property(solver, grid, sub, rhs_v.data(), V, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/1, Cmu, dt,
-                      solver.delta_v.data());
+                      solver.delta_v.data(), nullptr);
   MOMENTUM_TIMER_BEGIN("momentum.dV.halo");
   sub.exchange_halo(solver.delta_v.data());
   MOMENTUM_TIMER_END("momentum.dV.halo");
@@ -284,7 +284,7 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   MOMENTUM_TIMER_END("momentum.dW.couple_rhs");
   adi_sweeps_variable_property(solver, grid, sub, rhs_w.data(), W, U, V, W, viscosity,
                       inverse_density, /*own_axis=*/2, Cmu, dt,
-                      solver.delta_w.data());
+                      solver.delta_w.data(), W.data());   // W += δW 를 scatter_z 에서
   MOMENTUM_TIMER_BEGIN("momentum.dW.halo");
   sub.exchange_halo(solver.delta_w.data());
   MOMENTUM_TIMER_END("momentum.dW.halo");
@@ -314,7 +314,7 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   MOMENTUM_TIMER_BEGIN("momentum.post.add_increment");
   equation::add_increment(U, solver.delta_u.data(), sub);
   equation::add_increment(V, solver.delta_v.data(), sub);
-  equation::add_increment(W, solver.delta_w.data(), sub);
+  // W += δW 는 dW 의 scatter_z 에서 이미 (adi_sweeps_variable_property accumulate_into)
   MOMENTUM_TIMER_END("momentum.post.add_increment");
 }
 

@@ -97,13 +97,9 @@ void add_impl_constant(const char* who, field::Field& rhs, const field::Field& U
 }
 
 
-// ── 전용 RHS 빌드 커널 (2026-10-17, 운동량 RHS 최적화 1·2·3) ──────────────────────────────────────
-//   3: 성분당 한 패스 — rhs_q = dt·R_q(이송·확산) [+ 부력(W)] − dt·(1/ρ̂)∂P/∂q. 예전 main 의 fill·add·부력·구배 8 패스를 3 패스로.
-//      덧셈 순서는 예전과 같다 ((0 + adv) + buoy) − grad 이고 0 + adv == adv 라 그 부분은 비트 동일.
-//   2: 스레드 하나가 j 방향 연속 셀 kCoarsenJ 개 — 이웃 스레드는 k 방향(병합 읽기 유지). j±1 이웃 로드는 컴파일러가
-//      (__restrict__ + unroll) 레지스터로 넘겨 재사용한다. 셀 수는 같고 스레드 수만 1/kCoarsenJ.
-//   1: 격자 간격 나눗셈 → 역수 곱 (momentum_stencil.hpp rhs_*_cell, 부력·구배 식도 같이). 비트 동일 아님 → 허용오차 게이트.
-constexpr int kCoarsenJ = 1;   // V100 실측(2026-10-17): K 1/2/4 = 7.02/7.14/7.77 ms — coarsening 은 레지스터(164)만 늘려 손해. 1 = 끔
+// [최적화 2026-10-17] 전용 RHS 빌드 커널: fill·이송확산 ×3·부력·∇P 8 패스 → 성분당 1 패스(덧셈 순서 유지) + 격자 역수(rhs_*_cell).
+//   kCoarsenJ = j 방향 coarsening 폭 — 실측 손해(레지스터 118 → 164)라 1(끔). 허용오차 게이트. V100 momentum_rhs 17 → 7 ms.
+constexpr int kCoarsenJ = 1;
 
 template <int Component, int K, class MuArray, class RhoArray>
 __global__ void build_rhs_kernel(real_t* __restrict__ rhs, const real_t* __restrict__ U,

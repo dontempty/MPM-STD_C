@@ -13,7 +13,9 @@ namespace mpmstd::equation {
 
 void scatter_x(real_t* out, const real_t* D, const parallel::Subdomain& sub);
 void scatter_y(real_t* out, const real_t* D, const parallel::Subdomain& sub);
-void scatter_z(real_t* out, const real_t* D, const parallel::Subdomain& sub);
+// [최적화 2026-10-18] scatter_z: GPU 는 타일 전치. out(널 가능) 내부 = 값, accumulate(널 가능) 내부 += 값 (q += δ 융합).
+void scatter_z(real_t* out, const real_t* D, const parallel::Subdomain& sub,
+               real_t* accumulate = nullptr);
 
 // q += δ (내부만; δ 는 전체 모양 배열)
 void add_increment(field::Field& q, const real_t* delta, const parallel::Subdomain& sub);

@@ -273,3 +273,26 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
 - **2026-10-17 (밤 9)**: 격자 역수를 나머지 스텐실로 확장 — momentum 조립(`sweep_band`·`own_face_blend`)·커플링 4개·scalar `axis_band`. 게이트 허용오차 통과. V100 gpu04(`v100s`):
   스텝 −5~−8 %(256³ np 1 108.3 → 100.1), 커플링 −30~−40 %, scalar build_x −29 %, 조립 −10~−16 %. 누적 원본 대비 256³ np 1 **198 → 100 ms**. `main_scalability.md` §2e.
   다음 후보: pressure_solve 분해(np 1 의 13 %), np 8 의 PaScaL Alltoallv.
+- **2026-10-18**: 패스 제거 회차 — scatter_z 타일 전치, 밴드 핑퐁(scatter_x/y 제거, `band_layout.hpp`), scalar T += 융합·momentum W += 융합. 비트 동일. V100 256³ np 1 100.1 → 93.2 ms(−7 %),
+  momentum −10 %, scalar −13 %. 꼬리표 `v100p`. 누적 원본 대비 **198 → 93 ms (×2.1)**. 설계 제약: 나중에 3차원 분할이 들어오므로 z-슬랩 전제 최적화(조립+풀이 융합)는 제외.
+  pressure_solve 단계별 타이머(`pressure::Solver::timer`) 추가, np 8 Alltoallv 경로 측정(순수 MPI 벤치 `diag/alltoall_bw.cu` + `PASCAL_TDMA_MPI_MODE=host` 런 `v100hst`) 진행.
+  4번 결과: np 8 Alltoallv 1.9 GB/s 는 소켓 사이 링크를 16쌍이 나눠 쓰는 토폴로지 한계(순수 MPI 벤치 = 솔버 값, UCX 설정 무효, host 모드는 솔버에서 2배 느림) → 코드로는 안 줄고 3차원 분할이 해결. `main_scalability.md` §2g.
+  pressure 분해(`v100q`): np 1 의 13.4 ms 중 reorder_x_to_y 4.3 + reorder_y_to_x 1.3 + pack/scatter_lines 1.8 = 전치 복사가 55 %, FFT 는 10 %. 다음 = 네 커널 타일 전치. `main_scalability.md` §2h.
+
+## 10. 최적화 코드 위치 (주석 표식 `[최적화 …]` 와 짝)
+
+| 회차 | 무엇 | 파일 (주석 위치) |
+|---|---|---|
+| 1 (10-17) | momentum z 조립 32×32 타일 전치 `build_kernel_z` | `src/equation/momentum/system/system.cu` |
+| 2 | 순환 Thomas 레지스터 두 행 버퍼링 `tdma_cycl_many_kernel` | `src/linear_solver/tdma/PaScaL_TDMA/pascal_tdma_cuda.cu` |
+| 4 | scalar z 조립 타일 전치 `build_z_kernel` | `src/equation/scalar/system/system.cu` |
+| 6 | halo 자기 이웃 디바이스 복사 | `src/parallel/subdomain/subdomain_halo.cu` |
+| 8 | 격자 역수 배열 `inverse_*` | `src/grid/grid.{hpp,cpp}` |
+| 8 | momentum RHS 역수(`rhs_*_cell`, `face_blend_inverse`) + 전용 융합 빌드 커널 `build_rhs_kernel` (kCoarsenJ=1) | `src/equation/momentum/momentum_stencil.hpp`, `rhs/rhs.cu`, `apps/rbc_nob/main.cpp` |
+| 9 | 조립 `sweep_band`·`own_face_blend`, 커플링 `couple_*_cell`, scalar `axis_band` 역수 | `momentum_stencil.hpp`, `scalar_stencil.hpp`, 두 `system.{cu,cpp}`, `momentum/solve_kernels.{cu,cpp}` |
+| 10 (10-18) | scatter_z 타일 전치 + 선택적 `q += δ` | `src/equation/sweep_kernels.{hpp,cu,cpp}` |
+| 10 | 밴드 핑퐁(`SourceLayout`, scatter_x/y 제거) | `src/equation/band_layout.hpp`, momentum·scalar `system.{cu,cpp}`·`solve.cpp` |
+| 11 | pressure 전치 복사 4개 타일화 | `src/equation/pressure/solve_kernels.cu` |
+| 계측 | PhaseTimer·단계 타이머(수치 불변) | `src/common/phase_timer.hpp`, momentum·scalar·pressure `solve.{hpp,cpp}` |
+- **2026-10-18 (2)**: pressure 전치 복사 4개 타일화(`pressure/solve_kernels.cu`). 비트 동일. V100 pressure_solve 256³ np 1 13.4 → 7.5 (−44 %), 512³ np 2 85.5 → 38.8 (−55 %);
+  스텝 −7 % / −9 %. 꼬리표 `v100pt`. 누적 원본 대비 256³ np 1 **198 → 87.5 ms (×2.26)**. `main_scalability.md` §2i. 코드의 최적화 지점은 전부 `[최적화 날짜]` 주석 + plan §10 표.

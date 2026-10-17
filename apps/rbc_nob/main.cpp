@@ -293,6 +293,7 @@ int main(int argc, char** argv) {
     const long timing_start = s.output.phase_timing_start_step;
     if (timing_start > 0) momentum_solver.timer = &timer;  // momentum_solve 안의 호출별 구간 (plan.md §1.1)
     if (timing_start > 0) scalar_solver.timer = &timer;    // scalar_solve 안의 호출별 구간
+    if (timing_start > 0) pressure_solver.timer = &timer;  // pressure_solve 안의 단계별 구간
     double tdma_base_scalar = 0, tdma_base_momentum = 0, tdma_base_pressure = 0;
     double wall_prev = MPI_Wtime();
     while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {
@@ -330,7 +331,7 @@ int main(int argc, char** argv) {
 
       // ── 운동량 예측자 (가변 μ̂; 부력은 Tⁿ⁺¹, 예측자는 −(1/ρ̂)∇Pⁿ) ──
       timer.begin("momentum_rhs");
-      // 전용 RHS 빌드 (rhs/rhs.hpp build_variable_property_rhs): fill·이송확산 ×3·부력·∇P 를 성분당 한 패스로
+      // [최적화 2026-10-17] 전용 RHS 빌드 커널 — 8 패스 → 성분당 1 패스 (rhs/rhs.cu)
       momentum::build_variable_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, T, P,
                                             properties.viscosity, properties.inverse_density,
                                             grid, sub, Cmu, density_quadratic_ratio,

@@ -68,10 +68,8 @@ void Subdomain::exchange_halo_device(real_t* f) const {
   MPMSTD_CUDA_CHECK(cudaDeviceSynchronize());
 
   // ── x 방향 — 평면이 연속이라 필드에서 바로 보낸다 (CPU 와 동일 태그) ──
-  // 축 분할이 1 이고 주기이면 이웃 = 자기 자신. 이때 MPI_Sendrecv(self) 는 UCX 가 디바이스 메모리를 호스트로
-  // 올렸다 내리는 경로를 타고, 노드 안 랭크 수에 따라 급격히 느려진다 (gpu04 실측: 0.5 MB 면 4장 교환이
-  // np 1 0.1 ms → np 8 6 ms; 순수 Sendrecv 링은 0.14 ms — 2026-10-17 bench_halo). 자기 자신이면 디바이스
-  // 복사로 랩을 채운다 — 값은 동일(복사)이라 결과 비트 불변.
+  // [최적화 2026-10-17] 축 분할 1 + 주기 → 이웃이 자기 자신. MPI_Sendrecv(self) 는 UCX 호스트 경유라 np 에 따라 급격히 느려짐
+  //   (0.5 MB 면: np 1 0.1 → np 8 6 ms). 자기 자신이면 디바이스 복사로 랩을 채움(비트 동일). weak np 8 효율 57 → 86 %.
   {
     const int plane = ny * nz;
     const bool self = topo_.x().plus_neighbor == topo_.x().rank

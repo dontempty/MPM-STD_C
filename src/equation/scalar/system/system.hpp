@@ -16,6 +16,7 @@
 #include "parallel/subdomain/subdomain.hpp"
 #include "equation/scalar/scalar_stencil.hpp"
 #include "physics/properties.hpp"
+#include "equation/band_layout.hpp"
 
 namespace mpmstd::equation::scalar {
 
@@ -33,14 +34,16 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             const stencil::WallMask& wall, real_t Ct, real_t dt);
+                             const stencil::WallMask& wall, real_t Ct, real_t dt,
+                             SourceLayout source_layout = SourceLayout::Field);
 
 void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D,
                              const real_t* source, const real_t* T, const real_t* U,
                              const real_t* V, const real_t* W,
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
-                             const stencil::WallMask& wall, real_t Ct, real_t dt);
+                             const stencil::WallMask& wall, real_t Ct, real_t dt,
+                             SourceLayout source_layout = SourceLayout::Field);
 
 // ── 상수물성 판 (plan §18-1) — 물성 없이 같은 융합 조립 (κ̂≡1, dκ̂≡0) ─────────
 void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
@@ -56,13 +59,15 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const real_t* W, const grid::Grid& grid,
                                       const parallel::Subdomain& sub,
                                       const stencil::WallMask& wall, real_t Ct,
-                                      real_t dt);
+                                      real_t dt,
+                             SourceLayout source_layout = SourceLayout::Field);
 void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D,
                                       const real_t* source, const real_t* T,
                                       const real_t* U, const real_t* V,
                                       const real_t* W, const grid::Grid& grid,
                                       const parallel::Subdomain& sub,
                                       const stencil::WallMask& wall, real_t Ct,
-                                      real_t dt);
+                                      real_t dt,
+                             SourceLayout source_layout = SourceLayout::Field);
 
 }  // namespace mpmstd::equation::scalar

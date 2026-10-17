@@ -1,5 +1,7 @@
 #include "equation/scalar/system/system.hpp"
 
+#include "equation/band_layout.hpp"
+
 #include <cstddef>
 
 #include <mpi.h>
@@ -54,7 +56,7 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
-                             const real_t dt) {
+                             const real_t dt, const SourceLayout source_layout) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i3;
@@ -64,7 +66,10 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
         const std::size_t p =
             static_cast<std::size_t>(j - h) * nsys + (i - h) * i3 + (k - h);
         stencil::build_cell(
-            1, i, j, k, sub.y().n_total, sub.z().n_total, source, T, U, V, W,
+            1, i, j, k, sub.y().n_total, sub.z().n_total, source,
+            source_index(source_layout, i - h, j - h, k - h, i1, i2, i3,
+                         static_cast<std::size_t>(stencil::cell_index(i, j, k, sub.y().n_total, sub.z().n_total))),
+            T, U, V, W,
             properties.conductivity.data(), properties.conductivity_derivative.data(),
             properties.inverse_heat_capacity.data(),
             properties.inverse_heat_capacity_derivative.data(),
@@ -87,7 +92,7 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
-                             const real_t dt) {
+                             const real_t dt, const SourceLayout source_layout) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i2;
@@ -97,7 +102,10 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
         const std::size_t p =
             static_cast<std::size_t>(k - h) * nsys + (i - h) * i2 + (j - h);
         stencil::build_cell(
-            2, i, j, k, sub.y().n_total, sub.z().n_total, source, T, U, V, W,
+            2, i, j, k, sub.y().n_total, sub.z().n_total, source,
+            source_index(source_layout, i - h, j - h, k - h, i1, i2, i3,
+                         static_cast<std::size_t>(stencil::cell_index(i, j, k, sub.y().n_total, sub.z().n_total))),
+            T, U, V, W,
             properties.conductivity.data(), properties.conductivity_derivative.data(),
             properties.inverse_heat_capacity.data(),
             properties.inverse_heat_capacity_derivative.data(),
@@ -152,7 +160,7 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* V, const real_t* W,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
-                             const real_t dt) {
+                             const real_t dt, const SourceLayout source_layout) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i3;
@@ -162,7 +170,10 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
         const std::size_t p =
             static_cast<std::size_t>(j - h) * nsys + (i - h) * i3 + (k - h);
         stencil::build_cell(
-            1, i, j, k, sub.y().n_total, sub.z().n_total, source, T, U, V, W,
+            1, i, j, k, sub.y().n_total, sub.z().n_total, source,
+            source_index(source_layout, i - h, j - h, k - h, i1, i2, i3,
+                         static_cast<std::size_t>(stencil::cell_index(i, j, k, sub.y().n_total, sub.z().n_total))),
+            T, U, V, W,
             equation::UnitArray{}, equation::ZeroArray{},
             equation::UnitArray{}, equation::ZeroArray{},
             grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),
@@ -183,7 +194,7 @@ void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const real_t* V, const real_t* W,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
-                             const real_t dt) {
+                             const real_t dt, const SourceLayout source_layout) {
   const int h = halo_width;
   const int i1 = sub.x().n_local, i2 = sub.y().n_local, i3 = sub.z().n_local;
   const int nsys = i1 * i2;
@@ -193,7 +204,10 @@ void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
         const std::size_t p =
             static_cast<std::size_t>(k - h) * nsys + (i - h) * i2 + (j - h);
         stencil::build_cell(
-            2, i, j, k, sub.y().n_total, sub.z().n_total, source, T, U, V, W,
+            2, i, j, k, sub.y().n_total, sub.z().n_total, source,
+            source_index(source_layout, i - h, j - h, k - h, i1, i2, i3,
+                         static_cast<std::size_t>(stencil::cell_index(i, j, k, sub.y().n_total, sub.z().n_total))),
+            T, U, V, W,
             equation::UnitArray{}, equation::ZeroArray{},
             equation::UnitArray{}, equation::ZeroArray{},
             grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),

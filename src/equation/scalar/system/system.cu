@@ -1,5 +1,9 @@
 #include "equation/scalar/system/system.hpp"
 
+#include "equation/band_layout.hpp"
+
+// [최적화] ① build_z_kernel 타일 전치(10-17) ② idx·idmx 격자 역수 전달(10-17) ③ build_y/z 의 source_layout 밴드 핑퐁(10-18)
+
 #include <cstddef>
 
 #include <mpi.h>
@@ -33,7 +37,7 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
   const int jj = static_cast<int>((idx / i3) % i2);
   const int ii = static_cast<int>(idx / (static_cast<long long>(i3) * i2));
   const std::size_t p = static_cast<std::size_t>(ii) * (i2 * i3) + jj * i3 + kk;
-  stencil::build_cell(0, ii + h, jj + h, kk + h, ny_total, nz_total, nullptr,
+  stencil::build_cell(0, ii + h, jj + h, kk + h, ny_total, nz_total, nullptr, 0,
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
                                dx_x, idx_x, idmx_x, dx_y, idx_y, idmx_y, dx_z, idx_z, idmx_z, Ct, dt, true,
@@ -45,7 +49,7 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
 
 template <class KA, class DKA, class HA, class DHA>
 __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
-                               const real_t* source, const real_t* T, const real_t* U,
+                               const real_t* source, const SourceLayout source_layout, const real_t* T, const real_t* U,
                                const real_t* V, const real_t* W,
                                const KA conductivity,
                                const DKA conductivity_derivative,
@@ -64,6 +68,7 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
   const int jj = static_cast<int>(idx / (static_cast<long long>(i3) * i1));
   const std::size_t p = static_cast<std::size_t>(jj) * (i1 * i3) + ii * i3 + kk;
   stencil::build_cell(1, ii + h, jj + h, kk + h, ny_total, nz_total, source,
+                               source_index(source_layout, ii, jj, kk, i1, i2, i3, static_cast<std::size_t>(stencil::cell_index(ii + h, jj + h, kk + h, ny_total, nz_total))),
                                T, U, V, W, conductivity, conductivity_derivative,
                                inverse_heat_capacity, inverse_heat_capacity_derivative,
                                dx_x, idx_x, idmx_x, dx_y, idx_y, idmx_y, dx_z, idx_z, idmx_z, Ct, dt, false,
@@ -73,16 +78,13 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                B[p], C[p], D[p]);
 }
 
-// ── z 스윕 전용 커널 — 공유 메모리 (j,k) 타일 전치 (momentum/system/system.cu 의 build_kernel_z 와 같은 방법, 2026-10-17).
-//    z 밴드 p = k·(i1·i2) + i·i2 + j (j 가 가장 빠름) 와 필드(k 가 가장 빠름)는 전치 관계. 예전 1차원 매핑(j 연속)은
-//    build_cell 의 필드 로드가 전부 nz_total 보폭으로 흩어져 x·y 조립의 2.5–3.6 배(H200)·11 배(V100)였다 (실측).
-//    ① 연속 스레드 = 연속 k 로 읽어 계수를 타일에 두고 ② 전치해 연속 j 로 밴드에 쓴다. 식은 build_cell 그대로 → 비트 동일.
+// [최적화 2026-10-17] z 스윕 조립 32×32 타일 전치 (momentum build_kernel_z 와 같은 방법). 식은 build_cell 그대로(비트 동일). V100 ×4.
 constexpr int kTileZ = 32;
 constexpr int kRowsZ = 8;
 
 template <class KA, class DKA, class HA, class DHA>
 __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
-                               const real_t* source, const real_t* T, const real_t* U,
+                               const real_t* source, const SourceLayout source_layout, const real_t* T, const real_t* U,
                                const real_t* V, const real_t* W,
                                const KA conductivity,
                                const DKA conductivity_derivative,
@@ -106,6 +108,7 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
     const int kk = k0 + tx, jj = j0 + ty + r;
     if (kk < i3 && jj < i2) {
       stencil::build_cell(2, ii + h, jj + h, kk + h, ny_total, nz_total, source,
+                                   source_index(source_layout, ii, jj, kk, i1, i2, i3, static_cast<std::size_t>(stencil::cell_index(ii + h, jj + h, kk + h, ny_total, nz_total))),
                                    T, U, V, W, conductivity, conductivity_derivative,
                                    inverse_heat_capacity, inverse_heat_capacity_derivative,
                                    dx_x, idx_x, idmx_x, dx_y, idx_y, idmx_y, dx_z, idx_z, idmx_z, Ct, dt, false,
@@ -187,9 +190,9 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
-                             const real_t dt) {
+                             const real_t dt, const SourceLayout source_layout) {
   const LaunchShape shape = launch_shape(sub);
-  build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
+  build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, source_layout, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
@@ -200,9 +203,9 @@ void build_z_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const physics::PropertyFields& properties,
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
-                             const real_t dt) {
+                             const real_t dt, const SourceLayout source_layout) {
   const LaunchShapeZ shape = launch_shape_z(sub);
-  build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
+  build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, source_layout, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
@@ -242,9 +245,9 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const real_t* W, const grid::Grid& grid,
                                       const parallel::Subdomain& sub,
                                       const stencil::WallMask& wall, const real_t Ct,
-                                      const real_t dt) {
+                                      const real_t dt, const SourceLayout source_layout) {
   const LaunchShape shape = launch_shape(sub);
-  build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
+  build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, source_layout, T, U, V, W,
                                                   MPMSTD_SCALAR_CONSTANT_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
@@ -255,9 +258,9 @@ void build_z_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const real_t* W, const grid::Grid& grid,
                                       const parallel::Subdomain& sub,
                                       const stencil::WallMask& wall, const real_t Ct,
-                                      const real_t dt) {
+                                      const real_t dt, const SourceLayout source_layout) {
   const LaunchShapeZ shape = launch_shape_z(sub);
-  build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, T, U, V, W,
+  build_z_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, source_layout, T, U, V, W,
                                                   MPMSTD_SCALAR_CONSTANT_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }

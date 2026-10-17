@@ -52,8 +52,7 @@ struct Axis1D {
   std::vector<real_t> center;           // 크기 n_total
   std::vector<real_t> cell_width;       // 크기 n_total
   std::vector<real_t> center_distance;  // 크기 n_total
-  // 역수 — 스텐실의 "/ dx", "/ dmx" 를 곱셈으로 (2026-10-17, 운동량 RHS 최적화 1: 셀당 FP64 나눗셈 ~60회 제거).
-  // a/b 와 a·(1/b) 는 마지막 비트가 다를 수 있다 → 이 배열을 쓰는 커널은 비트 동일이 아니라 허용오차 게이트.
+  // [최적화 2026-10-17] 격자 역수 — 스텐실의 "/ dx"·"/ dmx" 를 곱으로. 마지막 비트가 다를 수 있어 쓰는 커널은 허용오차 게이트.
   std::vector<real_t> inverse_cell_width;       // 1 / cell_width
   std::vector<real_t> inverse_center_distance;  // 1 / center_distance
 
