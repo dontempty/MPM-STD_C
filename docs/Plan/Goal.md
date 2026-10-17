@@ -36,7 +36,7 @@
 
 ## Boundary Layer
 - 단계 A (2D 층류 ZPG): 유입/유출/자유류 BC 와 공간 발달 통계를 **Blasius 상사해**로 검증 — $C_f = 0.664/\sqrt{Re_x}$, $\delta^*$, $\theta$, $H = 2.591$, $u/U_\infty = f'(\eta)$. (완료: 0.2<x/Lx<0.8 에서 ≤0.07%)
-- 단계 B (3D 난류 ZPG, $Re_\theta \le 1100$): 재순환-재스케일 유입(Lund 1998)으로 $Re_\theta$ = 670, 1000 에서 $C_f$, $H$, $Re_\tau$, $U^+$, $u'v'w'_{rms}^+$, $\overline{uv}^+$ 를 KTH DNS 와, $Re_\theta$ = 1100 은 Torroja DNS(같은 재순환 유입)와 교차 검증한다.
+- 단계 B (3D 난류 ZPG, $Re_\theta \le 1100$): 재순환-재스케일 유입(Lund 1998)으로 $Re_\theta$ = 670, 1000 에서 $C_f$, $H$, $Re_\tau$, $U^+$, $u, v, w_{rms}^+$, $\overline{uv}^+$ 를 KTH DNS 와, $Re_\theta$ = 1100 은 Torroja DNS(같은 재순환 유입)와 교차 검증한다.
 
 [Schlatter, Philipp, and Ramis Örlü. "Assessment of direct numerical simulation data of turbulent boundary layers." Journal of Fluid Mechanics 659 (2010): 116-126.]  — 주 참조 (데이터: www.mech.kth.se/~pschlatt/DATA, `vel_XXXX_dns.prof`)
 
