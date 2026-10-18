@@ -34,6 +34,14 @@ void add_extra_term_variable_property(field::Field& rhs, const field::Field& pre
                              const field::Field& inverse_density,
                              const grid::Grid& grid, const parallel::Subdomain& sub);
 
+// [최적화 2026-10-18] 전용 Poisson 우변 빌드 (가변 밀도): fill(0) → add_divergence → add_extra_term_variable_property 의
+//   세 패스를 커널 하나로 — rhs 내부 = ∇·u*/dt + ExtraTerm (같은 식·같은 순서; GPU 판은 격자 역수 곱이라 허용오차 게이트). ghost 는 쓰지 않는다
+//   (솔버는 내부만 읽음; 생성 시 한 번 0). 개별 함수(add_*)는 그대로 둔다.
+void build_variable_property_rhs(field::Field& rhs, const field::Field& U, const field::Field& V,
+                                 const field::Field& W, const field::Field& pressure_predictor,
+                                 const field::Field& inverse_density, const grid::Grid& grid,
+                                 const parallel::Subdomain& sub, real_t dt);
+
 // 증분 투영 예측자의 가변 밀도 판 (PaScaL_TCS mom.f90:331/343):
 //   rhs_u −= dt·(1/ρ̂)_면·(P_c − P_{i−1})/dmx_i   (v, w 동형; 면 체적가중)
 void add_gradient_variable_property(field::Field& rhs_u, field::Field& rhs_v,

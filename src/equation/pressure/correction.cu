@@ -91,6 +91,49 @@ __global__ void correct_velocity_variable_kernel(
   w[c] -= dt * ((p[c] - p[czm]) / dmx3[k] + (irc_z - 1) * (ph[c] - ph[czm]) / dmx3[k]);
 }
 
+// [최적화 2026-10-18] correct_velocity_variable_kernel + accumulate(내부) 융합. 식·순서 동일, 나눗셈(셀당 9회)은
+//   격자 역수 idmx 곱 → 허용오차 게이트.
+__global__ void correct_and_accumulate_kernel(
+    real_t* u, real_t* v, real_t* w, real_t* P, const real_t* p, const real_t* ph,
+    const real_t* ir, const real_t* dx1, const real_t* idmx1, const real_t* dx2,
+    const real_t* idmx2, const real_t* dx3, const real_t* idmx3, const int h,
+    const int ni, const int nj, const int nk, const int ny_total, const int nz_total,
+    const real_t dt) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(ni) * nj * nk) return;
+  const int k = h + static_cast<int>(idx % nk);
+  const int j = h + static_cast<int>((idx / nk) % nj);
+  const int i = h + static_cast<int>(idx / (static_cast<long long>(nk) * nj));
+  const auto at = [ny_total, nz_total](int a, int b, int c) {
+    return (static_cast<long long>(a) * ny_total + b) * nz_total + c;
+  };
+  const long long c = at(i, j, k);
+  const long long cxm = at(i - 1, j, k);
+  const long long cym = at(i, j - 1, k);
+  const long long czm = at(i, j, k - 1);
+  const real_t irc_x = real_t(0.5) * idmx1[i] * (dx1[i - 1] * ir[c] + dx1[i] * ir[cxm]);
+  const real_t irc_y = real_t(0.5) * idmx2[j] * (dx2[j - 1] * ir[c] + dx2[j] * ir[cym]);
+  const real_t irc_z = real_t(0.5) * idmx3[k] * (dx3[k - 1] * ir[c] + dx3[k] * ir[czm]);
+  const real_t pc = p[c];
+  u[c] -= dt * ((pc - p[cxm]) * idmx1[i] + (irc_x - 1) * (ph[c] - ph[cxm]) * idmx1[i]);
+  v[c] -= dt * ((pc - p[cym]) * idmx2[j] + (irc_y - 1) * (ph[c] - ph[cym]) * idmx2[j]);
+  w[c] -= dt * ((pc - p[czm]) * idmx3[k] + (irc_z - 1) * (ph[c] - ph[czm]) * idmx3[k]);
+  P[c] += pc;
+}
+
+// ghost 칸만 P += δp (accumulate 의 나머지 — 내부는 위 커널이 했다)
+__global__ void accumulate_ghost_kernel(real_t* P, const real_t* d, const int h, const int nx_total,
+                                        const int ny_total, const int nz_total) {
+  const long long q = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  const long long n = static_cast<long long>(nx_total) * ny_total * nz_total;
+  if (q >= n) return;
+  const int k = static_cast<int>(q % nz_total);
+  const int j = static_cast<int>((q / nz_total) % ny_total);
+  const int i = static_cast<int>(q / (static_cast<long long>(nz_total) * ny_total));
+  const bool interior = i >= h && i < nx_total - h && j >= h && j < ny_total - h && k >= h && k < nz_total - h;
+  if (!interior) P[q] += d[q];
+}
+
 __global__ void advance_predictor_kernel(real_t* ph, real_t* p0, const real_t* dp,
                                          const long long n) {
   const long long q = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
@@ -101,6 +144,31 @@ __global__ void advance_predictor_kernel(real_t* ph, real_t* p0, const real_t* d
 }
 
 }  // namespace
+
+void correct_velocity_and_accumulate_variable_property(
+    field::Field& U, field::Field& V, field::Field& W, field::Field& P, const field::Field& phi,
+    const field::Field& pressure_predictor, const field::Field& inverse_density,
+    const grid::Grid& grid, const parallel::Subdomain& sub, const real_t dt) {
+  const char* who = "correct_velocity_and_accumulate_variable_property";
+  const field::Field* fields[] = {&U, &V, &W, &P, &phi, &pressure_predictor, &inverse_density};
+  for (const field::Field* f : fields) check_field_matches(who, *f, sub);
+  if (P.size() != phi.size()) throw std::invalid_argument(std::string(who) + ": P and phi differ in shape");
+  const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
+  const long long n = static_cast<long long>(ni) * nj * nk;
+  correct_and_accumulate_kernel<<<blocks_for(n), kThreads>>>(
+      U.data(), V.data(), W.data(), P.data(), phi.data(), pressure_predictor.data(),
+      inverse_density.data(), grid.x.device_cell_width.data(),
+      grid.x.device_inverse_center_distance.data(), grid.y.device_cell_width.data(),
+      grid.y.device_inverse_center_distance.data(), grid.z.device_cell_width.data(),
+      grid.z.device_inverse_center_distance.data(), halo_width, ni, nj, nk, sub.y().n_total,
+      sub.z().n_total, dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+  const long long n_all = static_cast<long long>(P.size());
+  accumulate_ghost_kernel<<<blocks_for(n_all), kThreads>>>(P.data(), phi.data(), halo_width,
+                                                           sub.x().n_total, sub.y().n_total,
+                                                           sub.z().n_total);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
 
 void correct_velocity_variable_property(field::Field& U, field::Field& V, field::Field& W,
                                const field::Field& phi,

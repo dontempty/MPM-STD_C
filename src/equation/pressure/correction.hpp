@@ -33,6 +33,14 @@ void correct_velocity_variable_property(field::Field& U, field::Field& V, field:
                                const grid::Grid& grid, const parallel::Subdomain& sub,
                                real_t dt);
 
+// [최적화 2026-10-18] 속도 보정 + P 누적을 한 커널로 (가변 밀도): 내부 셀에서 correct_velocity_variable_property 와
+//   같은 식으로 U,V,W 를 보정하면서 P += δp 도 수행, ghost 는 작은 커널이 따로 P += δp (accumulate 와 같은 결과).
+//   GPU 판은 격자 역수 곱(허용오차 게이트). 개별 함수는 그대로 둔다.
+void correct_velocity_and_accumulate_variable_property(
+    field::Field& U, field::Field& V, field::Field& W, field::Field& P, const field::Field& phi,
+    const field::Field& pressure_predictor, const field::Field& inverse_density,
+    const grid::Grid& grid, const parallel::Subdomain& sub, real_t dt);
+
 // 다음 스텝용 예측자 2차 외삽 (ghost 포함 전체; 호출 뒤 p̂ 를 교환+벽 채움):
 //   previous ← (p̂ + previous)/2,   p̂ ← 2·δp − previous
 void advance_pressure_predictor(field::Field& pressure_predictor,

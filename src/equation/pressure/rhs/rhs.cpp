@@ -141,4 +141,14 @@ void add_gradient_variable_property(field::Field& rhs_u, field::Field& rhs_v,
       }
 }
 
+// 전용 우변 빌드의 CPU 참조 구현 — 기존 호출을 그 순서로
+void build_variable_property_rhs(field::Field& rhs, const field::Field& U, const field::Field& V,
+                                 const field::Field& W, const field::Field& pressure_predictor,
+                                 const field::Field& inverse_density, const grid::Grid& grid,
+                                 const parallel::Subdomain& sub, const real_t dt) {
+  rhs.fill(0);
+  add_divergence(rhs, U, V, W, grid, sub, dt);
+  add_extra_term_variable_property(rhs, pressure_predictor, inverse_density, grid, sub);
+}
+
 }  // namespace mpmstd::equation::pressure

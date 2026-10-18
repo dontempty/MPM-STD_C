@@ -306,3 +306,5 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
   V100 에서 재고 `apps/<app>/plot.ipynb` 로 시각화.
   결과(V100, 원본 f330720 → 현재, 256³ np 1 / weak np 8): dhvc 127.7 → 66.1 ms (×1.93) / ×2.68, channel(LES) 146.1 → 67.8 (×2.15) / ×2.92,
   boundary_layer 124.8 → 64.4 (×1.94) / ×2.06, thermal_boundary_layer(스칼라 3) 211.6 → 98.1 (×2.16) / ×2.13. strong np 8 은 통신(Alltoallv·halo) 한계로 ×1.3~1.8.
+- **2026-10-18 (5)**: plan_temp.md 후보 1 — pressure 우변·보정 전용 커널(개별 함수 유지) + 격자 역수. 융합만 −0.4 ms, 역수까지 pressure_rhs 2.92 → 1.67,
+  correct 2.71 → 2.45, 스텝 87.5 → 86.4 (−1.3 %). 꼬리표 `v100pf`(융합)·`v100pr`(역수). 허용오차 게이트. `main_scalability.md` §2j.

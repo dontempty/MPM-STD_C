@@ -104,4 +104,13 @@ void advance_pressure_predictor(field::Field& pressure_predictor,
 }
 
 
+// 융합 보정의 CPU 참조 구현 — 기존 호출을 그 순서로
+void correct_velocity_and_accumulate_variable_property(
+    field::Field& U, field::Field& V, field::Field& W, field::Field& P, const field::Field& phi,
+    const field::Field& pressure_predictor, const field::Field& inverse_density,
+    const grid::Grid& grid, const parallel::Subdomain& sub, const real_t dt) {
+  correct_velocity_variable_property(U, V, W, phi, pressure_predictor, inverse_density, grid, sub, dt);
+  accumulate(P, phi);
+}
+
 }  // namespace mpmstd::equation::pressure

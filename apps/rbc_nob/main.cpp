@@ -295,6 +295,7 @@ int main(int argc, char** argv) {
     if (timing_start > 0) scalar_solver.timer = &timer;    // scalar_solve 안의 호출별 구간
     if (timing_start > 0) pressure_solver.timer = &timer;  // pressure_solve 안의 단계별 구간
     double tdma_base_scalar = 0, tdma_base_momentum = 0, tdma_base_pressure = 0;
+    rhs_dP.fill(0);   // ghost 는 여기서 한 번만 0 (전용 우변 빌드는 내부만 쓴다; 솔버도 내부만 읽는다)
     double wall_prev = MPI_Wtime();
     while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {
       if (timing_start > 0 && !timer.active() && step >= timing_start) {
@@ -354,18 +355,17 @@ int main(int argc, char** argv) {
       physics::update_properties(properties, T, model, sub);
       timer.end("properties_2");
       timer.begin("pressure_rhs");
-      rhs_dP.fill(0);
-      pressure::add_divergence(rhs_dP, U, V, W, grid, sub, dt);
-      pressure::add_extra_term_variable_property(rhs_dP, pressure_predictor,
-                                        properties.inverse_density, grid, sub);
+      // [최적화 2026-10-18] 전용 Poisson 우변 빌드 — fill·∇·u*·ExtraTerm 3 패스 → 한 커널 (rhs/rhs.cu)
+      pressure::build_variable_property_rhs(rhs_dP, U, V, W, pressure_predictor,
+                                            properties.inverse_density, grid, sub, dt);
       timer.end("pressure_rhs");
       timer.begin("pressure_solve");
       pressure::solve(pressure_solver, grid, sub, rhs_dP, dP);
       timer.end("pressure_solve");
       timer.begin("pressure_correct");
-      pressure::correct_velocity_variable_property(U, V, W, dP, pressure_predictor,
-                                          properties.inverse_density, grid, sub, dt);
-      pressure::accumulate(P, dP);  // 증분: Pⁿ⁺¹ = Pⁿ + δp (ghost 포함)
+      // [최적화 2026-10-18] 속도 보정 + P 누적(ghost 포함)을 한 커널로 (correction.cu)
+      pressure::correct_velocity_and_accumulate_variable_property(
+          U, V, W, P, dP, pressure_predictor, properties.inverse_density, grid, sub, dt);
       timer.end("pressure_correct");
       timer.begin("sync_UVW_2");
       sync_velocity(U, V, W, sub);

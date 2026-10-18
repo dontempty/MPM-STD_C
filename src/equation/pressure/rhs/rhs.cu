@@ -46,7 +46,72 @@ inline int blocks_for(const parallel::Subdomain& sub) {
   return static_cast<int>((n + kThreads - 1) / kThreads);
 }
 
+// [최적화 2026-10-18] 전용 Poisson 우변 빌드 커널 — divergence_kernel + add_extra_term_kernel 의 식을 한 스레드에서
+//   (0 + div) + extra 순서로(패스 10 → 6). 셀당 나눗셈 18회는 격자 역수(idx·idmx) 곱으로 → 허용오차 게이트.
+//   (패스 융합만으로는 2.92 → 2.33 ms 뿐 — 커널이 대역폭이 아니라 FP64 나눗셈에 묶여 있었다.)
+__global__ void build_rhs_kernel(real_t* __restrict__ rhs, const real_t* __restrict__ u,
+                                 const real_t* __restrict__ v, const real_t* __restrict__ w,
+                                 const real_t* __restrict__ ph, const real_t* __restrict__ ir,
+                                 const real_t* __restrict__ dx1, const real_t* __restrict__ idx1,
+                                 const real_t* __restrict__ idmx1,
+                                 const real_t* __restrict__ dx2, const real_t* __restrict__ idx2,
+                                 const real_t* __restrict__ idmx2,
+                                 const real_t* __restrict__ dx3, const real_t* __restrict__ idx3,
+                                 const real_t* __restrict__ idmx3,
+                                 const int h, const int ni, const int nj, const int nk,
+                                 const int ny_total, const int nz_total, const real_t inv_dt) {
+  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
+  if (idx >= static_cast<long long>(ni) * nj * nk) return;
+  const int k = h + static_cast<int>(idx % nk);
+  const int j = h + static_cast<int>((idx / nk) % nj);
+  const int i = h + static_cast<int>(idx / (static_cast<long long>(nk) * nj));
+  const auto at = [ny_total, nz_total](int a, int b, int c) {
+    return (static_cast<long long>(a) * ny_total + b) * nz_total + c;
+  };
+  const long long c = at(i, j, k);
+  const long long cxm = at(i - 1, j, k), cxp = at(i + 1, j, k);
+  const long long cym = at(i, j - 1, k), cyp = at(i, j + 1, k);
+  const long long czm = at(i, j, k - 1), czp = at(i, j, k + 1);
+  // ∇·u* (divergence 와 같은 식, 나눗셈 → 역수 곱)
+  real_t r = inv_dt * ((u[cxp] - u[c]) * idx1[i] + (v[cyp] - v[c]) * idx2[j] + (w[czp] - w[c]) * idx3[k]);
+  const real_t ir_xlo = real_t(0.5) * idmx1[i] * (dx1[i - 1] * ir[c] + dx1[i] * ir[cxm]);
+  const real_t ir_xhi = real_t(0.5) * idmx1[i + 1] * (dx1[i + 1] * ir[c] + dx1[i] * ir[cxp]);
+  const real_t ir_ylo = real_t(0.5) * idmx2[j] * (dx2[j - 1] * ir[c] + dx2[j] * ir[cym]);
+  const real_t ir_yhi = real_t(0.5) * idmx2[j + 1] * (dx2[j + 1] * ir[c] + dx2[j] * ir[cyp]);
+  const real_t ir_zlo = real_t(0.5) * idmx3[k] * (dx3[k - 1] * ir[c] + dx3[k] * ir[czm]);
+  const real_t ir_zhi = real_t(0.5) * idmx3[k + 1] * (dx3[k + 1] * ir[c] + dx3[k] * ir[czp]);
+  const real_t gx_lo = (ph[c] - ph[cxm]) * idmx1[i];
+  const real_t gx_hi = (ph[cxp] - ph[c]) * idmx1[i + 1];
+  const real_t gy_lo = (ph[c] - ph[cym]) * idmx2[j];
+  const real_t gy_hi = (ph[cyp] - ph[c]) * idmx2[j + 1];
+  const real_t gz_lo = (ph[c] - ph[czm]) * idmx3[k];
+  const real_t gz_hi = (ph[czp] - ph[c]) * idmx3[k + 1];
+  r += ((1 - ir_xhi) * gx_hi - (1 - ir_xlo) * gx_lo) * idx1[i]
+       + ((1 - ir_yhi) * gy_hi - (1 - ir_ylo) * gy_lo) * idx2[j]
+       + ((1 - ir_zhi) * gz_hi - (1 - ir_zlo) * gz_lo) * idx3[k];
+  rhs[c] = r;
+}
+
 }  // namespace
+
+void build_variable_property_rhs(field::Field& rhs, const field::Field& U, const field::Field& V,
+                                 const field::Field& W, const field::Field& pressure_predictor,
+                                 const field::Field& inverse_density, const grid::Grid& grid,
+                                 const parallel::Subdomain& sub, const real_t dt) {
+  const char* who = "pressure::build_variable_property_rhs";
+  const field::Field* fields[] = {&rhs, &U, &V, &W, &pressure_predictor, &inverse_density};
+  for (const field::Field* f : fields) check_field_matches(who, *f, sub);
+  const int ni = sub.x().n_local, nj = sub.y().n_local, nk = sub.z().n_local;
+  const long long n = static_cast<long long>(ni) * nj * nk;
+  build_rhs_kernel<<<static_cast<int>((n + kThreads - 1) / kThreads), kThreads>>>(
+      rhs.data(), U.data(), V.data(), W.data(), pressure_predictor.data(),
+      inverse_density.data(),
+      grid.x.device_cell_width.data(), grid.x.device_inverse_cell_width.data(), grid.x.device_inverse_center_distance.data(),
+      grid.y.device_cell_width.data(), grid.y.device_inverse_cell_width.data(), grid.y.device_inverse_center_distance.data(),
+      grid.z.device_cell_width.data(), grid.z.device_inverse_cell_width.data(), grid.z.device_inverse_center_distance.data(),
+      halo_width, ni, nj, nk, sub.y().n_total, sub.z().n_total, real_t(1) / dt);
+  MPMSTD_CUDA_CHECK_LAUNCH();
+}
 
 void add_divergence(field::Field& rhs, const field::Field& U, const field::Field& V,
                     const field::Field& W, const grid::Grid& grid,
