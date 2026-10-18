@@ -246,6 +246,11 @@ nz_local 개 합(보폭 복사, 호스트 순차합) + Allreduce, 빼기는 산�
 
 남은 pressure_solve(256³ np 1, 5.9 ms): tdma_z 1.6, FFT 1.4, 전치 1.5, build_z 1.2, halo 0.15. 누적 (원본 → `v100p2`): 198 → **84.3 ms (×2.35)**.
 
+## 2l. scalar build_x·y 2-D 블록 매핑 (2026-10-18) — 마지막 회차
+
+`scalar_scalability.md` §8. V100 256³ np 1 만 측정(`v100sb`, gpu01): scalar_solve 16.0 → 14.3, step 84.2 → **81.4 ms**. GPU 배정 문제로 여기서 캠페인을 마무리(사용자 결정).
+**최종 누적 (원본 → `v100sb`, V100 256³ np 1): 198 → 81.4 ms (×2.43).** np 8·512³ 의 최종 수치는 `v100p2`(scalar 매핑 직전) 기준.
+
 ## 3. 결론
 
 점유율 1위·손실 1위가 모두 **momentum_solve** → 이것부터 쪼개서 보고 최적화한다. → `momentum_scalability.md`, 그 다음 `scalar_scalability.md`.

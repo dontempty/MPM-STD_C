@@ -30,14 +30,14 @@
 |---|---|---|---|---|---|---|
 | 1 ✔ | pressure_rhs + pressure_correct | 5.6 → **4.1** | ~3.0 | 실측 **−1.5** (융합 −0.4 + 역수 −1.1) | 전용 커널 + 격자 역수 (`main_scalability.md` §2j) | 허용오차 — 완료 |
 | 2 ✔(①③) | pressure_solve 내부 | 7.5 → **5.9** | | 실측 **−1.7** (① −1.0, ③ −0.65); ② 보류 | ① pack/unpack_bands(1.0) 제거 — 스펙트럼·밴드 배치가 같은 인덱스, 평균행 핀만 ② build_z(1.16) — PaScaL 변형 Thomas 가 a′·c′ 를 스크래치에 쓰면 모드 계수 한 번만 조립 ③ mean_remove(0.69) — DC 모드로 평균, scatter 에 빼기 융합 | ① 비트 동일·쉬움 ② PaScaL 로컬 커널(중간) ③ 게이지뿐 |
-| 3 | scalar build_x·y | 7.1 | ~3.4 | **−2** | build_y(3.16) 가 타일 build_z(1.79) 의 1.8배 — 2-D 블록 매핑으로 통일 | 비트 동일 / 실험 |
+| 3 ✔ | scalar build_x·y | 7.1 → **5.4** | ~3.4 | 실측 **−1.7** (build_y −43 %, build_x −8 %) | build_z 와 같은 2-D 블록 매핑 (`scalar_scalability.md` §8) | 비트 동일 — 완료 |
 | 4 | momentum 커플링 4개 | 5.8 | ~3.9 | −1.5 | ncu 로 L2 적중·레지스터 확인 뒤 launch_bounds·로드 순서 | 측정 후 판단 |
 | 5 | properties_1 | 1.36 | 0 | −1.4 | clip 을 properties_2 앞으로, 다음 스텝 properties_1 삭제 | 클립된 셀만 차이 → 허용오차 |
 | 6 | momentum_rhs | 7.0 | ~3.9 | −1.5 | 레지스터 118·점유율 25 % → launch_bounds·성분별 분리 | 불확실 |
 | 7 | momentum build_x/y 의 D 복사 | 1.0 | | −1.0 | 순환 TDMA 커널에 d_in/d_out — 조립의 `D = source` 제거 | 비트 동일 / 작음 |
 | 8 | dt_cfl + dt_viscous | 0.9 | ~0.35 | −0.4 | 리덕션 둘을 한 커널로 | 비트 동일 |
 
-합계 ≈ −12.8 ms → **~75 ms (−15 %)**. 비트 동일·저위험(3, 7, 8)만 ≈ −3.4 ms. (1·2①③ 완료: 87.5 → 84.3)
+합계 ≈ −12.8 ms → **~75 ms (−15 %)**. (1·2①③·3 완료: 87.5 → 81.4). 7·8 은 이득 1 % 미만에 TDMA 커널 변경이 따라 **보류**.
 
 **바닥이라 안 건드리는 것**: momentum tdma_x+y 15.2(순환 Thomas 15패스 = 한계의 95 %), tdma_z 4.7, scalar tdma 6.6, build_z 5.4(타일, 78 %), cuFFT 1.4. np 8 의 Alltoallv 9.4 는 소켓 사이 링크 합계 한계(`main_scalability.md` §2g) — 3차원 분할이 풀 몫.
 

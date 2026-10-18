@@ -17,6 +17,10 @@ namespace mpmstd::equation::scalar {
 
 namespace {
 
+// 2-D 블록 매핑 공통: (32×8) 스레드, 스레드가 k 를 걷고 j 방향 4행 (build_z 전치 커널과 x·y 조립 커널이 같이 쓴다)
+constexpr int kTileZ = 32;
+constexpr int kRowsZ = 8;
+
 // sweep_axis 별 (셀 → 밴드 슬롯 p) 매핑만 커널 셋으로 나눈다 (CPU 루프와 동일).
 template <class KA, class DKA, class HA, class DHA>
 __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
@@ -31,11 +35,15 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
                                const real_t dt, const stencil::WallMask wall) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(i1) * i2 * i3) return;
-  const int kk = static_cast<int>(idx % i3);
-  const int jj = static_cast<int>((idx / i3) % i2);
-  const int ii = static_cast<int>(idx / (static_cast<long long>(i3) * i2));
+  // [최적화 2026-10-18 실험] 1차원 스레드(64비트 나눗셈 3회) → build_z 와 같은 (i, j-타일, k-타일) 2-D 블록 매핑.
+  //   밴드는 k 연속이라 전치 없음. 식·밴드 위치 동일 → 비트 동일.
+  const int ii = static_cast<int>(blockIdx.z);
+  const int j0 = static_cast<int>(blockIdx.y) * kTileZ, k0 = static_cast<int>(blockIdx.x) * kTileZ;
+  const int kk = k0 + static_cast<int>(threadIdx.x);
+  if (kk >= i3) return;
+  for (int r = 0; r < kTileZ; r += kRowsZ) {
+  const int jj = j0 + static_cast<int>(threadIdx.y) + r;
+  if (jj >= i2) break;
   const std::size_t p = static_cast<std::size_t>(ii) * (i2 * i3) + jj * i3 + kk;
   stencil::build_cell(0, ii + h, jj + h, kk + h, ny_total, nz_total, nullptr, 0,
                                T, U, V, W, conductivity, conductivity_derivative,
@@ -45,6 +53,7 @@ __global__ void build_x_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
                                wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
                                B[p], C[p], D[p]);
+  }
 }
 
 template <class KA, class DKA, class HA, class DHA>
@@ -61,11 +70,14 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                const int i1, const int i2, const int i3,
                                const int ny_total, const int nz_total, const real_t Ct,
                                const real_t dt, const stencil::WallMask wall) {
-  const long long idx = blockIdx.x * static_cast<long long>(blockDim.x) + threadIdx.x;
-  if (idx >= static_cast<long long>(i1) * i2 * i3) return;
-  const int kk = static_cast<int>(idx % i3);
-  const int ii = static_cast<int>((idx / i3) % i1);
-  const int jj = static_cast<int>(idx / (static_cast<long long>(i3) * i1));
+  // [최적화 2026-10-18 실험] build_x 와 같은 2-D 블록 매핑 (y 밴드 p = j·(i1·i3) + i·i3 + k, k 연속)
+  const int ii = static_cast<int>(blockIdx.z);
+  const int j0 = static_cast<int>(blockIdx.y) * kTileZ, k0 = static_cast<int>(blockIdx.x) * kTileZ;
+  const int kk = k0 + static_cast<int>(threadIdx.x);
+  if (kk >= i3) return;
+  for (int r = 0; r < kTileZ; r += kRowsZ) {
+  const int jj = j0 + static_cast<int>(threadIdx.y) + r;
+  if (jj >= i2) break;
   const std::size_t p = static_cast<std::size_t>(jj) * (i1 * i3) + ii * i3 + kk;
   stencil::build_cell(1, ii + h, jj + h, kk + h, ny_total, nz_total, source,
                                source_index(source_layout, ii, jj, kk, i1, i2, i3, static_cast<std::size_t>(stencil::cell_index(ii + h, jj + h, kk + h, ny_total, nz_total))),
@@ -76,11 +88,10 @@ __global__ void build_y_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
                                wall.lo[1] && jj == 0, wall.hi[1] && jj == i2 - 1,
                                wall.lo[2] && kk == 0, wall.hi[2] && kk == i3 - 1, wall, A[p],
                                B[p], C[p], D[p]);
+  }
 }
 
 // [최적화 2026-10-17] z 스윕 조립 32×32 타일 전치 (momentum build_kernel_z 와 같은 방법). 식은 build_cell 그대로(비트 동일). V100 ×4.
-constexpr int kTileZ = 32;
-constexpr int kRowsZ = 8;
 
 template <class KA, class DKA, class HA, class DHA>
 __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
@@ -135,18 +146,7 @@ __global__ void build_z_kernel(real_t* A, real_t* B, real_t* C, real_t* D,
   }
 }
 
-struct LaunchShape {
-  int blocks, threads;
-};
-
-LaunchShape launch_shape(const parallel::Subdomain& sub) {
-  const long long n = static_cast<long long>(sub.x().n_local) * sub.y().n_local
-                      * sub.z().n_local;
-  const int threads = 256;
-  return {static_cast<int>((n + threads - 1) / threads), threads};
-}
-
-// z 전용: (32×8) 스레드 블록, 그리드 (⌈i3/32⌉, ⌈i2/32⌉, i1)
+// x·y·z 공통: (32×8) 스레드 블록, 그리드 (⌈i3/32⌉, ⌈i2/32⌉, i1) — 2026-10-18 x·y 도 같은 매핑 (build_y 3.15 → 1.79 ms)
 struct LaunchShapeZ {
   dim3 blocks, threads;
 };
@@ -178,7 +178,7 @@ void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
                              const real_t dt) {
-  const LaunchShape shape = launch_shape(sub);
+  const LaunchShapeZ shape = launch_shape_z(sub);
   build_x_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
@@ -191,7 +191,7 @@ void build_y_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
                              const grid::Grid& grid, const parallel::Subdomain& sub,
                              const stencil::WallMask& wall, const real_t Ct,
                              const real_t dt, const SourceLayout source_layout) {
-  const LaunchShape shape = launch_shape(sub);
+  const LaunchShapeZ shape = launch_shape_z(sub);
   build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, source_layout, T, U, V, W,
                                                   MPMSTD_SCALAR_VARIABLE_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
@@ -233,7 +233,7 @@ void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const parallel::Subdomain& sub,
                                       const stencil::WallMask& wall, const real_t Ct,
                                       const real_t dt) {
-  const LaunchShape shape = launch_shape(sub);
+  const LaunchShapeZ shape = launch_shape_z(sub);
   build_x_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, T, U, V, W,
                                                   MPMSTD_SCALAR_CONSTANT_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
@@ -246,7 +246,7 @@ void build_y_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
                                       const parallel::Subdomain& sub,
                                       const stencil::WallMask& wall, const real_t Ct,
                                       const real_t dt, const SourceLayout source_layout) {
-  const LaunchShape shape = launch_shape(sub);
+  const LaunchShapeZ shape = launch_shape_z(sub);
   build_y_kernel<<<shape.blocks, shape.threads>>>(A, B, C, D, source, source_layout, T, U, V, W,
                                                   MPMSTD_SCALAR_CONSTANT_ARGS);
   MPMSTD_CUDA_CHECK_LAUNCH();
