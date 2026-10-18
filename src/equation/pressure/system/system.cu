@@ -25,6 +25,8 @@ real_t eigenvalue(const int mode, const int n, const real_t spacing) {
 
 enum : int { kThreads = 256 };
 
+// 모드 계수 조립(1.2 ms/스텝, V100 256³). 계수는 스텝마다 같지만 PaScaL 이 a·c 를 제자리에서 바꿔 매 스텝 다시 쓴다
+//   (2026-10-18: 나눗셈 → 역수는 효과 없음(저장 패턴이 병목)이라 되돌림; 스크래치 출력 방식은 라이브러리 수정이라 보류).
 __global__ void build_kernel(real_t* A, real_t* B, real_t* C, const real_t* dz,
                              const real_t* dmz, const real_t* lambda_x,
                              const real_t* lambda_y, const int h, const int nz_local,

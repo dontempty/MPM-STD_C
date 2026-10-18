@@ -22,9 +22,10 @@ void pack_spectrum_to_bands(real_t* D, const real_t* sxy, int nz_local, int n_mo
                             int n_y, bool pin_mean_row);
 void unpack_bands_to_spectrum(real_t* sxy, const real_t* D, int nz_local,
                               int n_mode_x, int n_y);
+// phi 내부 = line·scale − subtract  (subtract = 전역 평균, 게이지 제거를 산포에 융합 — 2026-10-18)
 void scatter_lines_to_field(field::Field& phi, const real_t* lines, real_t scale,
                             const parallel::Subdomain& sub, int n_x, int n_y,
-                            int nz_local);
+                            int nz_local, real_t subtract = 0);
 // ── x Neumann(DCT) 경로 — 거울 확장 2N 실수 FFT 로 DCT-II/III 를 만든다 ─────────
 // (cuFFT 에 DCT 가 없어 CPU/GPU 가 **같은 알고리즘**을 쓴다; solve.hpp 머리말)
 //   forward : y = [x₀…x_{N−1}, x_{N−1}…x₀] → r2c_{2N} → Y[k] (N+1 복소)
@@ -41,9 +42,15 @@ void dct_twiddle_forward(real_t* sx, const real_t* mirror_spectrum, int n_lines,
 void dct_twiddle_backward(real_t* mirror_spectrum, const real_t* sx, int n_lines, int n_x);
 void scatter_mirrored_lines_to_field(field::Field& phi, const real_t* lines, real_t scale,
                                      const parallel::Subdomain& sub, int n_x, int n_y,
-                                     int nz_local);
+                                     int nz_local, real_t subtract = 0);
 
 real_t interior_sum(const field::Field& phi, const parallel::Subdomain& sub);
+
+// [최적화 2026-10-18] 밴드 복사 제거·DC 모드 평균 (pack/unpack_bands·interior_sum/subtract 는 남겨 둔다)
+//   pin_mean_row: 스펙트럼의 (k=0, mx=0, jy=0) 실·허 = 0 (특이 모드 행 핀; 바닥 소유 랭크만)
+//   dc_mode_sum : Σ_k 스펙트럼 (k, 0, 0) 실수부 — 평면 (x,y) 합 = DC 모드이므로 전역 평균 = 합·scale / Nz_global
+void pin_mean_row(real_t* sxy);
+real_t dc_mode_sum(const real_t* sxy, int nz_local, int n_mode_x, int n_y);
 void subtract_constant(field::Field& phi, const parallel::Subdomain& sub,
                        real_t value);
 

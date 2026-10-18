@@ -60,7 +60,7 @@ struct Solver {
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
   linear_solver::TdmaPlan plan_z;
-  field::Buffer band_a, band_b, band_c, band_d;
+  field::Buffer band_a, band_b, band_c;   // D 는 spectrum_xy 를 그대로 쓴다 (2026-10-18)
 
   // 스펙트럼 작업 버퍼 — FFT 플랜이 이 주소에 묶이므로 재할당 금지.
   // 복소 버퍼는 (실, 허) double 쌍의 평탄 배열로 둔다 (커널에서 std::complex 회피).

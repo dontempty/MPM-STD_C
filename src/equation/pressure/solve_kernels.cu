@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 #include "common/cuda_check.hpp"
 #include "common/field_checks.hpp"
@@ -123,7 +124,7 @@ __global__ void unpack_bands_kernel(real_t* sxy, const real_t* D, const int nz_l
 
 // 라인 (i 연속) → 필드 (k 연속), 정규화 배율 포함. 그리드 (⌈nz/32⌉, ⌈n_x/32⌉, n_y)
 __global__ void scatter_lines_kernel(const field::View p, const real_t* lines,
-                                     const real_t scale, const int h, const int n_x,
+                                     const real_t scale, const real_t subtract, const int h, const int n_x,
                                      const int n_y, const int nz_local) {
   __shared__ real_t tile[kTile][kTile + 1];
   const int jj = static_cast<int>(blockIdx.z);
@@ -137,7 +138,7 @@ __global__ void scatter_lines_kernel(const field::View p, const real_t* lines,
   __syncthreads();
   for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 k 를 걷는다
     const int ii = i0 + ty + q, kk = k0 + tx;
-    if (ii < n_x && kk < nz_local) p(ii + h, jj + h, kk + h) = tile[tx][ty + q] * scale;
+    if (ii < n_x && kk < nz_local) p(ii + h, jj + h, kk + h) = tile[tx][ty + q] * scale - subtract;
   }
 }
 
@@ -235,7 +236,7 @@ __global__ void dct_backward_kernel(real_t* ms, const real_t* sx, const int n_li
 
 // [최적화 2026-10-18] 거울(DCT) 산포도 타일 전치 — scatter_lines_kernel 과 같고 라인 길이만 2Nx.
 __global__ void scatter_mirrored_kernel(const field::View p, const real_t* lines,
-                                        const real_t scale, const int h, const int n_x,
+                                        const real_t scale, const real_t subtract, const int h, const int n_x,
                                         const int n_y, const int nz_local) {
   __shared__ real_t tile[kTile][kTile + 1];
   const int jj = static_cast<int>(blockIdx.z);
@@ -249,7 +250,7 @@ __global__ void scatter_mirrored_kernel(const field::View p, const real_t* lines
   __syncthreads();
   for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 k 를 걷는다
     const int ii = i0 + ty + q, kk = k0 + tx;
-    if (ii < n_x && kk < nz_local) p(ii + h, jj + h, kk + h) = tile[tx][ty + q] * scale;
+    if (ii < n_x && kk < nz_local) p(ii + h, jj + h, kk + h) = tile[tx][ty + q] * scale - subtract;
   }
 }
 
@@ -298,10 +299,10 @@ void unpack_bands_to_spectrum(real_t* sxy, const real_t* D, const int nz_local,
 
 void scatter_lines_to_field(field::Field& phi, const real_t* lines, const real_t scale,
                             const parallel::Subdomain& sub, const int n_x,
-                            const int n_y, const int nz_local) {
+                            const int n_y, const int nz_local, const real_t subtract) {
   const dim3 threads(kTile, kTileRows);
   const dim3 blocks((nz_local + kTile - 1) / kTile, (n_x + kTile - 1) / kTile, n_y);
-  scatter_lines_kernel<<<blocks, threads>>>(phi.view(), lines, scale, halo_width, n_x, n_y,
+  scatter_lines_kernel<<<blocks, threads>>>(phi.view(), lines, scale, subtract, halo_width, n_x, n_y,
                                             nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
@@ -335,11 +336,11 @@ void dct_twiddle_backward(real_t* mirror_spectrum, const real_t* sx, const int n
 
 void scatter_mirrored_lines_to_field(field::Field& phi, const real_t* lines,
                                      const real_t scale, const parallel::Subdomain& sub,
-                                     const int n_x, const int n_y, const int nz_local) {
+                                     const int n_x, const int n_y, const int nz_local, const real_t subtract) {
   (void)sub;
   const dim3 threads(kTile, kTileRows);
   const dim3 blocks((nz_local + kTile - 1) / kTile, (n_x + kTile - 1) / kTile, n_y);
-  scatter_mirrored_kernel<<<blocks, threads>>>(phi.view(), lines, scale,
+  scatter_mirrored_kernel<<<blocks, threads>>>(phi.view(), lines, scale, subtract,
                                                        halo_width, n_x, n_y, nz_local);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
@@ -372,5 +373,20 @@ void subtract_constant(field::Field& phi, const parallel::Subdomain& sub,
 
 
 
+
+void pin_mean_row(real_t* sxy) {
+  MPMSTD_CUDA_CHECK(cudaMemsetAsync(sxy, 0, 2 * sizeof(real_t)));   // (k=0, mx=0, jy=0) 의 실·허 = 배열의 첫 두 원소
+}
+
+real_t dc_mode_sum(const real_t* sxy, const int nz_local, const int n_mode_x, const int n_y) {
+  // DC 모드 실수부는 k 마다 2·Nxm·Ny 원소 간격 — 보폭 복사로 호스트에 모아 순서대로 더한다 (결정적)
+  std::vector<real_t> dc(nz_local);
+  const std::size_t pitch = 2 * static_cast<std::size_t>(n_mode_x) * n_y * sizeof(real_t);
+  MPMSTD_CUDA_CHECK(cudaMemcpy2D(dc.data(), sizeof(real_t), sxy, pitch, sizeof(real_t), nz_local,
+                                 cudaMemcpyDeviceToHost));
+  real_t sum = 0;
+  for (int k = 0; k < nz_local; ++k) sum += dc[k];
+  return sum;
+}
 
 }  // namespace mpmstd::equation::pressure

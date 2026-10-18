@@ -294,6 +294,8 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
 | 10 | 밴드 핑퐁(`SourceLayout`, scatter_x/y 제거) | `src/equation/band_layout.hpp`, momentum·scalar `system.{cu,cpp}`·`solve.cpp` |
 | 11 | pressure 전치 복사 4개 타일화 (+ DCT 거울 팩·산포 2개) | `src/equation/pressure/solve_kernels.cu` |
 | 12 | 상수물성 풀이 밴드 핑퐁·융합, OB 형 전용 RHS 빌드(`build_constant_property_rhs`·`build_variable_viscosity_rhs`) | momentum·scalar `solve.cpp`, `momentum/rhs/rhs.{hpp,cu,cpp}`, 네 앱 `main.cpp` |
+| 13 | pressure 우변·보정 전용 커널 + 역수 (`build_variable_property_rhs`, `correct_velocity_and_accumulate_variable_property`) | `pressure/rhs/rhs.{hpp,cu,cpp}`, `pressure/correction.{hpp,cu,cpp}` |
+| 14 | pressure 밴드 복사 제거·DC 모드 평균·산포 융합 | `pressure/solve.cpp`, `pressure/solve_kernels.{hpp,cu,cpp}` |
 | 계측 | PhaseTimer·단계 타이머(수치 불변) | `src/common/phase_timer.hpp`, momentum·scalar·pressure `solve.{hpp,cpp}` |
 - **2026-10-18 (2)**: pressure 전치 복사 4개 타일화(`pressure/solve_kernels.cu`). 비트 동일. V100 pressure_solve 256³ np 1 13.4 → 7.5 (−44 %), 512³ np 2 85.5 → 38.8 (−55 %);
   스텝 −7 % / −9 %. 꼬리표 `v100pt`. 누적 원본 대비 256³ np 1 **198 → 87.5 ms (×2.26)**. `main_scalability.md` §2i. 코드의 최적화 지점은 전부 `[최적화 날짜]` 주석 + plan §10 표.
@@ -308,3 +310,5 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
   boundary_layer 124.8 → 64.4 (×1.94) / ×2.06, thermal_boundary_layer(스칼라 3) 211.6 → 98.1 (×2.16) / ×2.13. strong np 8 은 통신(Alltoallv·halo) 한계로 ×1.3~1.8.
 - **2026-10-18 (5)**: plan_temp.md 후보 1 — pressure 우변·보정 전용 커널(개별 함수 유지) + 격자 역수. 융합만 −0.4 ms, 역수까지 pressure_rhs 2.92 → 1.67,
   correct 2.71 → 2.45, 스텝 87.5 → 86.4 (−1.3 %). 꼬리표 `v100pf`(융합)·`v100pr`(역수). 허용오차 게이트. `main_scalability.md` §2j.
+- **2026-10-18 (6)**: plan_temp.md 후보 2 — pressure 밴드 pack/unpack 제거(항등 복사, `band_d` 삭제), 전역 평균을 DC 모드로 + 산포에 융합. pressure_solve 7.58 → 5.89,
+  스텝 86.4 → 84.3 (−2.5 %). build_z 역수는 효과 없어 되돌림, PaScaL 스크래치 출력은 보류. 꼬리표 `v100p2`. `main_scalability.md` §2k. 누적 원본 대비 **198 → 84.3 ms (×2.35)**.

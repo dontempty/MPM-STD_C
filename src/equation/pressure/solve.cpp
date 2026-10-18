@@ -121,7 +121,6 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   band_a.assign(n_band);
   band_b.assign(n_band);
   band_c.assign(n_band);
-  band_d.assign(n_band);
 
   // x 변환의 실제 길이/출력: 주기 = (Nx → Nx/2+1), 벽 DCT = 거울 (2Nx → Nx+1)
   const int line_x = x_neumann ? 2 * n_x : n_x;
@@ -219,9 +218,10 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   PRESSURE_TIMER_END("pressure.fft_y_fwd");
 
   // ② 모드별 z 삼중대각 — 실·허를 나란한 시스템으로 한 번에 (분산 TDMA, 비주기)
+  // [최적화 2026-10-18] 스펙트럼 [(k·Nxm+mx)·Ny+jy]×2 와 밴드 [sys + k·nsys](nsys = 2·Nxm·Ny) 는 같은 인덱스라
+  //   팩·언팩 복사 없이 spectrum_xy 를 D 로 바로 푼다. 특이 모드 행 핀(첫 두 원소 = 0)만 남는다.
   PRESSURE_TIMER_BEGIN("pressure.pack_bands");
-  pack_spectrum_to_bands(solver.band_d.data(), solver.spectrum_xy.data(), nz_local,
-                         n_mode_x, n_y, owns_bottom);
+  if (owns_bottom) pin_mean_row(solver.spectrum_xy.data());
   PRESSURE_TIMER_END("pressure.pack_bands");
   PRESSURE_TIMER_BEGIN("pressure.build_z");
   build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
@@ -231,14 +231,22 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   PRESSURE_TIMER_BEGIN("pressure.tdma_z");
   linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
                             solver.band_b.data(), solver.band_c.data(),
-                            solver.band_d.data(), nsys, nz_local);
+                            solver.spectrum_xy.data(), nsys, nz_local);
   PRESSURE_TIMER_END("pressure.tdma_z");
 
-  // ③ 해를 스펙트럼으로 되돌리고 역 y → 역 x → 정규화 산포
-  PRESSURE_TIMER_BEGIN("pressure.unpack_bands");
-  unpack_bands_to_spectrum(solver.spectrum_xy.data(), solver.band_d.data(), nz_local,
-                           n_mode_x, n_y);
-  PRESSURE_TIMER_END("pressure.unpack_bands");
+  // ③ 전역 평균(게이지)을 DC 모드에서 — 평면 (x,y) 합 = 스펙트럼 (k,0,0) 실수부·scale·Nx·Ny 이므로
+  //   평균 = Σ_k DC(k)·scale / Nz_global. 실공간 리덕션(2패스) 대신 nz_local 개 합 + Allreduce.
+  //   [최적화 2026-10-18] 빼기는 산포 커널에 융합 (phi = line·scale − mean).
+  PRESSURE_TIMER_BEGIN("pressure.mean_remove");
+  const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
+                                        : 1 / (static_cast<real_t>(n_x) * n_y);
+  real_t local_dc = dc_mode_sum(solver.spectrum_xy.data(), nz_local, n_mode_x, n_y);
+  real_t global_dc = 0;
+  MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+  const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
+  PRESSURE_TIMER_END("pressure.mean_remove");
+
+  // ④ 역 y → 역 x → 정규화 산포 (평균 빼기 포함)
   PRESSURE_TIMER_BEGIN("pressure.fft_y_bwd");
   run_backward_y(solver);
   PRESSURE_TIMER_END("pressure.fft_y_bwd");
@@ -254,25 +262,13 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   PRESSURE_TIMER_END("pressure.fft_x_bwd");
   PRESSURE_TIMER_BEGIN("pressure.scatter_lines");
   if (solver.x_neumann) {
-    scatter_mirrored_lines_to_field(phi, solver.real_lines.data(),
-                                    1 / (static_cast<real_t>(2 * n_x) * n_y), sub, n_x,
-                                    n_y, nz_local);
+    scatter_mirrored_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y,
+                                    nz_local, mean);
   } else {
-    scatter_lines_to_field(phi, solver.real_lines.data(),
-                           1 / (static_cast<real_t>(n_x) * n_y), sub, n_x, n_y,
-                           nz_local);
+    scatter_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y, nz_local,
+                           mean);
   }
   PRESSURE_TIMER_END("pressure.scatter_lines");
-
-  // ④ 전역 평균 제거 — 순수 게이지 (∇φ 불변). 누적 P 의 상수 드리프트 방지.
-  PRESSURE_TIMER_BEGIN("pressure.mean_remove");
-  real_t local_sum = interior_sum(phi, sub);
-  real_t global_sum = 0;
-  MPI_Allreduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM,
-                sub.topology().cart_comm());
-  subtract_constant(phi, sub,
-                    global_sum / (static_cast<real_t>(n_x) * n_y * sub.z().n_global));
-  PRESSURE_TIMER_END("pressure.mean_remove");
 
   // ⑤ ghost 완성: 이음새·주기 랩 → 벽 축 Neumann (조립 시 접은 벽 / DCT 와 같은
   //    정책의 ghost 짝 — conventions.md §6). 이 상태로 correct_velocity_* 에 바로 쓴다.

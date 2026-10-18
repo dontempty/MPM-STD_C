@@ -85,7 +85,7 @@ void unpack_bands_to_spectrum(real_t* sxy, const real_t* D, const int nz_local,
 
 void scatter_lines_to_field(field::Field& phi, const real_t* lines, const real_t scale,
                             const parallel::Subdomain& sub, const int n_x,
-                            const int n_y, const int nz_local) {
+                            const int n_y, const int nz_local, const real_t subtract) {
   (void)sub;  // GPU 쌍둥이와 시그니처 통일
   const int h = halo_width;
   const field::View p = phi.view();
@@ -95,7 +95,7 @@ void scatter_lines_to_field(field::Field& phi, const real_t* lines, const real_t
         p(i, j, k) =
             lines[(static_cast<std::size_t>(j - h) * nz_local + (k - h)) * n_x
                   + (i - h)]
-            * scale;
+            * scale - subtract;
 }
 
 // ── x Neumann(DCT) 경로 (solve_kernels.hpp 의 식) ─────────────────────────────
@@ -153,7 +153,8 @@ void dct_twiddle_backward(real_t* mirror_spectrum, const real_t* sx, const int n
 
 void scatter_mirrored_lines_to_field(field::Field& phi, const real_t* lines,
                                      const real_t scale, const parallel::Subdomain& sub,
-                                     const int n_x, const int n_y, const int nz_local) {
+                                     const int n_x, const int n_y, const int nz_local,
+                                     const real_t subtract) {
   (void)sub;
   const int h = halo_width;
   const int n2 = 2 * n_x;
@@ -162,7 +163,7 @@ void scatter_mirrored_lines_to_field(field::Field& phi, const real_t* lines,
     for (int k = h; k < h + nz_local; ++k) {
       const real_t* line =
           lines + (static_cast<std::size_t>(j - h) * nz_local + (k - h)) * n2;
-      for (int i = 0; i < n_x; ++i) p(i + h, j, k) = line[i] * scale;
+      for (int i = 0; i < n_x; ++i) p(i + h, j, k) = line[i] * scale - subtract;
     }
 }
 
@@ -183,6 +184,15 @@ void subtract_constant(field::Field& phi, const parallel::Subdomain& sub,
   for (int i = h; i < sub.x().n_total - h; ++i)
     for (int j = h; j < sub.y().n_total - h; ++j)
       for (int k = h; k < sub.z().n_total - h; ++k) p(i, j, k) -= value;
+}
+
+void pin_mean_row(real_t* sxy) { sxy[0] = 0; sxy[1] = 0; }
+
+real_t dc_mode_sum(const real_t* sxy, const int nz_local, const int n_mode_x, const int n_y) {
+  const std::size_t stride = 2 * static_cast<std::size_t>(n_mode_x) * n_y;
+  real_t sum = 0;
+  for (int k = 0; k < nz_local; ++k) sum += sxy[k * stride];
+  return sum;
 }
 
 }  // namespace mpmstd::equation::pressure
