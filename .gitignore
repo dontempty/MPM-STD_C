@@ -11,6 +11,7 @@ apps/boundary_layer/stats/
 apps/cavity/logs/
 apps/cavity/stats/
 apps/*/checkpoints*/
+apps/*/checkpoints_val_*/
 apps/dhvc/input_dhvc_*_run.ini
 apps/dhvc/logs/
 apps/dhvc/out_*/
@@ -19,13 +20,16 @@ apps/dhvc/restart_*/
 apps/dhvc/stats_smoke/
 apps/*/log/
 # apps/ 에서 올라가는 것: main.cpp, settings.{hpp,cpp}, 입력 덱(*.ini),
+apps/*/out_val_*/
 apps/*/plot/*.png
 apps/rbc_nob/scalability/log/
 apps/rbc_nob/scalability/out/
+apps/*/restart_val_*/
 apps/*/scale/log/
 apps/*/scale/out/
 apps/*/scale/out_tmp/
 apps/*/stats_*/
+apps/*/stats_val_*/
 # boundary_layer 앱 런 산출물
 /build*/
 # BUILD=<이름> 변형까지 전부 (build, build_gpu, build_gpu_m11, build_gpu_fix, …)
