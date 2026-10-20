@@ -9,7 +9,8 @@
 //   (x, y 가 랭크 안에서 완결, 전치 없음 — 비트 동일). npx·npy > 1 이면 같은 z 블록의
 //   xy-평면 그룹 안에서 펜슬 전치(pencil_transpose.hpp):
 //     블록 →① x-펜슬 → x FFT →② y-펜슬 → y FFT → z 분산 TDMA → 역 y FFT →②⁻¹ → 역 x FFT →①⁻¹ 블록
-//   z 는 원래 z 분할 그대로 두고 TDMA 가 z 통신자로 푼다. 전치는 호스트 버퍼(GPU 는 스테이징).
+//   z 는 원래 z 분할 그대로 두고 TDMA 가 z 통신자로 푼다. 전치는 백엔드 버퍼끼리(GPU = 디바이스↔디바이스,
+//   CUDA-aware MPI; PaScaL_TDMA 와 같이 PASCAL_TDMA_MPI_MODE=host 면 호스트 경유).
 //   조건: ny ≥ npx·npy, x 모드 수 ≥ npx·npy (생성자가 검사).
 // ★ x, y 는 균일 격자 전제 (스펙트럴 + modified wavenumber) — 생성자가 검사.
 //   x 는 주기(FFT) **또는 벽(Neumann → DCT-II/III, 2026-10-05 BC 프레임워크 단계 3)**:
@@ -67,7 +68,6 @@ struct Solver {
   int ny_lines = 0;       // x-펜슬의 로컬 y 라인 수
   int n_mode_local = 0;   // y-펜슬의 로컬 x 모드 수
   int mode_offset = 0;    // 그 첫 모드 번호 (λ_x 오프셋·(0,0) 핀 판정)
-  std::vector<real_t> host_field, host_lines, host_sx, host_sxy;  // 펜슬 스테이징
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
   linear_solver::TdmaPlan plan_z;

@@ -103,7 +103,7 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   nz_local = sub.z().n_local;
   // 펜슬: x·y 가 쪼개져 있으면 xy-평면 그룹 레이아웃 (슬랩이면 전치 없음 — 기존 경로)
   if (sub.topology().x().nprocs * sub.topology().y().nprocs > 1)
-    pencil = std::make_unique<PencilLayout>(sub, n_mode_x);
+    pencil = std::make_unique<PencilLayout>(sub, n_mode_x, x_neumann);
   ny_lines = pencil ? pencil->my_y_count() : n_y;
   n_mode_local = pencil ? pencil->my_mode_count() : n_mode_x;
   mode_offset = pencil ? pencil->my_mode_offset() : 0;
@@ -281,18 +281,15 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     const int nsys = 2 * nml * n_y;
     const bool has_mean_mode = solver.mode_offset == 0;  // 로컬 모드 0 = 전역 (0,0) 모드인 랭크
     PRESSURE_TIMER_BEGIN("pressure.pencil_forward");
-    // ① 블록 → x 라인 (주기: 길이 Nx / 벽: 거울 2Nx) → x 변환
-    rhs.download(solver.host_field);
-    block_to_x_lines(L, sub, solver.host_field, solver.x_neumann, solver.host_lines);
-    solver.real_lines.upload(solver.host_lines);
+    // ① 블록 → x 라인 (주기: 길이 Nx / 벽: 거울 2Nx) → x 변환. 전치는 백엔드 버퍼끼리 (GPU↔GPU)
+    run_exchange(L.block_to_lines, rhs.data(), solver.real_lines.data(), L.comm, L.host_staging);
     run_forward_x(solver);
     if (solver.x_neumann)
       dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
                           ny_lines * nz_local, n_x);
     // ② x-펜슬 스펙트럼 → y-펜슬 → y 변환
-    solver.spectrum_x.download(solver.host_sx);
-    x_spectrum_to_y_spectrum(L, solver.host_sx, solver.host_sxy);
-    solver.spectrum_xy.upload(solver.host_sxy);
+    run_exchange(L.x_to_y_spectrum, solver.spectrum_x.data(), solver.spectrum_xy.data(), L.comm,
+                 L.host_staging);
     run_forward_y(solver);
     PRESSURE_TIMER_END("pressure.pencil_forward");
     // z 삼중대각 — spectrum_xy 를 D 로 바로 (로컬 x 모드 조각, λ_x 오프셋). (0,0) 핀은 그 모드를 가진 랭크만
@@ -318,19 +315,15 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     PRESSURE_TIMER_BEGIN("pressure.pencil_backward");
     run_backward_y(solver);
     // ②⁻¹ y-펜슬 → x-펜슬 → 역 x 변환
-    solver.spectrum_xy.download(solver.host_sxy);
-    y_spectrum_to_x_spectrum(L, solver.host_sxy, solver.host_sx);
-    solver.spectrum_x.upload(solver.host_sx);
+    run_exchange(L.y_to_x_spectrum, solver.spectrum_xy.data(), solver.spectrum_x.data(), L.comm,
+                 L.host_staging);
     if (solver.x_neumann)
       dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
                            ny_lines * nz_local, n_x);
     run_backward_x(solver);
-    // ①⁻¹ x 라인 → 블록 (정규화·평균 빼기 포함)
-    solver.real_lines.download(solver.host_lines);
-    phi.download(solver.host_field);
-    x_lines_to_block(L, sub, solver.host_lines, solver.x_neumann ? 2 * n_x : n_x, scale, mean,
-                     solver.host_field);
-    phi.upload(solver.host_field);
+    // ①⁻¹ x 라인 → 블록 (정규화·평균 빼기를 팩 커널에서; 장의 ghost 는 건드리지 않는다)
+    run_exchange(L.lines_to_block, solver.real_lines.data(), phi.data(), L.comm, L.host_staging,
+                 scale, mean);
     PRESSURE_TIMER_END("pressure.pencil_backward");
   }
 

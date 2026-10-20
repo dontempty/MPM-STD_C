@@ -4,7 +4,7 @@
 #SBATCH -p batch
 #SBATCH -w gpu01
 #SBATCH -N 1
-#SBATCH -n 2
+#SBATCH -n 4
 #SBATCH -c 8
 #SBATCH --gres=gpu:2
 #SBATCH --mem=32G
@@ -33,12 +33,16 @@ cd $APP
 run_gpu() {  # run_gpu <tree> <case> <outdir>
   IFS=x read px py pz <<< "$2"; d=$3/$2; rm -rf $d; mkdir -p $d
   sed -e "s/^npx = .*/npx = $px/" -e "s/^npy = .*/npy = $py/" -e "s/^npz = .*/npz = $pz/" input_base.ini > $d/input.ini
-  $HPCX/ompi/bin/mpirun -np 2 $1/build_gpu/bin/channel_pencil_test $d/input.ini > $d/run.log 2>&1
+  np=$((px*py*pz))   # 랭크 > GPU 수면 노드 랭크 % GPU 수로 공유 (2x2x1 = GPU 당 2 랭크)
+  $HPCX/ompi/bin/mpirun --oversubscribe -np $np -x PASCAL_TDMA_MPI_MODE $1/build_gpu/bin/channel_pencil_test $d/input.ini > $d/run.log 2>&1
   echo "== gpu $2 ($1) rc=$? $(grep -E 'error' $d/run.log | tail -1)"
 }
-for c in 1x1x2 2x1x1 1x2x1; do run_gpu $ROOT $c $OUT; done
+GPU_CASES=${GPU_CASES:-"1x1x2 2x1x1 1x2x1 2x2x1 2x1x2"}
+export PASCAL_TDMA_MPI_MODE=${PASCAL_TDMA_MPI_MODE:-device}
+echo "# PASCAL_TDMA_MPI_MODE=$PASCAL_TDMA_MPI_MODE (device = GPU 버퍼를 그대로 MPI 로)"
+for c in $GPU_CASES; do run_gpu $ROOT $c $OUT; done
 mkdir -p $OUT/1x1x1/checkpoints; cp $CPU_REF/1x1x1/checkpoints/*.bin $OUT/1x1x1/checkpoints/
-python3 compare_checkpoints.py $OUT 1x1x1 1x1x2 2x1x1 1x2x1
+python3 compare_checkpoints.py $OUT 1x1x1 $GPU_CASES
 if [ -n "$OLD_ROOT" ]; then
   run_gpu $OLD_ROOT 1x1x2 ${OUT}_old
   cmp ${OUT}_old/1x1x2/checkpoints/*.bin $OUT/1x1x2/checkpoints/*.bin && echo "GPU slab 1x1x2: pre-pencil vs new BIT-IDENTICAL" || echo "GPU slab 1x1x2: DIFFERS"

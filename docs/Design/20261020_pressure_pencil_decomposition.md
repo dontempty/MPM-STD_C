@@ -43,3 +43,14 @@ mirror 벽, dt 0.02 고정, 30 스텝 → 마지막 체크포인트(U V W P)를 
   - GPU 3 분할(1x1x2·2x1x1·1x2x1, A100 2장): CPU 직렬 대비 max|ΔU| ≤ 8.0e-14.
   - GPU 슬랩은 비트 비교 불가 — **같은 GPU 바이너리를 두 번 돌려도 체크포인트가 다르다**(통계 축소의 atomicAdd 순서, 펜슬 이전 빌드도 같음).
     이전 빌드 대비 차이 3e-15 이고 모니터 출력은 자리수까지 같다.
+
+## 개정 — GPU↔GPU 통신 (2026-10-20 저녁)
+- 이전 펜슬 전치는 장·스펙트럼을 호스트로 내려 MPI 후 다시 올렸다(GPU 에서 전치마다 PCIe 왕복 2회).
+- 지금은 PaScaL_TDMA(`pascal_tdma_cuda.cu::alltoallv_double`)와 같은 구조: **팩 커널 → 디바이스 송신 버퍼를 그대로
+  `MPI_Alltoallv`(CUDA-aware MPI) → 디바이스 수신 버퍼 → 언팩 커널**. 같은 환경변수 `PASCAL_TDMA_MPI_MODE=host` 일 때만 호스트 경유.
+- 팩·언팩 순서는 생성 시 한 번 만든 인덱스 표(원소별 gather/scatter 위치, 디바이스 int 배열)로 정한다 — 불균등 분할·거울 라인(DCT)·
+  복소(폭 2)를 커널 두 개로 처리. 정규화·평균 빼기는 블록으로 되돌리는 팩 커널에 융합.
+- 파일: `pencil_transpose.hpp`(구조·API), `pencil_layout.cpp`(레이아웃 + 인덱스 표, 공용), `pencil_exchange.{cpp,cu}`(백엔드 쌍둥이).
+- 검증: CPU 9 분할 — 이전 구현과 체크포인트 **비트 동일**(팩 순서가 같다). GPU(A100 2장) 1x1x2·2x1x1·1x2x1·2x2x1·2x1x2
+  (4 랭크는 GPU 당 2 랭크): device 모드·host 모드 모두 CPU 직렬 대비 max|ΔU| ≤ 8.0e-14.
+- 성능: 이 시험(36×30×32)은 스텝당 수 ms 로 지연이 지배해 device/host 차이를 판단할 수 없다 — 실제 이득은 큰 격자 스케일링 측정이 필요.
