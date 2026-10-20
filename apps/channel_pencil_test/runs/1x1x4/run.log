@@ -1,0 +1,59 @@
+# settings loaded from runs/1x1x4/input.ini  (4 ranks)
+[mesh]
+nx = 36
+ny = 30
+nz = 32
+
+[domain]
+lx = 6.28318530717959
+ly = 3.14159265358979
+lz = 2
+
+[stretch]
+uniform_z = false
+gamma_z = 3
+
+[process]
+npx = 1
+npy = 1
+npz = 4
+
+[physics]
+reynolds_bulk = 2857
+target_bulk_velocity = 1
+
+[boundary]
+velocity_ghost = mirror
+
+[les]
+model = none
+c_s = 0.12
+c_w = 0.5
+
+[time]
+dt_max = 0.02
+max_cfl = 0.5
+max_step = 30
+
+[initial]
+pert_amp = 0.5
+
+[output]
+stats_dir = "runs/1x1x4/runs/1x1x4/stats"
+monitor_interval = 5
+stats_start_step = 1000000
+stats_write_interval = 10000
+budget_interval = 0
+checkpoint_interval = 30
+checkpoint_dir = "runs/1x1x4/runs/1x1x4/checkpoints"
+restart_from = ""
+# nu = 3.500175e-04 (Re_b = 2857, delta = 1), dz_wall+/dz_center+ ~ 3.67/18.59 (Re_tau 180)
+# step      time        dt      bulk     max|div|   u_tau   Re_tau   -dPdx    sec/step
+      1     0.020   0.02000  1.000000   2.50e-14  0.03167   90.47 -0.002200    0.116
+      5     0.100   0.02000  1.000000   2.22e-15  0.03176   90.75  0.001005    0.385
+     10     0.200   0.02000  1.000000   2.22e-15  0.03187   91.06  0.001008    0.458
+     15     0.300   0.02000  1.000000   2.22e-15  0.03197   91.33  0.001011    0.459
+     20     0.400   0.02000  1.000000   2.22e-15  0.03205   91.56  0.001013    0.560
+     25     0.500   0.02000  1.000000   2.11e-15  0.03212   91.78  0.001016    0.502
+# checkpoint written: runs/1x1x4/runs/1x1x4/checkpoints/channel_ck_00000030.bin (t=0.6000)
+     30     0.600   0.02000  1.000000   2.22e-15  0.03219   91.98  0.001019    0.462

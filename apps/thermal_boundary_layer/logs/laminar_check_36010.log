@@ -1,0 +1,106 @@
+# settings loaded from input_tbl_laminar_check.ini  (2 ranks)
+[mesh]
+nx = 192
+ny = 4
+nz = 64
+
+[domain]
+lx = 100
+ly = 2
+lz = 12
+
+[stretch]
+uniform_z = false
+gamma_z = 2
+
+[process]
+npx = 1
+npy = 1
+npz = 2
+
+[physics]
+u_infinity = 1
+reynolds = 450
+convective_velocity = 0
+
+[inflow]
+method = blasius
+recycle_x = 0
+delta99 = 1
+relaxation_time = 20
+noise = 0.1
+
+[trip]
+amplitude = 0
+x_center = 8
+length_x = 4
+length_z = 0.8
+time_scale = 4
+modes = 10
+end_time = 0
+[scalars]
+prandtl = "0.71, 0.71, 2.0"
+wall = "isoscalar, isoflux, isoscalar"
+theta_infinity = 1
+wall_value = 0
+wall_gradient = 1
+[les]
+model = none
+c_s = 0.12
+c_w = 0.5
+
+[initial]
+profile = blasius
+restart_from = ""
+
+[boundary]
+x = inflow_outflow
+y = periodic
+z = wall
+velocity_ghost = mirror
+inflow_profile = blasius
+u_z_plus = slip
+v_z_plus = slip
+w_z_plus = freestream
+
+[time]
+end_time = 150
+dt_max = 0.2
+max_cfl = 0.8
+max_step = 0
+
+[output]
+stats_dir = "stats/laminar_check"
+monitor_interval = 200
+stats_interval = 50
+stats_start_time = 100
+stations = "300"
+checkpoint_interval = 0
+checkpoint_dir = "checkpoints"
+# boundary condition table:
+  velocity_ghost: mirror
+  x: inflow_outflow  u-=inflow(profile)  u+=outflow  v-=dirichlet(0)  v+=outflow  w-=dirichlet(0)  w+=outflow  p-=neumann  p+=neumann  t-=dirichlet(0)  t+=neumann
+  y: periodic
+  z: wall  u-=dirichlet(0)  u+=neumann  v-=dirichlet(0)  v+=neumann  w-=dirichlet(0)  w+=freestream  p-=neumann  p+=neumann  t-=dirichlet(0)  t+=dirichlet(0)
+# boundary layer: Re_dstar0=450 nu=2.222222e-03 x0=151.9678  f''(0)=0.332057 | 192x4x64
+# scalar 1: Pr=0.71 wall=isoscalar  laminar wall coefficient 0.294165 (isoscalar: theta'(0); isoflux: g(0))
+# scalar 2: Pr=0.71 wall=isoflux  laminar wall coefficient 2.451628 (isoscalar: theta'(0); isoflux: g(0))
+# scalar 3: Pr=2 wall=isoscalar  laminar wall coefficient 0.422308 (isoscalar: theta'(0); isoflux: g(0))
+# step      time        dt     max|div|   dU_out      Cf(x=Lx/2)  Cf_blasius   sec/step
+      1     0.200   0.20000   2.51e-15  -4.26e-05    0.002203    0.002203   0.0000
+    200    40.000   0.20000   2.80e-15  -4.26e-05    0.002202    0.002203   0.0060
+    400    80.000   0.20000   2.86e-15  -4.26e-05    0.002202    0.002203   0.0060
+# stats written: stats/laminar_check/bl_stats_00000500.dat (T_avg=0.20)
+# scalar stats written: stats/laminar_check/bl_scalar1_stats_00000500.dat
+# scalar stats written: stats/laminar_check/bl_scalar2_stats_00000500.dat
+# scalar stats written: stats/laminar_check/bl_scalar3_stats_00000500.dat
+    600   120.000   0.20000   6.39e-16  -4.26e-05    0.002202    0.002203   0.0078
+# stats written: stats/laminar_check/bl_stats_00000750.dat (T_avg=50.20)
+# scalar stats written: stats/laminar_check/bl_scalar1_stats_00000750.dat
+# scalar stats written: stats/laminar_check/bl_scalar2_stats_00000750.dat
+# scalar stats written: stats/laminar_check/bl_scalar3_stats_00000750.dat
+# stats written: stats/laminar_check/bl_stats_00000750.dat (T_avg=50.20)
+# scalar stats written: stats/laminar_check/bl_scalar1_stats_00000750.dat
+# scalar stats written: stats/laminar_check/bl_scalar2_stats_00000750.dat
+# scalar stats written: stats/laminar_check/bl_scalar3_stats_00000750.dat
+# FINAL: Cf(x=Lx/2) = 0.002202 (Blasius 0.002203, -0.04%)  t = 150.0 step = 750
