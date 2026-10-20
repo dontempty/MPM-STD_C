@@ -52,3 +52,5 @@ __pycache__/
 # 무시되는 것: 각 앱의 stats_*/, log/, checkpoints*/, plot 의 생성 그림.
 *.swp
 tools/scale/log/
+apps/channel_pencil_test/runs_v100/
+apps/channel_pencil_test/log/
