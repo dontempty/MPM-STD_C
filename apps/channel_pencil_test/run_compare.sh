@@ -16,15 +16,18 @@ export OPAL_PREFIX=$HPCX/ompi
 export PATH=$HPCX/ompi/bin:$PATH
 export LD_LIBRARY_PATH=$HPCX/ucx/lib:$HPCX/ompi/lib:${LD_LIBRARY_PATH:-}
 APP=$ROOT/apps/channel_pencil_test
+BIN=${BIN:-$ROOT/build/bin/channel_pencil_test}   # 다른 빌드(예: 이전 커밋 워크트리)와 비교할 때 덮어쓴다
+OUT=${OUT:-runs}                                    # 결과 폴더 (APP 기준)
 cd $APP
-CASES="1x1x1 1x1x4 4x1x1 1x4x1 2x2x1 2x1x2 1x2x2 2x2x2 4x2x1"
+CASES=${CASES:-"1x1x1 1x1x4 4x1x1 1x4x1 2x2x1 2x1x2 1x2x2 2x2x2 4x2x1"}
+echo "# binary $BIN -> $OUT"
 for c in $CASES; do
   IFS=x read px py pz <<< "$c"; np=$((px*py*pz))
-  rm -rf runs/$c; mkdir -p runs/$c
+  rm -rf $OUT/$c; mkdir -p $OUT/$c
   sed -e "s/^npx = .*/npx = $px/" -e "s/^npy = .*/npy = $py/" -e "s/^npz = .*/npz = $pz/" \
       \
-      input_base.ini > runs/$c/input.ini
-  srun -n $np --exact $ROOT/build/bin/channel_pencil_test runs/$c/input.ini > runs/$c/run.log 2>&1
-  echo "== $c (np $np) rc=$? : $(grep -E 'error|FINAL' runs/$c/run.log | tail -1)"
+      input_base.ini > $OUT/$c/input.ini
+  srun -n $np --exact $BIN $OUT/$c/input.ini > $OUT/$c/run.log 2>&1
+  echo "== $c (np $np) rc=$? : $(grep -E 'error|FINAL' $OUT/$c/run.log | tail -1)"
 done
-python3 $APP/compare_checkpoints.py runs 1x1x1 $CASES
+python3 $APP/compare_checkpoints.py $OUT 1x1x1 $CASES

@@ -50,10 +50,10 @@ struct PencilLayout {
 void block_to_x_lines(const PencilLayout& layout, const parallel::Subdomain& sub,
                       const std::vector<real_t>& field_host, bool mirrored,
                       std::vector<real_t>& lines);
-// ①⁻¹ x 라인의 앞 Nx 개 × scale → 장 내부(블록). ghost 는 건드리지 않는다.
+// ①⁻¹ x 라인의 앞 Nx 개 × scale − subtract → 장 내부(블록). ghost 는 건드리지 않는다.
 void x_lines_to_block(const PencilLayout& layout, const parallel::Subdomain& sub,
                       const std::vector<real_t>& lines, int line_length, real_t scale,
-                      std::vector<real_t>& field_host);
+                      real_t subtract, std::vector<real_t>& field_host);
 // ② x 스펙트럼(y 조각) → y 스펙트럼(x 모드 조각), ②⁻¹ 은 역방향
 void x_spectrum_to_y_spectrum(const PencilLayout& layout, const std::vector<real_t>& sx,
                               std::vector<real_t>& sxy);

@@ -195,133 +195,92 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   const int nz_local = solver.nz_local;
   const bool owns_bottom = sub.topology().z().minus_neighbor == MPI_PROC_NULL;
 
-<<<<<<< HEAD
-  // ① rhs 내부 → x-라인 팩 → x 변환(주기 r2c / 벽 거울 r2c+트위들 = DCT-II)
-  //    → y-라인 재배열 → y c2c
-  PRESSURE_TIMER_BEGIN("pressure.pack_lines");
-  if (solver.x_neumann) {
-    pack_rhs_to_mirrored_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
-  } else {
-    pack_rhs_to_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
-  }
-  PRESSURE_TIMER_END("pressure.pack_lines");
-  PRESSURE_TIMER_BEGIN("pressure.fft_x_fwd");
-  run_forward_x(solver);
-  if (solver.x_neumann)
-    dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
-                        n_y * nz_local, n_x);
-  PRESSURE_TIMER_END("pressure.fft_x_fwd");
-  PRESSURE_TIMER_BEGIN("pressure.reorder_x_to_y");
-  reorder_x_to_y(solver.spectrum_xy.data(), solver.spectrum_x.data(), n_y, nz_local,
-                 n_mode_x);
-  PRESSURE_TIMER_END("pressure.reorder_x_to_y");
-  PRESSURE_TIMER_BEGIN("pressure.fft_y_fwd");
-  run_forward_y(solver);
-  PRESSURE_TIMER_END("pressure.fft_y_fwd");
-
-  // ② 모드별 z 삼중대각 — 실·허를 나란한 시스템으로 한 번에 (분산 TDMA, 비주기)
-  // [최적화 2026-10-18] 스펙트럼 [(k·Nxm+mx)·Ny+jy]×2 와 밴드 [sys + k·nsys](nsys = 2·Nxm·Ny) 는 같은 인덱스라
-  //   팩·언팩 복사 없이 spectrum_xy 를 D 로 바로 푼다. 특이 모드 행 핀(첫 두 원소 = 0)만 남는다.
-  PRESSURE_TIMER_BEGIN("pressure.pack_bands");
-  if (owns_bottom) pin_mean_row(solver.spectrum_xy.data());
-  PRESSURE_TIMER_END("pressure.pack_bands");
-  PRESSURE_TIMER_BEGIN("pressure.build_z");
-  build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
-                       solver.band_c.data(), grid, sub, solver.lambda_x.data(),
-                       n_mode_x, solver.lambda_y.data(), n_y);
-  PRESSURE_TIMER_END("pressure.build_z");
-  PRESSURE_TIMER_BEGIN("pressure.tdma_z");
-  linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
-                            solver.band_b.data(), solver.band_c.data(),
-                            solver.spectrum_xy.data(), nsys, nz_local);
-  PRESSURE_TIMER_END("pressure.tdma_z");
-
-  // ③ 전역 평균(게이지)을 DC 모드에서 — 평면 (x,y) 합 = 스펙트럼 (k,0,0) 실수부·scale·Nx·Ny 이므로
-  //   평균 = Σ_k DC(k)·scale / Nz_global. 실공간 리덕션(2패스) 대신 nz_local 개 합 + Allreduce.
-  //   [최적화 2026-10-18] 빼기는 산포 커널에 융합 (phi = line·scale − mean).
-  PRESSURE_TIMER_BEGIN("pressure.mean_remove");
-  const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
-                                        : 1 / (static_cast<real_t>(n_x) * n_y);
-  real_t local_dc = dc_mode_sum(solver.spectrum_xy.data(), nz_local, n_mode_x, n_y);
-  real_t global_dc = 0;
-  MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
-  const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
-  PRESSURE_TIMER_END("pressure.mean_remove");
-
-  // ④ 역 y → 역 x → 정규화 산포 (평균 빼기 포함)
-  PRESSURE_TIMER_BEGIN("pressure.fft_y_bwd");
-  run_backward_y(solver);
-  PRESSURE_TIMER_END("pressure.fft_y_bwd");
-  PRESSURE_TIMER_BEGIN("pressure.reorder_y_to_x");
-  reorder_y_to_x(solver.spectrum_x.data(), solver.spectrum_xy.data(), n_y, nz_local,
-                 n_mode_x);
-  PRESSURE_TIMER_END("pressure.reorder_y_to_x");
-  PRESSURE_TIMER_BEGIN("pressure.fft_x_bwd");
-  if (solver.x_neumann)  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
-    dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
-                         n_y * nz_local, n_x);
-  run_backward_x(solver);
-  PRESSURE_TIMER_END("pressure.fft_x_bwd");
-  PRESSURE_TIMER_BEGIN("pressure.scatter_lines");
-  if (solver.x_neumann) {
-    scatter_mirrored_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y,
-                                    nz_local, mean);
-  } else {
-    scatter_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y, nz_local,
-                           mean);
-=======
   if (!solver.pencil) {
-    // ── 슬랩 경로 (npx = npy = 1) — 기존 그대로 ──────────────────────────────
+    // ── 슬랩 경로 (npx = npy = 1) — 10-18 최적화 경로 그대로 (pin_mean = true 만 추가) ──
     const int nsys = 2 * n_mode_x * n_y;
     // ① rhs 내부 → x-라인 팩 → x 변환(주기 r2c / 벽 거울 r2c+트위들 = DCT-II)
     //    → y-라인 재배열 → y c2c
+    PRESSURE_TIMER_BEGIN("pressure.pack_lines");
     if (solver.x_neumann) {
       pack_rhs_to_mirrored_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
-      run_forward_x(solver);
-      dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
-                          n_y * nz_local, n_x);
     } else {
       pack_rhs_to_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
-      run_forward_x(solver);
     }
+    PRESSURE_TIMER_END("pressure.pack_lines");
+    PRESSURE_TIMER_BEGIN("pressure.fft_x_fwd");
+    run_forward_x(solver);
+    if (solver.x_neumann)
+      dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
+                          n_y * nz_local, n_x);
+    PRESSURE_TIMER_END("pressure.fft_x_fwd");
+    PRESSURE_TIMER_BEGIN("pressure.reorder_x_to_y");
     reorder_x_to_y(solver.spectrum_xy.data(), solver.spectrum_x.data(), n_y, nz_local,
                    n_mode_x);
+    PRESSURE_TIMER_END("pressure.reorder_x_to_y");
+    PRESSURE_TIMER_BEGIN("pressure.fft_y_fwd");
     run_forward_y(solver);
+    PRESSURE_TIMER_END("pressure.fft_y_fwd");
 
     // ② 모드별 z 삼중대각 — 실·허를 나란한 시스템으로 한 번에 (분산 TDMA, 비주기)
-    pack_spectrum_to_bands(solver.band_d.data(), solver.spectrum_xy.data(), nz_local,
-                           n_mode_x, n_y, owns_bottom);
+    // [최적화 2026-10-18] 스펙트럼 [(k·Nxm+mx)·Ny+jy]×2 와 밴드 [sys + k·nsys](nsys = 2·Nxm·Ny) 는 같은 인덱스라
+    //   팩·언팩 복사 없이 spectrum_xy 를 D 로 바로 푼다. 특이 모드 행 핀(첫 두 원소 = 0)만 남는다.
+    PRESSURE_TIMER_BEGIN("pressure.pack_bands");
+    if (owns_bottom) pin_mean_row(solver.spectrum_xy.data());
+    PRESSURE_TIMER_END("pressure.pack_bands");
+    PRESSURE_TIMER_BEGIN("pressure.build_z");
     build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
                          solver.band_c.data(), grid, sub, solver.lambda_x.data(),
                          n_mode_x, solver.lambda_y.data(), n_y, /*pin_mean=*/true);
+    PRESSURE_TIMER_END("pressure.build_z");
+    PRESSURE_TIMER_BEGIN("pressure.tdma_z");
     linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
                               solver.band_b.data(), solver.band_c.data(),
-                              solver.band_d.data(), nsys, nz_local);
+                              solver.spectrum_xy.data(), nsys, nz_local);
+    PRESSURE_TIMER_END("pressure.tdma_z");
 
-    // ③ 해를 스펙트럼으로 되돌리고 역 y → 역 x → 정규화 산포
-    unpack_bands_to_spectrum(solver.spectrum_xy.data(), solver.band_d.data(), nz_local,
-                             n_mode_x, n_y);
+    // ③ 전역 평균(게이지)을 DC 모드에서 — 평면 (x,y) 합 = 스펙트럼 (k,0,0) 실수부·scale·Nx·Ny 이므로
+    //   평균 = Σ_k DC(k)·scale / Nz_global. 실공간 리덕션(2패스) 대신 nz_local 개 합 + Allreduce.
+    //   [최적화 2026-10-18] 빼기는 산포 커널에 융합 (phi = line·scale − mean).
+    PRESSURE_TIMER_BEGIN("pressure.mean_remove");
+    const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
+                                          : 1 / (static_cast<real_t>(n_x) * n_y);
+    real_t local_dc = dc_mode_sum(solver.spectrum_xy.data(), nz_local, n_mode_x, n_y);
+    real_t global_dc = 0;
+    MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+    const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
+    PRESSURE_TIMER_END("pressure.mean_remove");
+
+    // ④ 역 y → 역 x → 정규화 산포 (평균 빼기 포함)
+    PRESSURE_TIMER_BEGIN("pressure.fft_y_bwd");
     run_backward_y(solver);
+    PRESSURE_TIMER_END("pressure.fft_y_bwd");
+    PRESSURE_TIMER_BEGIN("pressure.reorder_y_to_x");
     reorder_y_to_x(solver.spectrum_x.data(), solver.spectrum_xy.data(), n_y, nz_local,
                    n_mode_x);
-    if (solver.x_neumann) {  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
+    PRESSURE_TIMER_END("pressure.reorder_y_to_x");
+    PRESSURE_TIMER_BEGIN("pressure.fft_x_bwd");
+    if (solver.x_neumann)  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
       dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
                            n_y * nz_local, n_x);
-      run_backward_x(solver);
-      scatter_mirrored_lines_to_field(phi, solver.real_lines.data(),
-                                      1 / (static_cast<real_t>(2 * n_x) * n_y), sub, n_x,
-                                      n_y, nz_local);
+    run_backward_x(solver);
+    PRESSURE_TIMER_END("pressure.fft_x_bwd");
+    PRESSURE_TIMER_BEGIN("pressure.scatter_lines");
+    if (solver.x_neumann) {
+      scatter_mirrored_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y,
+                                      nz_local, mean);
     } else {
-      run_backward_x(solver);
-      scatter_lines_to_field(phi, solver.real_lines.data(),
-                             1 / (static_cast<real_t>(n_x) * n_y), sub, n_x, n_y,
-                             nz_local);
+      scatter_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y, nz_local,
+                             mean);
     }
+    PRESSURE_TIMER_END("pressure.scatter_lines");
   } else {
     // ── 펜슬 경로 (npx·npy > 1) — 블록 →① x-펜슬 → x FFT →② y-펜슬 → y FFT → z TDMA → 역순 ──
+    //    (2026-10-20, 10-18 최적화 레이아웃 기준: spectrum_xy 가 곧 TDMA 의 D, 평균은 DC 모드 합)
     PencilLayout& L = *solver.pencil;
     const int ny_lines = solver.ny_lines, nml = solver.n_mode_local;
     const int nsys = 2 * nml * n_y;
+    const bool has_mean_mode = solver.mode_offset == 0;  // 로컬 모드 0 = 전역 (0,0) 모드인 랭크
+    PRESSURE_TIMER_BEGIN("pressure.pencil_forward");
     // ① 블록 → x 라인 (주기: 길이 Nx / 벽: 거울 2Nx) → x 변환
     rhs.download(solver.host_field);
     block_to_x_lines(L, sub, solver.host_field, solver.x_neumann, solver.host_lines);
@@ -335,19 +294,28 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     x_spectrum_to_y_spectrum(L, solver.host_sx, solver.host_sxy);
     solver.spectrum_xy.upload(solver.host_sxy);
     run_forward_y(solver);
-    // z 삼중대각 — 로컬 x 모드 조각, λ_x 오프셋, (0,0) 핀은 모드 오프셋 0 인 랭크만
-    const bool pin = solver.mode_offset == 0;
-    pack_spectrum_to_bands(solver.band_d.data(), solver.spectrum_xy.data(), nz_local, nml,
-                           n_y, owns_bottom && pin);
+    PRESSURE_TIMER_END("pressure.pencil_forward");
+    // z 삼중대각 — spectrum_xy 를 D 로 바로 (로컬 x 모드 조각, λ_x 오프셋). (0,0) 핀은 그 모드를 가진 랭크만
+    PRESSURE_TIMER_BEGIN("pressure.tdma_z");
+    if (owns_bottom && has_mean_mode) pin_mean_row(solver.spectrum_xy.data());
     build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
                          solver.band_c.data(), grid, sub,
                          solver.lambda_x.data() + solver.mode_offset, nml,
-                         solver.lambda_y.data(), n_y, pin);
+                         solver.lambda_y.data(), n_y, has_mean_mode);
     linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
                               solver.band_b.data(), solver.band_c.data(),
-                              solver.band_d.data(), nsys, nz_local);
-    unpack_bands_to_spectrum(solver.spectrum_xy.data(), solver.band_d.data(), nz_local, nml,
-                             n_y);
+                              solver.spectrum_xy.data(), nsys, nz_local);
+    PRESSURE_TIMER_END("pressure.tdma_z");
+    // 전역 평균(게이지) — DC 모드는 모드 오프셋 0 인 랭크(z 블록마다 하나)에만 있다
+    PRESSURE_TIMER_BEGIN("pressure.mean_remove");
+    const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
+                                          : 1 / (static_cast<real_t>(n_x) * n_y);
+    real_t local_dc = has_mean_mode ? dc_mode_sum(solver.spectrum_xy.data(), nz_local, nml, n_y) : 0;
+    real_t global_dc = 0;
+    MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+    const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
+    PRESSURE_TIMER_END("pressure.mean_remove");
+    PRESSURE_TIMER_BEGIN("pressure.pencil_backward");
     run_backward_y(solver);
     // ②⁻¹ y-펜슬 → x-펜슬 → 역 x 변환
     solver.spectrum_xy.download(solver.host_sxy);
@@ -357,16 +325,15 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
       dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
                            ny_lines * nz_local, n_x);
     run_backward_x(solver);
-    // ①⁻¹ x 라인 → 블록 (정규화 포함)
+    // ①⁻¹ x 라인 → 블록 (정규화·평균 빼기 포함)
     solver.real_lines.download(solver.host_lines);
-    const int line = solver.x_neumann ? 2 * n_x : n_x;
-    const real_t scale = 1 / (static_cast<real_t>(solver.x_neumann ? 2 * n_x : n_x) * n_y);
     phi.download(solver.host_field);
-    x_lines_to_block(L, sub, solver.host_lines, line, scale, solver.host_field);
+    x_lines_to_block(L, sub, solver.host_lines, solver.x_neumann ? 2 * n_x : n_x, scale, mean,
+                     solver.host_field);
     phi.upload(solver.host_field);
->>>>>>> pressure: 3D (pencil) decomposition — xy-plane-group alltoallv transposes (block -> x-pencil -> x FFT -> y-pencil -> y FFT -> z PaScaL_TDMA -> inverse), slab path unchanged; channel_pencil_test app (decomposition-independent hashed IC) — 9 CPU and 3 GPU decompositions match serial to 1e-13 after 30 steps
+    PRESSURE_TIMER_END("pressure.pencil_backward");
   }
-  PRESSURE_TIMER_END("pressure.scatter_lines");
+
 
   // ⑤ ghost 완성: 이음새·주기 랩 → 벽 축 Neumann (조립 시 접은 벽 / DCT 와 같은
   //    정책의 ghost 짝 — conventions.md §6). 이 상태로 correct_velocity_* 에 바로 쓴다.

@@ -33,7 +33,7 @@ void build_x_system_variable_property(real_t* A, real_t* B, real_t* C, real_t* D
         const std::size_t p =
             static_cast<std::size_t>(i - h) * nsys + (j - h) * i3 + (k - h);
         stencil::build_cell(
-            0, i, j, k, sub.y().n_total, sub.z().n_total, nullptr, T, U, V, W,
+            0, i, j, k, sub.y().n_total, sub.z().n_total, nullptr, 0, T, U, V, W,
             properties.conductivity.data(), properties.conductivity_derivative.data(),
             properties.inverse_heat_capacity.data(),
             properties.inverse_heat_capacity_derivative.data(),
@@ -139,7 +139,7 @@ void build_x_system_constant_property(real_t* A, real_t* B, real_t* C, real_t* D
         const std::size_t p =
             static_cast<std::size_t>(i - h) * nsys + (j - h) * i3 + (k - h);
         stencil::build_cell(
-            0, i, j, k, sub.y().n_total, sub.z().n_total, nullptr, T, U, V, W,
+            0, i, j, k, sub.y().n_total, sub.z().n_total, nullptr, 0, T, U, V, W,
             equation::UnitArray{}, equation::ZeroArray{},
             equation::UnitArray{}, equation::ZeroArray{},
             grid.x.cell_width.data(), grid.x.inverse_cell_width.data(),

@@ -114,7 +114,7 @@ void block_to_x_lines(const PencilLayout& L, const parallel::Subdomain& sub,
 // ①⁻¹ x 라인 → 블록 (위의 정확한 역; 앞 Nx 개만 사용)
 void x_lines_to_block(const PencilLayout& L, const parallel::Subdomain& sub,
                       const std::vector<real_t>& lines, const int line_length, const real_t scale,
-                      std::vector<real_t>& field_host) {
+                      const real_t subtract, std::vector<real_t>& field_host) {
   const int h = halo_width, nyt = sub.y().n_total, nzt = sub.z().n_total, nz = L.nz_local;
   std::vector<int> send_counts(L.size), recv_counts(L.size);
   std::vector<real_t> send;
@@ -127,7 +127,8 @@ void x_lines_to_block(const PencilLayout& L, const parallel::Subdomain& sub,
       for (int k = 0; k < nz; ++k)
         for (int x = L.block_x_offset[r]; x < L.block_x_offset[r] + L.block_x_count[r]; ++x)
           send.push_back(lines[(static_cast<std::size_t>(y - L.my_y_offset()) * nz + k) * line_length + x]
-                         * scale);
+                             * scale
+                         - subtract);
     int s0 = 0;
     recv_counts[r] = overlap(L.block_y_offset[L.rank], L.block_y_count[L.rank], L.y_offset[r],
                              L.y_count[r], s0) * nz * L.block_x_count[L.rank];
