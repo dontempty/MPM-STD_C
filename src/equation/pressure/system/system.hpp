@@ -45,8 +45,10 @@ std::vector<real_t> make_lambda_y(const grid::Grid& grid, const parallel::Subdom
 // 모든 (kx, ky) 모드의 z 밴드를 채운다 (위 주석의 식·레이아웃·벽 접기·핀).
 // λ 표는 그 빌드의 백엔드 메모리 포인터다 (CPU=호스트, GPU=디바이스 —
 // pressure::Solver 가 field::Buffer 로 소유).
+// pin_mean: 이 랭크의 로컬 (mx, jy) = (0, 0) 이 전역 (0,0) 모드인가 (펜슬이면 모드 오프셋 0 인 랭크만).
+// λ_x 는 로컬 첫 모드부터의 포인터 (펜슬: lambda_x + mode_offset).
 void build_z_modes_system(real_t* A, real_t* B, real_t* C, const grid::Grid& grid,
                           const parallel::Subdomain& sub, const real_t* lambda_x,
-                          int n_mode_x, const real_t* lambda_y, int n_mode_y);
+                          int n_mode_x, const real_t* lambda_y, int n_mode_y, bool pin_mean);
 
 }  // namespace mpmstd::equation::pressure

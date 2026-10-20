@@ -56,7 +56,7 @@ std::vector<real_t> make_lambda_y(const grid::Grid& grid,
 void build_z_modes_system(real_t* A, real_t* B, real_t* C, const grid::Grid& grid,
                           const parallel::Subdomain& sub, const real_t* lambda_x,
                           const int n_mode_x, const real_t* lambda_y,
-                          const int n_mode_y) {
+                          const int n_mode_y, const bool pin_mean) {
   const int h = halo_width;
   const int nz_local = sub.z().n_local;
   const int nsys = 2 * n_mode_x * n_mode_y;
@@ -74,7 +74,7 @@ void build_z_modes_system(real_t* A, real_t* B, real_t* C, const grid::Grid& gri
             owns_bottom && row == 0, owns_top && row == nz_local - 1);
         // (0,0) 모드(λ=0, 순수 Neumann)는 특이 — 전역 z 첫 행을 항등행으로 핀.
         // 우변 0 은 solve 의 D 팩이, 상수 게이지는 평균 제거가 맡는다.
-        if (owns_bottom && row == 0 && mx == 0 && jy == 0) band = {0, 1, 0};
+        if (pin_mean && owns_bottom && row == 0 && mx == 0 && jy == 0) band = {0, 1, 0};
         const std::size_t p = static_cast<std::size_t>(row) * nsys
                               + 2 * (static_cast<std::size_t>(mx) * n_mode_y + jy);
         A[p] = band.a;      // 실수부

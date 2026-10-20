@@ -5,11 +5,12 @@
 //   x r2c FFT → y c2c FFT → (kx,ky) 모드별 z 분산 TDMA → 역 y → 역 x
 //   → 1/(Nx·Ny) 정규화 → 전역 평균 제거(게이지) → halo + z Neumann ghost
 //
-// ★ 분할 범위: **z-슬랩 전용 (npx = npy = 1)** — x, y 가 랭크 안에서 완결이라
-//   펜슬 전치가 아예 없다. 현 프로덕션 패턴(GPU 2장 = z 분할)과 일치한다.
-//   x/y 분할이 필요해지면 C→I→Y 펜슬 전치(alltoall)를 이 앞단에 추가한다
-//   (MPM-STD_C pressure_engine_cpu.cpp 의 transpose_* 가 참조 구현).
-//   생성자가 검사해서 어기면 즉시 throw — 조용한 오답은 없다.
+// ★ 분할 범위: **3차원 분할 지원 (2026-10-20)**. npx = npy = 1 (z-슬랩)이면 기존 경로 그대로
+//   (x, y 가 랭크 안에서 완결, 전치 없음 — 비트 동일). npx·npy > 1 이면 같은 z 블록의
+//   xy-평면 그룹 안에서 펜슬 전치(pencil_transpose.hpp):
+//     블록 →① x-펜슬 → x FFT →② y-펜슬 → y FFT → z 분산 TDMA → 역 y FFT →②⁻¹ → 역 x FFT →①⁻¹ 블록
+//   z 는 원래 z 분할 그대로 두고 TDMA 가 z 통신자로 푼다. 전치는 호스트 버퍼(GPU 는 스테이징).
+//   조건: ny ≥ npx·npy, x 모드 수 ≥ npx·npy (생성자가 검사).
 // ★ x, y 는 균일 격자 전제 (스펙트럴 + modified wavenumber) — 생성자가 검사.
 //   x 는 주기(FFT) **또는 벽(Neumann → DCT-II/III, 2026-10-05 BC 프레임워크 단계 3)**:
 //   Topology 의 x periodic 플래그로 고른다. DCT 는 cuFFT 에 없어 **거울 확장 2N
@@ -39,6 +40,10 @@
 #include "field/buffer.hpp"
 #include "field/field.hpp"
 #include "grid/grid.hpp"
+#include <memory>
+#include <vector>
+
+#include "equation/pressure/pencil_transpose.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
 #include "common/phase_timer.hpp"
@@ -52,11 +57,17 @@ struct Solver {
   Solver(const Solver&) = delete;
   Solver& operator=(const Solver&) = delete;
 
-  int n_x = 0;        // = 전역 nx (npx = 1 이므로 로컬과 같다)
-  int n_y = 0;
+  int n_x = 0;        // 전역 nx (x 라인은 항상 전역 길이)
+  int n_y = 0;        // 전역 ny (y 라인은 항상 전역 길이)
   int n_mode_x = 0;   // x 모드 수: n_x/2 + 1 (주기 r2c) / n_x (벽 DCT)
   int nz_local = 0;
   bool x_neumann = false;  // x 벽(DCT 경로) 인가
+  // 펜슬 (npx·npy > 1) — 슬랩이면 pencil = nullptr, ny_lines = n_y, n_mode_local = n_mode_x
+  std::unique_ptr<PencilLayout> pencil;
+  int ny_lines = 0;       // x-펜슬의 로컬 y 라인 수
+  int n_mode_local = 0;   // y-펜슬의 로컬 x 모드 수
+  int mode_offset = 0;    // 그 첫 모드 번호 (λ_x 오프셋·(0,0) 핀 판정)
+  std::vector<real_t> host_field, host_lines, host_sx, host_sxy;  // 펜슬 스테이징
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
   linear_solver::TdmaPlan plan_z;

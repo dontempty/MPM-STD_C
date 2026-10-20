@@ -89,10 +89,6 @@ void run_backward_y(Solver& s) { fftw_execute(s.backward_y); }
 
 Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   // ── 전제 검사 (헤더 ★ 참조) — 어기면 조용한 오답 대신 즉시 중단 ──
-  if (sub.topology().x().nprocs != 1 || sub.topology().y().nprocs != 1)
-    throw std::invalid_argument(
-        "pressure::Solver: only z-slab decomposition is supported for now "
-        "(npx = npy = 1); pencil transposes are the documented extension");
   if (!sub.topology().y().periodic)
     throw std::invalid_argument(
         "pressure::Solver: y must be periodic (wall y needs a y-DCT path — not implemented; "
@@ -105,6 +101,12 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   n_y = sub.y().n_global;
   n_mode_x = x_neumann ? n_x : n_x / 2 + 1;
   nz_local = sub.z().n_local;
+  // 펜슬: x·y 가 쪼개져 있으면 xy-평면 그룹 레이아웃 (슬랩이면 전치 없음 — 기존 경로)
+  if (sub.topology().x().nprocs * sub.topology().y().nprocs > 1)
+    pencil = std::make_unique<PencilLayout>(sub, n_mode_x);
+  ny_lines = pencil ? pencil->my_y_count() : n_y;
+  n_mode_local = pencil ? pencil->my_mode_count() : n_mode_x;
+  mode_offset = pencil ? pencil->my_mode_offset() : 0;
 
   // λ 표 — 호스트에서 만들어 그 빌드의 백엔드 메모리로.
   const std::vector<real_t> lambda_x_host =
@@ -115,7 +117,7 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   lambda_y.assign(lambda_y_host.size());
   lambda_y.upload(lambda_y_host);
 
-  const int nsys = 2 * n_mode_x * n_y;  // 실·허수부를 나란한 시스템으로
+  const int nsys = 2 * n_mode_local * n_y;  // 실·허수부를 나란한 시스템으로 (로컬 x 모드)
   plan_z.create(nsys, sub.topology().z().comm);
   const std::size_t n_band = static_cast<std::size_t>(nsys) * nz_local;
   band_a.assign(n_band);
@@ -125,19 +127,19 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   // x 변환의 실제 길이/출력: 주기 = (Nx → Nx/2+1), 벽 DCT = 거울 (2Nx → Nx+1)
   const int line_x = x_neumann ? 2 * n_x : n_x;
   const int spec_x = x_neumann ? n_x + 1 : n_mode_x;
-  real_lines.assign(static_cast<std::size_t>(n_y) * nz_local * line_x);
-  spectrum_x.assign(2 * static_cast<std::size_t>(n_y) * nz_local * n_mode_x);
-  spectrum_xy.assign(2 * static_cast<std::size_t>(nz_local) * n_mode_x * n_y);
-  if (x_neumann) mirror_spectrum.assign(2 * static_cast<std::size_t>(n_y) * nz_local * spec_x);
+  real_lines.assign(static_cast<std::size_t>(ny_lines) * nz_local * line_x);
+  spectrum_x.assign(2 * static_cast<std::size_t>(ny_lines) * nz_local * n_mode_x);
+  spectrum_xy.assign(2 * static_cast<std::size_t>(nz_local) * n_mode_local * n_y);
+  if (x_neumann) mirror_spectrum.assign(2 * static_cast<std::size_t>(ny_lines) * nz_local * spec_x);
   real_t* x_spectrum_target = x_neumann ? mirror_spectrum.data() : spectrum_x.data();
 
   // FFT 플랜 — 버퍼 주소에 묶인다 (Buffer 는 재할당하지 않는다). many 배치의
   // 의미는 양쪽 백엔드가 같다: x = 실수 r2c/c2r (howmany = Ny·nz), y = 복소
   // c2c (in-place).
   int length_x = line_x;
-  const int howmany_x = n_y * nz_local;
+  const int howmany_x = ny_lines * nz_local;
   int length_y = n_y;
-  const int howmany_y = n_mode_x * nz_local;
+  const int howmany_y = n_mode_local * nz_local;
 #ifdef MPMSTD_GPU_FFT
   check_cufft(cufftPlanMany(&fft_x_forward, 1, &length_x, nullptr, 1, line_x,
                             nullptr, 1, spec_x, CUFFT_D2Z, howmany_x),
@@ -191,9 +193,9 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   const int n_y = solver.n_y;
   const int n_mode_x = solver.n_mode_x;
   const int nz_local = solver.nz_local;
-  const int nsys = 2 * n_mode_x * n_y;
   const bool owns_bottom = sub.topology().z().minus_neighbor == MPI_PROC_NULL;
 
+<<<<<<< HEAD
   // ① rhs 내부 → x-라인 팩 → x 변환(주기 r2c / 벽 거울 r2c+트위들 = DCT-II)
   //    → y-라인 재배열 → y c2c
   PRESSURE_TIMER_BEGIN("pressure.pack_lines");
@@ -267,6 +269,102 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   } else {
     scatter_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y, nz_local,
                            mean);
+=======
+  if (!solver.pencil) {
+    // ── 슬랩 경로 (npx = npy = 1) — 기존 그대로 ──────────────────────────────
+    const int nsys = 2 * n_mode_x * n_y;
+    // ① rhs 내부 → x-라인 팩 → x 변환(주기 r2c / 벽 거울 r2c+트위들 = DCT-II)
+    //    → y-라인 재배열 → y c2c
+    if (solver.x_neumann) {
+      pack_rhs_to_mirrored_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
+      run_forward_x(solver);
+      dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
+                          n_y * nz_local, n_x);
+    } else {
+      pack_rhs_to_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
+      run_forward_x(solver);
+    }
+    reorder_x_to_y(solver.spectrum_xy.data(), solver.spectrum_x.data(), n_y, nz_local,
+                   n_mode_x);
+    run_forward_y(solver);
+
+    // ② 모드별 z 삼중대각 — 실·허를 나란한 시스템으로 한 번에 (분산 TDMA, 비주기)
+    pack_spectrum_to_bands(solver.band_d.data(), solver.spectrum_xy.data(), nz_local,
+                           n_mode_x, n_y, owns_bottom);
+    build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
+                         solver.band_c.data(), grid, sub, solver.lambda_x.data(),
+                         n_mode_x, solver.lambda_y.data(), n_y, /*pin_mean=*/true);
+    linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
+                              solver.band_b.data(), solver.band_c.data(),
+                              solver.band_d.data(), nsys, nz_local);
+
+    // ③ 해를 스펙트럼으로 되돌리고 역 y → 역 x → 정규화 산포
+    unpack_bands_to_spectrum(solver.spectrum_xy.data(), solver.band_d.data(), nz_local,
+                             n_mode_x, n_y);
+    run_backward_y(solver);
+    reorder_y_to_x(solver.spectrum_x.data(), solver.spectrum_xy.data(), n_y, nz_local,
+                   n_mode_x);
+    if (solver.x_neumann) {  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
+      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
+                           n_y * nz_local, n_x);
+      run_backward_x(solver);
+      scatter_mirrored_lines_to_field(phi, solver.real_lines.data(),
+                                      1 / (static_cast<real_t>(2 * n_x) * n_y), sub, n_x,
+                                      n_y, nz_local);
+    } else {
+      run_backward_x(solver);
+      scatter_lines_to_field(phi, solver.real_lines.data(),
+                             1 / (static_cast<real_t>(n_x) * n_y), sub, n_x, n_y,
+                             nz_local);
+    }
+  } else {
+    // ── 펜슬 경로 (npx·npy > 1) — 블록 →① x-펜슬 → x FFT →② y-펜슬 → y FFT → z TDMA → 역순 ──
+    PencilLayout& L = *solver.pencil;
+    const int ny_lines = solver.ny_lines, nml = solver.n_mode_local;
+    const int nsys = 2 * nml * n_y;
+    // ① 블록 → x 라인 (주기: 길이 Nx / 벽: 거울 2Nx) → x 변환
+    rhs.download(solver.host_field);
+    block_to_x_lines(L, sub, solver.host_field, solver.x_neumann, solver.host_lines);
+    solver.real_lines.upload(solver.host_lines);
+    run_forward_x(solver);
+    if (solver.x_neumann)
+      dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
+                          ny_lines * nz_local, n_x);
+    // ② x-펜슬 스펙트럼 → y-펜슬 → y 변환
+    solver.spectrum_x.download(solver.host_sx);
+    x_spectrum_to_y_spectrum(L, solver.host_sx, solver.host_sxy);
+    solver.spectrum_xy.upload(solver.host_sxy);
+    run_forward_y(solver);
+    // z 삼중대각 — 로컬 x 모드 조각, λ_x 오프셋, (0,0) 핀은 모드 오프셋 0 인 랭크만
+    const bool pin = solver.mode_offset == 0;
+    pack_spectrum_to_bands(solver.band_d.data(), solver.spectrum_xy.data(), nz_local, nml,
+                           n_y, owns_bottom && pin);
+    build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
+                         solver.band_c.data(), grid, sub,
+                         solver.lambda_x.data() + solver.mode_offset, nml,
+                         solver.lambda_y.data(), n_y, pin);
+    linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
+                              solver.band_b.data(), solver.band_c.data(),
+                              solver.band_d.data(), nsys, nz_local);
+    unpack_bands_to_spectrum(solver.spectrum_xy.data(), solver.band_d.data(), nz_local, nml,
+                             n_y);
+    run_backward_y(solver);
+    // ②⁻¹ y-펜슬 → x-펜슬 → 역 x 변환
+    solver.spectrum_xy.download(solver.host_sxy);
+    y_spectrum_to_x_spectrum(L, solver.host_sxy, solver.host_sx);
+    solver.spectrum_x.upload(solver.host_sx);
+    if (solver.x_neumann)
+      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
+                           ny_lines * nz_local, n_x);
+    run_backward_x(solver);
+    // ①⁻¹ x 라인 → 블록 (정규화 포함)
+    solver.real_lines.download(solver.host_lines);
+    const int line = solver.x_neumann ? 2 * n_x : n_x;
+    const real_t scale = 1 / (static_cast<real_t>(solver.x_neumann ? 2 * n_x : n_x) * n_y);
+    phi.download(solver.host_field);
+    x_lines_to_block(L, sub, solver.host_lines, line, scale, solver.host_field);
+    phi.upload(solver.host_field);
+>>>>>>> pressure: 3D (pencil) decomposition — xy-plane-group alltoallv transposes (block -> x-pencil -> x FFT -> y-pencil -> y FFT -> z PaScaL_TDMA -> inverse), slab path unchanged; channel_pencil_test app (decomposition-independent hashed IC) — 9 CPU and 3 GPU decompositions match serial to 1e-13 after 30 steps
   }
   PRESSURE_TIMER_END("pressure.scatter_lines");
 
