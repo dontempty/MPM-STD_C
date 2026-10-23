@@ -16,14 +16,21 @@ echo "# job=$SLURM_JOB_ID host=$(hostname) np=$NP deck=$DECK bin=$BIN ($(stat -c
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | head -1
 LATEST=$(ls -t "$WARMSTART_DIR"/dhvc_ck_*.bin 2>/dev/null | head -1)
 [[ -z "$LATEST" ]] && { echo "ERROR: no checkpoint in $WARMSTART_DIR"; exit 1; }
-RUN_DECK="${DECK%.ini}_run_${SLURM_JOB_ID}.ini"   # 잡마다 다른 이름 (동시 제출 시 npz 가 섞인 사고, 940449)
-sed -e "s|WARMSTART_BIN|$LATEST|" -e "s|NPZ_VAL|$NP|" "$DECK" > "$RUN_DECK"; echo "# warm-start: $LATEST  npz=$NP"
-LOG="log/${NAME}_$SLURM_JOB_ID.log"
-( while sleep 20; do echo "$(date '+%T') $(nvidia-smi --query-gpu=memory.used --format=csv,noheader | tr '\n' ' ')"; done ) > "log/${NAME}_${SLURM_JOB_ID}_mem.txt" &
-MON=$!
-mpirun -np "$NP" "$BIN" "$RUN_DECK" > "$LOG" 2>&1; rc=$?
-kill $MON 2>/dev/null
-grep -E "warm-start|error \(rank|MPI_ABORT|blew up|out of memory|FINAL" "$LOG" | tail -4
-echo "# last monitor lines (마지막 열 = s/step):"; grep -v "^#" "$LOG" | tail -3
-echo "# peak GPU memory (MiB per GPU):"; awk '{for(i=2;i<=NF;i++) if($i+0>m[i]) m[i]=$i+0} END{for(i=2;i<=NF;i++) printf "%s ", m[i]; print ""}' "log/${NAME}_${SLURM_JOB_ID}_mem.txt"
-echo "# rc=$rc end=$(date '+%F %T')"
+# DECOMPS: 분할 목록 (예: "1x1x6 3x1x2") — 각각 차례로 돌린다. 기본 = z-슬랩 1x1xNP.
+for DEC in ${DECOMPS:-1x1x$NP}; do
+  IFS=x read PX PY PZ <<< "$DEC"
+  [[ $((PX*PY*PZ)) -eq $NP ]] || { echo "ERROR: $DEC != np $NP"; continue; }
+  TAGD="${NAME}_${DEC}"
+  RUN_DECK="${DECK%.ini}_run_${SLURM_JOB_ID}_${DEC}.ini"   # 잡·분할마다 다른 이름 (동시 제출 시 npz 가 섞인 사고, 940449)
+  sed -e "s|WARMSTART_BIN|$LATEST|" -e "s|NPX_VAL|$PX|" -e "s|NPY_VAL|$PY|" -e "s|NPZ_VAL|$PZ|" "$DECK" > "$RUN_DECK"
+  echo "# === $DEC  (WARMSTART_BIN 치환값: $LATEST — 덱이 restart_from 이면 쓰이지 않음)  $(date '+%T')"
+  LOG="log/${TAGD}_$SLURM_JOB_ID.log"
+  ( while sleep 20; do echo "$(date '+%T') $(nvidia-smi --query-gpu=memory.used --format=csv,noheader | tr '\n' ' ')"; done ) > "log/${TAGD}_${SLURM_JOB_ID}_mem.txt" &
+  MON=$!
+  mpirun -np "$NP" "$BIN" "$RUN_DECK" > "$LOG" 2>&1; rc=$?
+  kill $MON 2>/dev/null
+  grep -E "warm-start|error \(rank|MPI_ABORT|blew up|out of memory|FINAL" "$LOG" | tail -4
+  echo "# last monitor lines (마지막 열 = s/step):"; grep -v "^#" "$LOG" | tail -3
+  echo "# peak GPU memory (MiB per GPU):"; awk '{for(i=2;i<=NF;i++) if($i+0>m[i]) m[i]=$i+0} END{for(i=2;i<=NF;i++) printf "%s ", m[i]; print ""}' "log/${TAGD}_${SLURM_JOB_ID}_mem.txt"
+  echo "# $DEC rc=$rc end=$(date '+%F %T')"
+done

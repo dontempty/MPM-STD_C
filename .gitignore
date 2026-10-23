@@ -54,3 +54,4 @@ __pycache__/
 tools/scale/log/
 apps/channel_pencil_test/runs_v100/
 apps/channel_pencil_test/log/
+apps/dhvc/input_dhvc_*_run_*.ini
