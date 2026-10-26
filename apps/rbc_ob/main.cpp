@@ -160,8 +160,12 @@ int main(int argc, char** argv) {
     const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
     Field U(nx, ny, nz, "U"), V(nx, ny, nz, "V"), W(nx, ny, nz, "W"), T(nx, ny, nz, "T"),
         P(nx, ny, nz, "P");
-    Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"), rhs_W(nx, ny, nz, "rhs_W"),
-        rhs_dP(nx, ny, nz, "rhs_dP"), dP(nx, ny, nz, "dP");
+    Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"), rhs_W(nx, ny, nz, "rhs_W");
+    // [메모리 2026-10-26] 압력 우변·보정은 운동량 우변 메모리를 재사용한다 (docs/Memory/plan.md §9).
+    //   한 스텝에서 rhs_U 의 역할: 운동량 우변 → (momentum::solve 안에서) δU → 압력 우변 → (pressure::solve 는 제자리) dP.
+    //   운동량 → 압력 순서가 고정이라 두 역할이 동시에 살아 있는 순간이 없다. 되돌리려면 아래 두 참조를 Field 생성으로.
+    Field& rhs_dP = rhs_U;
+    Field& dP = rhs_dP;      // pressure::solve 가 rhs 자리에 해를 쓴다
     // 통계 모듈(rbc_nob/statistics)이 ⟨μ̂⟩⟨κ̂⟩·Re_E 에 물성 필드를 읽는다 — 상수물성이라 ≡1 로 한 번 채운다.
     physics::PropertyFields properties(nx, ny, nz);
     const physics::PropertyModel unit_model;  // 선행 계수만 1 → 모든 물성 ≡ 1, 미분 ≡ 0

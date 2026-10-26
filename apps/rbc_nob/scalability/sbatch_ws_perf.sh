@@ -12,10 +12,10 @@ export OMPI_MCA_opal_warn_on_missing_libcuda=0
 ROOT=/scratch/r908a06/KDH/MPM-STD_C; J=$SLURM_JOB_ID
 OUT=$ROOT/apps/rbc_nob/scalability/out/ws_perf_$J; mkdir -p $OUT
 echo "# job=$J host=$(hostname) $(nvidia-smi --query-gpu=name --format=csv,noheader | head -1) start=$(date '+%F %T')"
-echo "# before=$ROOT/build_gpu/bin/before_ws ($(stat -c %y $ROOT/build_gpu/bin/before_ws/rbc_nob | cut -c1-19))  new=$ROOT/build_gpu/bin ($(stat -c %y $ROOT/build_gpu/bin/rbc_nob | cut -c1-19))"
+echo "# before=$ROOT/build_gpu/bin/${BEFORE_DIR:-before_ws} ($(stat -c %y $ROOT/build_gpu/bin/${BEFORE_DIR:-before_ws}/rbc_nob | cut -c1-19))  new=$ROOT/build_gpu/bin ($(stat -c %y $ROOT/build_gpu/bin/rbc_nob | cut -c1-19))"
 for rep in 1 2 3; do
   for v in before new; do
-    B=$ROOT/build_gpu/bin; [[ $v == before ]] && B=$ROOT/build_gpu/bin/before_ws
+    B=$ROOT/build_gpu/bin; [[ $v == before ]] && B=$ROOT/build_gpu/bin/${BEFORE_DIR:-before_ws}
     # rbc_nob 256³ np1 — PhaseTimer CSV
     d=$OUT/rbc_nob_${v}_r$rep; mkdir -p $d
     sed -e "s|^stats_dir = .*|stats_dir = \"$d/\"|" $ROOT/apps/rbc_nob/scalability/input_scal_strong_256_np1.ini > $d/deck.ini

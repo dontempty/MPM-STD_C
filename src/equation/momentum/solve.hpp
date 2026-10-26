@@ -1,5 +1,5 @@
 #pragma once
-// 운동량 방정식 solve — Solver(밴드·증분) 공유 + 두 진입점:
+// 운동량 방정식 solve — Solver(TDMA 플랜·공용 Workspace) + 두 진입점:
 //   (legacy OB 간이 스킴 solve() 와 apps/rbc 드라이버는 2026-10-23 삭제 — 쓰는 앱이 없었다)
 //   solve_variable_property() : 충실 가변물성 (solve.cpp)
 //   solve_constant_property() : 충실 상수물성, 물성 배열 없음 (solve.cpp)
@@ -50,9 +50,10 @@ struct Solver {
   //   (docs/Memory/plan.md). 성분 dU·dV·dW 가 같은 슬롯을 차례로 쓴다 — 밴드는 한 스윕 안에서만 산다.
   Workspace* workspace = nullptr;
 
-  // 증분 δU, δV, δW — 블록 커플링의 스텐실이 이웃 증분을 읽으므로
-  // halo 교환이 필요해 Field 로 소유한다 (벽 ghost 는 closure 에 맞춘 증분 ghost).
-  field::Field delta_u, delta_v, delta_w;
+  // [메모리 2026-10-26] 증분 δU δV δW 는 솔버가 소유하지 않는다 — 호출자가 넘긴 rhs_u/v/w 의 메모리를
+  //   그대로 쓴다 (들어올 때 rhs, 나갈 때 δ). 각 성분의 x 스윕 조립이 rhs 를 밴드로 읽고 나면 rhs 는 죽고,
+  //   δ 는 z 스윕 뒤 scatter_z 가 처음 쓴다. 그래서 solve_* 는 rhs 를 덮어쓴다 — 호출자는 solve 뒤 rhs 값을
+  //   기대하면 안 된다 (앱은 매 스텝 build_*_rhs 로 새로 만든다). docs/Memory/plan.md §9.
 
   // 접선 성분 벽 행 음해 닫기 계수 [axis][side] (wall_rows.hpp fold_wall):
   //   0 = δghost 0 (value ghost 와 짝; 기본 — 기존 앱 비트 불변)

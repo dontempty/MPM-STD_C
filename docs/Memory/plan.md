@@ -279,3 +279,37 @@ Ra 1e10 4×1×1 (GPU 당 4.69억 셀, H200 ×8) 환산: 161 B/cell → **약 70 
 - rbc_nob 의 +0.4 ms 는 반복 폭(0.07 ms)보다 커서 체계적이지만 0.5 % — 구간별로는 ±1 % 로 양방향(scalar.tdma_y −1.2 %, momentum.tdma_x +1.1 %).
   커널·산술은 그대로이고 바뀐 것은 버퍼의 디바이스 메모리 위치뿐이라 배치 효과로 본다. 통신이 끼는 np > 1 은 영향 없음(공유는 랭크 안 버퍼).
 - 판정: **결과 동일(§8.2) + 성능 동일(0 ~ +0.5 %) + 메모리 −38 %(§8.3).** C 단계는 보류.
+
+---
+
+## 9. 앱·momentum 배열 겹치기 — rhs 를 δ·압력 우변·dP 로 재사용 (2026-10-26)
+
+### 9.1 변경
+- **momentum**: δU δV δW 를 솔버가 소유하지 않는다. `solve_*` 가 받은 rhs_u/v/w 의 메모리에 δ 를 쓴다 — 각 성분의 x 스윕 조립이
+  rhs 를 밴드 D0 로 읽고 나면 rhs 는 죽고, δ 는 z 스윕 뒤 scatter_z 가 처음 쓴다. 코드에서는 adi_sweeps 의 `delta_out` 에 `rhs_q.data()`
+  를 넘기고 그 아래 `field::Field& delta_q = rhs_q;` 별칭으로 읽는다. 호출 순서·커널·산술 불변. solve 뒤 rhs 값은 보존되지 않는다(헤더에 명시).
+- **pressure**: 코드 변경 없음. rhs 는 첫 단계(라인 팩)에서만 읽고 phi 는 마지막 산포에서만 쓰므로 rhs 와 phi 가 같은 Field 여도 된다 — 헤더에 명시.
+- **앱 8개**: `rhs_P`(rbc_*: `rhs_dP`)·`dP` 의 Field 생성을 참조로 바꿨다 — `Field& rhs_P = rhs_U; Field& dP = rhs_P;`. 시간 루프 코드는 그대로이고
+  이름도 그대로라 읽는 데 차이가 없다. 한 스텝에서 rhs_U 메모리의 역할: 운동량 우변 → δU → 압력 우변 → dP. 되돌리려면 참조 두 줄을 Field 생성으로.
+- 장 5개 감소 (momentum δ 3 + rhs_P + dP). 전체 장 19 → 14 — "상시 5 + 운동량 단계 동시 최대 8 + 순환 z 1" 의 구조적 하한.
+
+### 9.2 결과 동일성 (변경 전 = Workspace 커밋 바이너리 `build_gpu/bin/before_rhs/`, 300 스텝, 로그인 A100)
+rbc_nob·rbc_ob·cavity·boundary_layer·thermal_boundary_layer 체크포인트 **비트 동일**, channel_pencil_test CPU 비트 동일, GPU 펜슬 1.3e-14,
+dhvc·channel 1e-13 급(반복 잡음), test_pressure_wall stdout 동일 — §8.2 와 같은 양상.
+
+### 9.3 메모리 (DHVC 1 랭크, 416×244×192)
+| | 최대 메모리 | 셀당 |
+|---|---|---|
+| A + B | 3,486 MiB | 161 B |
+| + rhs 재사용 | **2,716 MiB** | **119 B** (−770 MiB; 예상 −5 장 = 743 MiB) |
+
+H200 ×8 기준 환산: Ra 1e10 4×1×1 → GPU 당 약 52 GiB (37 %), **4×1×1 을 H200 ×4 로 → 약 104 GiB (74 %)**, 4×2×1 ×8 → 약 104 GiB (74 %).
+
+### 9.4 성능 (잡 947975, gpu04 V100 1장, 변경 전·후 번갈아 3회)
+| 측정 | 변경 전 (A+B) | + rhs 재사용 | 차이 |
+|---|---|---|---|
+| rbc_nob 256³ np1 step_total (ms/step) | 83.85 | 83.70 | −0.2 % |
+| 〃 momentum_solve / scalar_solve / pressure_solve | 46.16 / 14.75 / 5.92 | 45.94 / 14.77 / 5.90 | −0.5 % / +0.1 % / −0.3 % |
+| dhvc 256³ np1 wall s/step | 0.0650 | 0.0650 | 0 % |
+
+판정: 결과 동일 + 성능 동일 + 메모리 −26 % (A+B 대비). 1단계 → A+B → rhs 재사용 누적: 331 → 258 → 161 → **119 B/cell**.

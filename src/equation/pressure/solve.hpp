@@ -104,7 +104,8 @@ struct Solver {
 };
 
 // δp 를 구한다. 반환 시 phi 는 내부 + ghost(이음새·주기 랩·z Neumann)까지 완성 —
-// 바로 correct_velocity_constant_property 에 쓸 수 있다. rhs 는 건드리지 않는다 (계획 §5.5).
+// 바로 correct_velocity_constant_property 에 쓸 수 있다. rhs 는 첫 단계(라인 팩)에서만 읽고 phi 는 마지막
+// 산포에서만 쓰므로 **rhs 와 phi 가 같은 Field 여도 된다** — 앱들은 rhs_P 자리에 dP 를 받는다 (2026-10-26, plan.md §9).
 void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
            const field::Field& rhs, field::Field& phi);
 

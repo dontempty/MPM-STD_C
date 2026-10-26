@@ -129,8 +129,12 @@ int main(int argc, char** argv) {
 
     const int nx = sub.x().n_total, ny = sub.y().n_total, nz = sub.z().n_total;
     Field U(nx, ny, nz, "U"), V(nx, ny, nz, "V"), W(nx, ny, nz, "W"), P(nx, ny, nz, "P");
-    Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"), rhs_W(nx, ny, nz, "rhs_W"),
-        rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
+    Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"), rhs_W(nx, ny, nz, "rhs_W");
+    // [메모리 2026-10-26] 압력 우변·보정은 운동량 우변 메모리를 재사용한다 (docs/Memory/plan.md §9).
+    //   한 스텝에서 rhs_U 의 역할: 운동량 우변 → (momentum::solve 안에서) δU → 압력 우변 → (pressure::solve 는 제자리) dP.
+    //   운동량 → 압력 순서가 고정이라 두 역할이 동시에 살아 있는 순간이 없다. 되돌리려면 아래 두 참조를 Field 생성으로.
+    Field& rhs_P = rhs_U;
+    Field& dP = rhs_P;      // pressure::solve 가 rhs 자리에 해를 쓴다
   // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
     mpmstd::equation::Workspace workspace(std::max(momentum::Solver::required_slot_elements(sub),
                                                    pressure::Solver::required_slot_elements(grid, sub)));
