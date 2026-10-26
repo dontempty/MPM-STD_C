@@ -1,5 +1,7 @@
 #include "equation/pressure/solve.hpp"
 
+#include <algorithm>
+
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -141,15 +143,26 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   int length_y = n_y;
   const int howmany_y = n_mode_local * nz_local;
 #ifdef MPMSTD_GPU_FFT
-  check_cufft(cufftPlanMany(&fft_x_forward, 1, &length_x, nullptr, 1, line_x,
-                            nullptr, 1, spec_x, CUFFT_D2Z, howmany_x),
-              "PlanMany D2Z");
-  check_cufft(cufftPlanMany(&fft_x_backward, 1, &length_x, nullptr, 1, spec_x,
-                            nullptr, 1, line_x, CUFFT_Z2D, howmany_x),
-              "PlanMany Z2D");
-  check_cufft(cufftPlanMany(&fft_y, 1, &length_y, nullptr, 1, n_y, nullptr, 1, n_y,
-                            CUFFT_Z2Z, howmany_y),
-              "PlanMany Z2Z");
+  // [최적화 2026-10-23] 계획마다 cuFFT 가 작업 영역을 따로 잡던 것을 공용 하나로 (FFT 는 차례로 실행 → 겹치지 않음).
+  //   자동 할당을 끄고 MakePlanMany 가 알려 준 크기의 최대값만큼 fft_work 를 잡아 세 계획에 붙인다. 수치 불변.
+  std::size_t work_x_forward = 0, work_x_backward = 0, work_y = 0;
+  for (cufftHandle* h : {&fft_x_forward, &fft_x_backward, &fft_y}) {
+    check_cufft(cufftCreate(h), "Create");
+    check_cufft(cufftSetAutoAllocation(*h, 0), "SetAutoAllocation");
+  }
+  check_cufft(cufftMakePlanMany(fft_x_forward, 1, &length_x, nullptr, 1, line_x,
+                                nullptr, 1, spec_x, CUFFT_D2Z, howmany_x, &work_x_forward),
+              "MakePlanMany D2Z");
+  check_cufft(cufftMakePlanMany(fft_x_backward, 1, &length_x, nullptr, 1, spec_x,
+                                nullptr, 1, line_x, CUFFT_Z2D, howmany_x, &work_x_backward),
+              "MakePlanMany Z2D");
+  check_cufft(cufftMakePlanMany(fft_y, 1, &length_y, nullptr, 1, n_y, nullptr, 1, n_y,
+                                CUFFT_Z2Z, howmany_y, &work_y),
+              "MakePlanMany Z2Z");
+  const std::size_t work_bytes = std::max({work_x_forward, work_x_backward, work_y, sizeof(real_t)});
+  fft_work.assign((work_bytes + sizeof(real_t) - 1) / sizeof(real_t));
+  for (cufftHandle h : {fft_x_forward, fft_x_backward, fft_y})
+    check_cufft(cufftSetWorkArea(h, fft_work.data()), "SetWorkArea");
 #else
   forward_x = fftw_plan_many_dft_r2c(
       1, &length_x, howmany_x, real_lines.data(), nullptr, 1, line_x,

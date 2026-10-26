@@ -7,19 +7,16 @@
 //   넘긴다 (계획 §5.5 — solve 는 RHS 를 바꾸지 않는다).
 // * 확산 CN + 대류 명시. 인수분해 교차항은 O(dt³)/스텝이라 전체 2차 유지.
 // * 경계 가정은 현재 전 앱(RBC·DHVC·channel) 공통: **x·y 주기** → 순환 TDMA,
-//   **z 벽** → fold_z_wall_mirror (T 의 ghost 정책과 쌍 — conventions.md §6).
+//   **z 벽** → 조립 안의 벽 마스크 (system/system.hpp; T 의 ghost 정책과 쌍 — conventions.md §6).
 //   x/y 벽이 필요한 앱(cavity)이 생기면 M5 와 같은 방식으로 fold_x_wall_* 를
 //   system/ 에 추가하고 여기 스윕 블록에서 바꿔 끼운다.
 // * TDMA 는 중간계층(linear_solver/tdma/tdma.hpp)만 본다 — 백엔드 교체와 무관.
 // * 수식 출처: MPM-STD_C OB 경로 1:1 (Report/study/ref_03 §2.6).
 //
-// 사용 (매 스텝):
-//   sub.exchange_halo(T.data());
-//   boundary::fill_z_wall_mirror(T, sub, v_bottom, v_top);
-//   rhs.fill(0);
-//   equation::scalar::add_diffusion(rhs, T, grid, sub, alpha, dt);
-//   equation::scalar::add_convection(rhs, T, U, V, W, grid, sub, dt);
-//   equation::scalar::solve(solver, grid, sub, rhs, T, alpha, dt);
+// 사용 (매 스텝, 상수물성 예 — apps/dhvc):
+//   equation::scalar::solve_constant_property(solver, grid, sub, T, U, V, W, Ct, dt);
+//   (T 교환 + 벽 채움)
+// (rhs 를 받는 legacy OB solve() 와 apps/rbc 드라이버는 2026-10-23 삭제 — 쓰는 앱이 없었다)
 
 #include "common/types.hpp"
 #include "field/buffer.hpp"
@@ -48,7 +45,6 @@ struct Solver {
   // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
   field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
   field::Buffer band_d2;                         // [최적화 2026-10-18] D 핑퐁 (scatter_x/y 없음)
-  field::Buffer stage_first, stage_second;       // 전체 모양 스크래치 (δ 핑퐁)
 
   // 확장성 측정용 (docs/Scalability/plan.md §1.1): nullptr 이 아니면 solve_variable_property 가
   // 자기 안의 호출(조립·TDMA·scatter ×3축, 증분 적용)을 "scalar.<호출>" 구간으로 잰다. 수치 불변.
@@ -59,10 +55,6 @@ struct Solver {
 // (Dirichlet → −1, Neumann → +1, 주기 → 0).
 void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc,
                       boundary::Field which);
-
-// θⁿ⁺¹ = θⁿ + δθ. T 의 내부만 갱신한다 — ghost 는 다음 스텝의 교환+벽 채움 몫.
-void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
-           const field::Field& rhs, field::Field& T, real_t alpha, real_t dt);
 
 // ── 가변-κ̂ (NOB) 경로 — 같은 Solver 를 재사용한다 ──────────────────────────
 // OB 와 달리 rhs 인자가 없다: 첫 스윕이 우변(R − ΣM·θⁿ)을 융합 조립한다.

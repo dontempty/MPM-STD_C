@@ -1,6 +1,6 @@
 #pragma once
-// 운동량 방정식 solve — Solver(밴드·스테이지·증분) 공유 + 세 진입점:
-//   solve()                   : legacy OB 간이 스킴 (legacy_ob/solve.cpp — rbc 전용, 은퇴 예정)
+// 운동량 방정식 solve — Solver(밴드·증분) 공유 + 두 진입점:
+//   (legacy OB 간이 스킴 solve() 와 apps/rbc 드라이버는 2026-10-23 삭제 — 쓰는 앱이 없었다)
 //   solve_variable_property() : 충실 가변물성 (solve.cpp)
 //   solve_constant_property() : 충실 상수물성, 물성 배열 없음 (solve.cpp)
 //
@@ -21,14 +21,9 @@
 //   minus 벽면 항등행 (system/system.hpp 의 ⚠ 참조). 기존 앱은 x·y 주기, z 벽.
 // * 수식 출처: MPM-STD_C momentum OB 경로 1:1 (ref_03 §1.5).
 //
-// 사용 (매 스텝):
-//   rhs_U.fill(0); rhs_V.fill(0); rhs_W.fill(0);
-//   momentum::add_advection_diffusion_cell(rhs_U, U, U,V,W, grid, sub, nu, dt);
-//   momentum::add_advection_diffusion_cell(rhs_V, V, U,V,W, grid, sub, nu, dt);
-//   momentum::add_advection_diffusion_z_face(rhs_W, W, U,V,W, grid, sub, nu, dt);
-//   pressure::add_gradient_constant_property(rhs_U, rhs_V, rhs_W, P, grid, sub, dt);
-//   (+ 케이스 강제항)
-//   momentum::solve(solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W, nu, dt);
+// 사용 (매 스텝, 상수물성 예 — apps/dhvc):
+//   momentum::build_constant_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, P, grid, sub, nu, dt, &T);
+//   momentum::solve_constant_property(solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V, W, nu, dt);
 //   (U, V, W 교환 + 벽 처리 → 투영)
 
 #include "common/types.hpp"
@@ -51,7 +46,6 @@ struct Solver {
   // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
   field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
   field::Buffer band_d2;                         // [최적화 2026-10-18] D 핑퐁 (scatter_x/y 없음)
-  field::Buffer stage_first, stage_second;       // 스윕 핑퐁 (전체 모양)
 
   // 증분 δU, δV, δW — 블록 커플링의 스텐실이 이웃 증분을 읽으므로
   // halo 교환이 필요해 Field 로 소유한다 (벽 ghost 는 closure 에 맞춘 증분 ghost).
@@ -73,11 +67,6 @@ struct Solver {
 // BoundaryCondition 테이블에서 wall_closure 를 채운다: 비주기 축의 접선 Dirichlet →
 // (velocity_ghost == Mirror ? −1 : 0), Neumann(slip) → +1. 주기 축 0.
 void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc);
-
-void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
-           const field::Field& rhs_u, const field::Field& rhs_v,
-           const field::Field& rhs_w, field::Field& U, field::Field& V,
-           field::Field& W, real_t viscosity, real_t dt);
 
 // ── 가변 점성(NOB) 경로 — 같은 Solver 를 재사용한다 ─────────────────────────
 // OB 와 달리 ① 전진 대입 dU→dV→dW (M21/M31/M32 를 직전 증분으로 우변에 주입 —

@@ -82,6 +82,7 @@ struct Solver {
 
 #ifdef MPMSTD_GPU_FFT
   cufftHandle fft_x_forward = 0, fft_x_backward = 0, fft_y = 0;  // y 는 Z2Z 하나
+  field::Buffer fft_work;  // [최적화 2026-10-23] 세 계획 공용 cuFFT 작업 영역 (자동 할당 끔 → 계획별 작업 영역 3개 → 1개)
 #else
   fftw_plan forward_x = nullptr, backward_x = nullptr;
   fftw_plan forward_y = nullptr, backward_y = nullptr;

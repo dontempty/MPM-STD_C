@@ -511,8 +511,6 @@ void swap_plan(PascalTdmaPlan& lhs, PascalTdmaPlan& rhs) noexcept {
     swap(lhs.dtr, rhs.dtr);
     swap(lhs.bigbuf_a, rhs.bigbuf_a);
     swap(lhs.bigbuf_b, rhs.bigbuf_b);
-    swap(lhs.cyclic_z, rhs.cyclic_z);
-    swap(lhs.cyclic_z_size, rhs.cyclic_z_size);
     swap(lhs.bigbuf_a_size, rhs.bigbuf_a_size);
     swap(lhs.bigbuf_b_size, rhs.bigbuf_b_size);
     swap(lhs.buf_a_size, rhs.buf_a_size);
@@ -726,11 +724,6 @@ void PascalTdmaPlan::destroy() noexcept {
     if (bigbuf_b != nullptr) {
         cudaFree(bigbuf_b);
     }
-    if (cyclic_z != nullptr) {
-        cudaFree(cyclic_z);
-    }
-    cyclic_z = nullptr;
-    cyclic_z_size = 0;
 
     ard = brd = crd = drd = nullptr;
     atr = btr = ctr = dtr = nullptr;
@@ -770,14 +763,19 @@ void sync_for_timing(SolveTimings* timings, cudaStream_t stream) {
 }
 
 // 순환 스크래치 z 를 필요한 만큼 확보해 돌려준다 (매 스텝 재할당 금지).
-double* cyclic_scratch(PascalTdmaPlan& plan, const std::size_t need) {
-    if (plan.cyclic_z_size < need) {
-        if (plan.cyclic_z) cudaFree(plan.cyclic_z);
-        PASCAL_TDMA_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&plan.cyclic_z),
-                                          sizeof(double) * need));
-        plan.cyclic_z_size = need;
+// [최적화 2026-10-23] plan 별 버퍼 → 프로세스 공용 버퍼 하나 (가장 큰 요청 크기로만 자란다).
+//   z 는 tdma_cycl_many_kernel 한 번 안에서만 쓰이고 모든 순환 풀이가 같은 스트림(기본)에서 차례로 돌므로
+//   plan 사이에 겹칠 일이 없다. 다른 스트림에서 순환 풀이를 동시에 돌리면 이 공용을 다시 나눠야 한다.
+//   프로세스 끝까지 유지 (해제는 종료 시 드라이버가 한다).
+double* cyclic_scratch(const std::size_t need) {
+    static double* shared = nullptr;
+    static std::size_t capacity = 0;
+    if (capacity < need) {
+        if (shared) PASCAL_TDMA_CUDA_CHECK(cudaFree(shared));
+        PASCAL_TDMA_CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&shared), sizeof(double) * need));
+        capacity = need;
     }
-    return plan.cyclic_z;
+    return shared;
 }
 
 void launch_tdma_cycl_many(PascalTdmaPlan& plan,
@@ -785,7 +783,7 @@ void launch_tdma_cycl_many(PascalTdmaPlan& plan,
                            const int nsys, const int nrow,
                            const dim3 blocks, const dim3 threads,
                            cudaStream_t stream) {
-    double* z = cyclic_scratch(plan, static_cast<std::size_t>(nsys) * nrow);
+    double* z = cyclic_scratch(static_cast<std::size_t>(nsys) * nrow);
     tdma_cycl_many_kernel<<<blocks, threads, 0, stream>>>(a, b, c, d, z, nsys, nrow);
     PASCAL_TDMA_CUDA_CHECK(cudaGetLastError());
 }

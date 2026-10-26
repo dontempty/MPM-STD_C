@@ -161,6 +161,25 @@ void adi_sweeps_constant(Solver& solver, const grid::Grid& grid,
 
 }  // namespace
 
+// 생성자 (2026-10-23 legacy_ob/solve.cpp 에서 옮김; legacy 전용 stage_first/second 버퍼는 삭제 → 장 2개 절감)
+Solver::Solver(const parallel::Subdomain& sub)
+    : delta_u(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dU"),
+      delta_v(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dV"),
+      delta_w(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dW") {
+  const int i1 = sub.x().n_local;
+  const int i2 = sub.y().n_local;
+  const int i3 = sub.z().n_local;
+  plan_x.create(i2 * i3, sub.topology().x().comm);
+  plan_y.create(i1 * i3, sub.topology().y().comm);
+  plan_z.create(i1 * i2, sub.topology().z().comm);
+  const std::size_t n_band = static_cast<std::size_t>(i1) * i2 * i3;
+  band_a.assign(n_band);
+  band_b.assign(n_band);
+  band_c.assign(n_band);
+  band_d.assign(n_band);
+  band_d2.assign(n_band);
+}
+
 void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc) {
   using boundary::BcKind;
   const boundary::Field row[3] = {boundary::Field::U, boundary::Field::V, boundary::Field::W};

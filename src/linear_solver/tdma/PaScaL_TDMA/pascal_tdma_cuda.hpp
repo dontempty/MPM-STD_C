@@ -99,9 +99,8 @@ struct PascalTdmaPlan {
     double* dtr = nullptr;
     double* bigbuf_a = nullptr;
     double* bigbuf_b = nullptr;
-    // 순환(solve_cycle) 전용 Sherman–Morrison 보조 RHS — 첫 사용 때 크기 확보
-    double* cyclic_z = nullptr;
-    std::size_t cyclic_z_size = 0;
+    // [최적화 2026-10-23] 순환(solve_cycle) Sherman–Morrison 보조 RHS 는 plan 마다 두지 않고
+    //   모든 plan 이 공용 스크래치 하나를 쓴다 (pascal_tdma_cuda.cu cyclic_scratch) → 주기 축 plan 수만큼 −장
 
     std::size_t bigbuf_a_size = 0;
     std::size_t bigbuf_b_size = 0;

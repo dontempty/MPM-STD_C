@@ -1,5 +1,7 @@
 #pragma once
-// RBC 앱의 설정 — "설정은 타입이다". 이 앱이 읽는 모든 키와 기본값이 이 파일
+// RBC 계열 설정 — "설정은 타입이다". (apps/rbc 드라이버(legacy OB)는 2026-10-23 삭제;
+// 이 settings.{hpp,cpp} 는 cavity·dhvc·rbc_ob·rbc_nob 가 include 하는 공용 설정으로 남는다.
+// plot/*.csv 참조 데이터도 rbc_nob 노트북이 쓴다.) 이 앱이 읽는 모든 키와 기본값이 이 파일
 // 하나에 보인다. 멤버 이름 오타 = 컴파일 에러, 입력 키 오타 = throw.
 //
 // 설정은 앱마다 다를 수 있으므로 **각 앱이 자기 settings 를 소유한다**
@@ -11,7 +13,7 @@
 //   * "필수" 로 표시된 키는 누락 시 load_settings 가 throw
 //   * 모르는 키 / 타입 불일치 / 범위 위반도 전부 throw (설계 규칙 D10)
 //
-// 입력 파일 문법은 src/config/ini_parser.hpp, 예시는 input_rbc_ra1e6.ini.
+// 입력 파일 문법은 src/config/ini_parser.hpp, 예시는 apps/rbc_ob/input_rbc_ob_*.ini.
 
 #include <string>
 
