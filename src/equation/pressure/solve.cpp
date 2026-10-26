@@ -52,10 +52,10 @@ void check_cufft(const cufftResult status, const char* what) {
 // cuFFT 실행은 비동기 — 다음 단계(커널·MPI)가 결과를 읽기 전에 동기화한다.
 // x 변환의 스펙트럼 버퍼: 주기 = spectrum_x, 벽 DCT = mirror_spectrum (N+1 복소)
 real_t* x_spectrum(Solver& s) {
-  return s.x_neumann ? s.mirror_spectrum.data() : s.spectrum_x.data();
+  return s.x_neumann ? s.mirror_spectrum.data() : s.spectrum_x;
 }
 void run_forward_x(Solver& s) {
-  check_cufft(cufftExecD2Z(s.fft_x_forward, s.real_lines.data(),
+  check_cufft(cufftExecD2Z(s.fft_x_forward, s.real_lines,
                            reinterpret_cast<cufftDoubleComplex*>(x_spectrum(s))),
               "ExecD2Z");
   cudaDeviceSynchronize();
@@ -63,17 +63,17 @@ void run_forward_x(Solver& s) {
 void run_backward_x(Solver& s) {
   check_cufft(cufftExecZ2D(s.fft_x_backward,
                            reinterpret_cast<cufftDoubleComplex*>(x_spectrum(s)),
-                           s.real_lines.data()),
+                           s.real_lines),
               "ExecZ2D");
   cudaDeviceSynchronize();
 }
 void run_forward_y(Solver& s) {
-  cufftDoubleComplex* xy = reinterpret_cast<cufftDoubleComplex*>(s.spectrum_xy.data());
+  cufftDoubleComplex* xy = reinterpret_cast<cufftDoubleComplex*>(s.spectrum_xy);
   check_cufft(cufftExecZ2Z(s.fft_y, xy, xy, CUFFT_FORWARD), "ExecZ2Z fwd");
   cudaDeviceSynchronize();
 }
 void run_backward_y(Solver& s) {
-  cufftDoubleComplex* xy = reinterpret_cast<cufftDoubleComplex*>(s.spectrum_xy.data());
+  cufftDoubleComplex* xy = reinterpret_cast<cufftDoubleComplex*>(s.spectrum_xy);
   check_cufft(cufftExecZ2Z(s.fft_y, xy, xy, CUFFT_INVERSE), "ExecZ2Z inv");
   cudaDeviceSynchronize();
 }
@@ -89,7 +89,16 @@ void run_backward_y(Solver& s) { fftw_execute(s.backward_y); }
 
 }  // namespace
 
-Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
+std::size_t Solver::required_slot_elements(const grid::Grid&, const parallel::Subdomain& sub) {
+  // 슬랩 상한 (펜슬은 y 조각·모드 조각이라 더 작다): real_lines = ny·nz_l·line_x, 스펙트럼·밴드 = 2·n_mode_x·ny·nz_l
+  const bool neumann = !sub.topology().x().periodic;
+  const std::size_t nx = sub.x().n_global, ny = sub.y().n_global, nzl = sub.z().n_local;
+  const std::size_t n_mode_x = neumann ? nx : nx / 2 + 1;
+  const std::size_t line_x = neumann ? 2 * nx : nx;
+  return std::max(ny * nzl * line_x, 2 * n_mode_x * ny * nzl);
+}
+
+Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub, Workspace& ws) {
   // ── 전제 검사 (헤더 ★ 참조) — 어기면 조용한 오답 대신 즉시 중단 ──
   if (!sub.topology().y().periodic)
     throw std::invalid_argument(
@@ -122,18 +131,26 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
   const int nsys = 2 * n_mode_local * n_y;  // 실·허수부를 나란한 시스템으로 (로컬 x 모드)
   plan_z.create(nsys, sub.topology().z().comm);
   const std::size_t n_band = static_cast<std::size_t>(nsys) * nz_local;
-  band_a.assign(n_band);
-  band_b.assign(n_band);
-  band_c.assign(n_band);
 
   // x 변환의 실제 길이/출력: 주기 = (Nx → Nx/2+1), 벽 DCT = 거울 (2Nx → Nx+1)
   const int line_x = x_neumann ? 2 * n_x : n_x;
   const int spec_x = x_neumann ? n_x + 1 : n_mode_x;
-  real_lines.assign(static_cast<std::size_t>(ny_lines) * nz_local * line_x);
-  spectrum_x.assign(2 * static_cast<std::size_t>(ny_lines) * nz_local * n_mode_x);
-  spectrum_xy.assign(2 * static_cast<std::size_t>(nz_local) * n_mode_local * n_y);
+  const std::size_t n_lines = static_cast<std::size_t>(ny_lines) * nz_local * line_x;
+  const std::size_t n_sx = 2 * static_cast<std::size_t>(ny_lines) * nz_local * n_mode_x;
+  const std::size_t n_sxy = 2 * static_cast<std::size_t>(nz_local) * n_mode_local * n_y;  // == n_band
+  // [최적화 2026-10-23] 밴드·라인·스펙트럼·cuFFT 작업 영역은 공용 Workspace 슬롯 (docs/Memory/plan.md §2.3·§3 B).
+  //   수명이 겹치지 않는 쌍이 슬롯을 나눠 쓴다: 0 = real_lines(팩~FFT x 정방향, FFT x 역방향~산포) ↔ band_c(build_z~tdma),
+  //   3 = band_a(build_z~tdma) ↔ fft_work(FFT 실행 중). solve() 의 단계 순서가 근거 — 순서를 바꾸면 배정을 다시 본다.
+  workspace = &ws;
+  ws.require(std::max({n_band, n_lines, n_sx, n_sxy}), "pressure::Solver");
+  real_lines = ws.slot(0);
+  band_c = ws.slot(0);
+  spectrum_x = ws.slot(1);
+  spectrum_xy = ws.slot(2);
+  band_a = ws.slot(3);
+  band_b = ws.slot(4);
   if (x_neumann) mirror_spectrum.assign(2 * static_cast<std::size_t>(ny_lines) * nz_local * spec_x);
-  real_t* x_spectrum_target = x_neumann ? mirror_spectrum.data() : spectrum_x.data();
+  real_t* x_spectrum_target = x_neumann ? mirror_spectrum.data() : spectrum_x;
 
   // FFT 플랜 — 버퍼 주소에 묶인다 (Buffer 는 재할당하지 않는다). many 배치의
   // 의미는 양쪽 백엔드가 같다: x = 실수 r2c/c2r (howmany = Ny·nz), y = 복소
@@ -160,19 +177,25 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub) {
                                 CUFFT_Z2Z, howmany_y, &work_y),
               "MakePlanMany Z2Z");
   const std::size_t work_bytes = std::max({work_x_forward, work_x_backward, work_y, sizeof(real_t)});
-  fft_work.assign((work_bytes + sizeof(real_t) - 1) / sizeof(real_t));
+  const std::size_t work_elements = (work_bytes + sizeof(real_t) - 1) / sizeof(real_t);
+  if (work_elements <= ws.slot_elements()) {
+    fft_work = ws.slot(3);   // band_a 와 수명 분리 — FFT 실행 중에는 밴드가 살아 있지 않다
+  } else {                   // cuFFT 가 슬롯보다 큰 작업 영역을 요구하는 드문 크기 → 솔버 소유 버퍼로 후퇴
+    fft_work_owned.assign(work_elements);
+    fft_work = fft_work_owned.data();
+  }
   for (cufftHandle h : {fft_x_forward, fft_x_backward, fft_y})
-    check_cufft(cufftSetWorkArea(h, fft_work.data()), "SetWorkArea");
+    check_cufft(cufftSetWorkArea(h, fft_work), "SetWorkArea");
 #else
   forward_x = fftw_plan_many_dft_r2c(
-      1, &length_x, howmany_x, real_lines.data(), nullptr, 1, line_x,
+      1, &length_x, howmany_x, real_lines, nullptr, 1, line_x,
       reinterpret_cast<fftw_complex*>(x_spectrum_target), nullptr, 1, spec_x,
       FFTW_ESTIMATE);
   backward_x = fftw_plan_many_dft_c2r(
       1, &length_x, howmany_x,
       reinterpret_cast<fftw_complex*>(x_spectrum_target), nullptr, 1, spec_x,
-      real_lines.data(), nullptr, 1, line_x, FFTW_ESTIMATE);
-  fftw_complex* xy = reinterpret_cast<fftw_complex*>(spectrum_xy.data());
+      real_lines, nullptr, 1, line_x, FFTW_ESTIMATE);
+  fftw_complex* xy = reinterpret_cast<fftw_complex*>(spectrum_xy);
   forward_y = fftw_plan_many_dft(1, &length_y, howmany_y, xy, nullptr, 1, n_y,
                                  xy, nullptr, 1, n_y, FFTW_FORWARD, FFTW_ESTIMATE);
   backward_y = fftw_plan_many_dft(1, &length_y, howmany_y, xy, nullptr, 1, n_y,
@@ -215,19 +238,19 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     //    → y-라인 재배열 → y c2c
     PRESSURE_TIMER_BEGIN("pressure.pack_lines");
     if (solver.x_neumann) {
-      pack_rhs_to_mirrored_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
+      pack_rhs_to_mirrored_lines(solver.real_lines, rhs, sub, n_x, n_y, nz_local);
     } else {
-      pack_rhs_to_lines(solver.real_lines.data(), rhs, sub, n_x, n_y, nz_local);
+      pack_rhs_to_lines(solver.real_lines, rhs, sub, n_x, n_y, nz_local);
     }
     PRESSURE_TIMER_END("pressure.pack_lines");
     PRESSURE_TIMER_BEGIN("pressure.fft_x_fwd");
     run_forward_x(solver);
     if (solver.x_neumann)
-      dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
+      dct_twiddle_forward(solver.spectrum_x, solver.mirror_spectrum.data(),
                           n_y * nz_local, n_x);
     PRESSURE_TIMER_END("pressure.fft_x_fwd");
     PRESSURE_TIMER_BEGIN("pressure.reorder_x_to_y");
-    reorder_x_to_y(solver.spectrum_xy.data(), solver.spectrum_x.data(), n_y, nz_local,
+    reorder_x_to_y(solver.spectrum_xy, solver.spectrum_x, n_y, nz_local,
                    n_mode_x);
     PRESSURE_TIMER_END("pressure.reorder_x_to_y");
     PRESSURE_TIMER_BEGIN("pressure.fft_y_fwd");
@@ -238,17 +261,17 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     // [최적화 2026-10-18] 스펙트럼 [(k·Nxm+mx)·Ny+jy]×2 와 밴드 [sys + k·nsys](nsys = 2·Nxm·Ny) 는 같은 인덱스라
     //   팩·언팩 복사 없이 spectrum_xy 를 D 로 바로 푼다. 특이 모드 행 핀(첫 두 원소 = 0)만 남는다.
     PRESSURE_TIMER_BEGIN("pressure.pack_bands");
-    if (owns_bottom) pin_mean_row(solver.spectrum_xy.data());
+    if (owns_bottom) pin_mean_row(solver.spectrum_xy);
     PRESSURE_TIMER_END("pressure.pack_bands");
     PRESSURE_TIMER_BEGIN("pressure.build_z");
-    build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
-                         solver.band_c.data(), grid, sub, solver.lambda_x.data(),
+    build_z_modes_system(solver.band_a, solver.band_b,
+                         solver.band_c, grid, sub, solver.lambda_x.data(),
                          n_mode_x, solver.lambda_y.data(), n_y, /*pin_mean=*/true);
     PRESSURE_TIMER_END("pressure.build_z");
     PRESSURE_TIMER_BEGIN("pressure.tdma_z");
-    linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
-                              solver.band_b.data(), solver.band_c.data(),
-                              solver.spectrum_xy.data(), nsys, nz_local);
+    linear_solver::solve_many(solver.plan_z, solver.band_a,
+                              solver.band_b, solver.band_c,
+                              solver.spectrum_xy, nsys, nz_local);
     PRESSURE_TIMER_END("pressure.tdma_z");
 
     // ③ 전역 평균(게이지)을 DC 모드에서 — 평면 (x,y) 합 = 스펙트럼 (k,0,0) 실수부·scale·Nx·Ny 이므로
@@ -257,7 +280,7 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     PRESSURE_TIMER_BEGIN("pressure.mean_remove");
     const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
                                           : 1 / (static_cast<real_t>(n_x) * n_y);
-    real_t local_dc = dc_mode_sum(solver.spectrum_xy.data(), nz_local, n_mode_x, n_y);
+    real_t local_dc = dc_mode_sum(solver.spectrum_xy, nz_local, n_mode_x, n_y);
     real_t global_dc = 0;
     MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
     const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
@@ -268,21 +291,21 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     run_backward_y(solver);
     PRESSURE_TIMER_END("pressure.fft_y_bwd");
     PRESSURE_TIMER_BEGIN("pressure.reorder_y_to_x");
-    reorder_y_to_x(solver.spectrum_x.data(), solver.spectrum_xy.data(), n_y, nz_local,
+    reorder_y_to_x(solver.spectrum_x, solver.spectrum_xy, n_y, nz_local,
                    n_mode_x);
     PRESSURE_TIMER_END("pressure.reorder_y_to_x");
     PRESSURE_TIMER_BEGIN("pressure.fft_x_bwd");
     if (solver.x_neumann)  // DCT-III: 트위들 → 거울 c2r → 앞 N 개, 왕복 배율 2N
-      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
+      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x,
                            n_y * nz_local, n_x);
     run_backward_x(solver);
     PRESSURE_TIMER_END("pressure.fft_x_bwd");
     PRESSURE_TIMER_BEGIN("pressure.scatter_lines");
     if (solver.x_neumann) {
-      scatter_mirrored_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y,
+      scatter_mirrored_lines_to_field(phi, solver.real_lines, scale, sub, n_x, n_y,
                                       nz_local, mean);
     } else {
-      scatter_lines_to_field(phi, solver.real_lines.data(), scale, sub, n_x, n_y, nz_local,
+      scatter_lines_to_field(phi, solver.real_lines, scale, sub, n_x, n_y, nz_local,
                              mean);
     }
     PRESSURE_TIMER_END("pressure.scatter_lines");
@@ -295,32 +318,32 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     const bool has_mean_mode = solver.mode_offset == 0;  // 로컬 모드 0 = 전역 (0,0) 모드인 랭크
     PRESSURE_TIMER_BEGIN("pressure.pencil_forward");
     // ① 블록 → x 라인 (주기: 길이 Nx / 벽: 거울 2Nx) → x 변환. 전치는 백엔드 버퍼끼리 (GPU↔GPU)
-    run_exchange(L.block_to_lines, rhs.data(), solver.real_lines.data(), L.comm, L.host_staging);
+    run_exchange(L.block_to_lines, rhs.data(), solver.real_lines, L.comm, L.host_staging);
     run_forward_x(solver);
     if (solver.x_neumann)
-      dct_twiddle_forward(solver.spectrum_x.data(), solver.mirror_spectrum.data(),
+      dct_twiddle_forward(solver.spectrum_x, solver.mirror_spectrum.data(),
                           ny_lines * nz_local, n_x);
     // ② x-펜슬 스펙트럼 → y-펜슬 → y 변환
-    run_exchange(L.x_to_y_spectrum, solver.spectrum_x.data(), solver.spectrum_xy.data(), L.comm,
+    run_exchange(L.x_to_y_spectrum, solver.spectrum_x, solver.spectrum_xy, L.comm,
                  L.host_staging);
     run_forward_y(solver);
     PRESSURE_TIMER_END("pressure.pencil_forward");
     // z 삼중대각 — spectrum_xy 를 D 로 바로 (로컬 x 모드 조각, λ_x 오프셋). (0,0) 핀은 그 모드를 가진 랭크만
     PRESSURE_TIMER_BEGIN("pressure.tdma_z");
-    if (owns_bottom && has_mean_mode) pin_mean_row(solver.spectrum_xy.data());
-    build_z_modes_system(solver.band_a.data(), solver.band_b.data(),
-                         solver.band_c.data(), grid, sub,
+    if (owns_bottom && has_mean_mode) pin_mean_row(solver.spectrum_xy);
+    build_z_modes_system(solver.band_a, solver.band_b,
+                         solver.band_c, grid, sub,
                          solver.lambda_x.data() + solver.mode_offset, nml,
                          solver.lambda_y.data(), n_y, has_mean_mode);
-    linear_solver::solve_many(solver.plan_z, solver.band_a.data(),
-                              solver.band_b.data(), solver.band_c.data(),
-                              solver.spectrum_xy.data(), nsys, nz_local);
+    linear_solver::solve_many(solver.plan_z, solver.band_a,
+                              solver.band_b, solver.band_c,
+                              solver.spectrum_xy, nsys, nz_local);
     PRESSURE_TIMER_END("pressure.tdma_z");
     // 전역 평균(게이지) — DC 모드는 모드 오프셋 0 인 랭크(z 블록마다 하나)에만 있다
     PRESSURE_TIMER_BEGIN("pressure.mean_remove");
     const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
                                           : 1 / (static_cast<real_t>(n_x) * n_y);
-    real_t local_dc = has_mean_mode ? dc_mode_sum(solver.spectrum_xy.data(), nz_local, nml, n_y) : 0;
+    real_t local_dc = has_mean_mode ? dc_mode_sum(solver.spectrum_xy, nz_local, nml, n_y) : 0;
     real_t global_dc = 0;
     MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
     const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
@@ -328,14 +351,14 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     PRESSURE_TIMER_BEGIN("pressure.pencil_backward");
     run_backward_y(solver);
     // ②⁻¹ y-펜슬 → x-펜슬 → 역 x 변환
-    run_exchange(L.y_to_x_spectrum, solver.spectrum_xy.data(), solver.spectrum_x.data(), L.comm,
+    run_exchange(L.y_to_x_spectrum, solver.spectrum_xy, solver.spectrum_x, L.comm,
                  L.host_staging);
     if (solver.x_neumann)
-      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x.data(),
+      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x,
                            ny_lines * nz_local, n_x);
     run_backward_x(solver);
     // ①⁻¹ x 라인 → 블록 (정규화·평균 빼기를 팩 커널에서; 장의 ghost 는 건드리지 않는다)
-    run_exchange(L.lines_to_block, solver.real_lines.data(), phi.data(), L.comm, L.host_staging,
+    run_exchange(L.lines_to_block, solver.real_lines, phi.data(), L.comm, L.host_staging,
                  scale, mean);
     PRESSURE_TIMER_END("pressure.pencil_backward");
   }

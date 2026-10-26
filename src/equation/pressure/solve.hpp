@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "equation/pressure/pencil_transpose.hpp"
+#include "equation/workspace.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
 #include "common/phase_timer.hpp"
@@ -53,8 +54,10 @@ namespace mpmstd::equation::pressure {
 
 // FFT 플랜·스펙트럼 버퍼·λ 표·z TDMA 플랜 — 한 번 만들어 매 스텝 재사용한다.
 struct Solver {
-  Solver(const grid::Grid& grid, const parallel::Subdomain& sub);
+  Solver(const grid::Grid& grid, const parallel::Subdomain& sub, Workspace& workspace);
   ~Solver();
+  // 이 솔버가 요구하는 Workspace 슬롯 크기 — 슬랩 상한(real_lines = ny·nz_l·line_x, 스펙트럼·밴드 = 2·n_mode_x·ny·nz_l).
+  static std::size_t required_slot_elements(const grid::Grid& grid, const parallel::Subdomain& sub);
   Solver(const Solver&) = delete;
   Solver& operator=(const Solver&) = delete;
 
@@ -71,18 +74,24 @@ struct Solver {
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
   linear_solver::TdmaPlan plan_z;
-  field::Buffer band_a, band_b, band_c;   // D 는 spectrum_xy 를 그대로 쓴다 (2026-10-18)
-
-  // 스펙트럼 작업 버퍼 — FFT 플랜이 이 주소에 묶이므로 재할당 금지.
+  // [최적화 2026-10-23] 밴드 a·b·c(D 는 spectrum_xy)·라인·스펙트럼·cuFFT 작업 영역은 공용 Workspace 슬롯을 가리키는
+  //   포인터다 (docs/Memory/plan.md §2.3: 0 = real_lines ↔ band_c, 1 = spectrum_x, 2 = spectrum_xy, 3 = band_a ↔ fft_work,
+  //   4 = band_b; ↔ = 수명이 겹치지 않는 쌍). 주소는 Workspace 생성 뒤 고정 — FFTW 플랜이 이 주소에 묶인다.
+  //   거울 스펙트럼(DCT)만 솔버 소유.
+  Workspace* workspace = nullptr;
+  real_t* band_a = nullptr;
+  real_t* band_b = nullptr;
+  real_t* band_c = nullptr;
   // 복소 버퍼는 (실, 허) double 쌍의 평탄 배열로 둔다 (커널에서 std::complex 회피).
-  field::Buffer real_lines;   // [(jy·nz + k)·Nx + i]        (DCT: 라인 길이 2Nx 거울)
-  field::Buffer spectrum_x;   // 2 × [(jy·nz + k)·Nxm + mx]   Nxm = n_mode_x
-  field::Buffer spectrum_xy;  // 2 × [(k·Nxm + mx)·Ny + jy]
+  real_t* real_lines = nullptr;   // [(jy·nz + k)·Nx + i]        (DCT: 라인 길이 2Nx 거울)
+  real_t* spectrum_x = nullptr;   // 2 × [(jy·nz + k)·Nxm + mx]   Nxm = n_mode_x
+  real_t* spectrum_xy = nullptr;  // 2 × [(k·Nxm + mx)·Ny + jy]
   field::Buffer mirror_spectrum;  // DCT 전용: 2 × [(jy·nz + k)·(Nx+1) + m]
 
 #ifdef MPMSTD_GPU_FFT
   cufftHandle fft_x_forward = 0, fft_x_backward = 0, fft_y = 0;  // y 는 Z2Z 하나
-  field::Buffer fft_work;  // [최적화 2026-10-23] 세 계획 공용 cuFFT 작업 영역 (자동 할당 끔 → 계획별 작업 영역 3개 → 1개)
+  real_t* fft_work = nullptr;     // 세 계획 공용 cuFFT 작업 영역 = 슬롯 3 (cuFFT 요구가 슬롯보다 크면 fft_work_owned 로 후퇴)
+  field::Buffer fft_work_owned;
 #else
   fftw_plan forward_x = nullptr, backward_x = nullptr;
   fftw_plan forward_y = nullptr, backward_y = nullptr;

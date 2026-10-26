@@ -84,12 +84,12 @@ void adi_sweeps_variable_property(Solver& solver, const grid::Grid& grid,
   const int i1 = sub.x().n_local;
   const int i2 = sub.y().n_local;
   const int i3 = sub.z().n_local;
-  real_t* A = solver.band_a.data();
-  real_t* B = solver.band_b.data();
-  real_t* C = solver.band_c.data();
+  real_t* A = solver.workspace->slot(0);   // [최적화 2026-10-23] 공용 Workspace 슬롯 (plan.md §2.3)
+  real_t* B = solver.workspace->slot(1);
+  real_t* C = solver.workspace->slot(2);
   // D 핑퐁: x → D0, y 는 D0 를 읽어 D1, z 는 D1 을 읽어 D0 (band_layout.hpp).
-  real_t* D0 = solver.band_d.data();
-  real_t* D1 = solver.band_d2.data();
+  real_t* D0 = solver.workspace->slot(3);
+  real_t* D1 = solver.workspace->slot(4);
   // 구간 이름 "momentum.dU.build_x" 등 (own_axis 0/1/2 = dU/dV/dW)
   const std::string prefix =
       std::string("momentum.") + (own_axis == 0 ? "dU" : own_axis == 1 ? "dV" : "dW") + ".";
@@ -138,12 +138,12 @@ void adi_sweeps_constant(Solver& solver, const grid::Grid& grid,
   const int i1 = sub.x().n_local;
   const int i2 = sub.y().n_local;
   const int i3 = sub.z().n_local;
-  real_t* A = solver.band_a.data();
-  real_t* B = solver.band_b.data();
-  real_t* C = solver.band_c.data();
+  real_t* A = solver.workspace->slot(0);   // [최적화 2026-10-23] 공용 Workspace 슬롯 (plan.md §2.3)
+  real_t* B = solver.workspace->slot(1);
+  real_t* C = solver.workspace->slot(2);
   // [최적화 2026-10-18] 가변물성 판과 같은 D 밴드 핑퐁(scatter_x/y 없음) + 타일 scatter_z(+ q += δ)
-  real_t* D0 = solver.band_d.data();
-  real_t* D1 = solver.band_d2.data();
+  real_t* D0 = solver.workspace->slot(3);
+  real_t* D1 = solver.workspace->slot(4);
 
   build_x_sweep_constant_property(A, B, C, D0, rhs_data, q.data(), U.data(), grid, sub,
                                   own_axis, viscosity, dt);
@@ -161,23 +161,23 @@ void adi_sweeps_constant(Solver& solver, const grid::Grid& grid,
 
 }  // namespace
 
-// 생성자 (2026-10-23 legacy_ob/solve.cpp 에서 옮김; legacy 전용 stage_first/second 버퍼는 삭제 → 장 2개 절감)
-Solver::Solver(const parallel::Subdomain& sub)
+std::size_t Solver::required_slot_elements(const parallel::Subdomain& sub) {
+  return static_cast<std::size_t>(sub.x().n_local) * sub.y().n_local * sub.z().n_local;
+}
+
+// 생성자 (2026-10-23 legacy_ob/solve.cpp 에서 옮김). 밴드는 공용 Workspace 에서 빌린다 (plan.md A 단계).
+Solver::Solver(const parallel::Subdomain& sub, Workspace& ws)
     : delta_u(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dU"),
       delta_v(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dV"),
-      delta_w(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dW") {
+      delta_w(sub.x().n_total, sub.y().n_total, sub.z().n_total, "dW"),
+      workspace(&ws) {
   const int i1 = sub.x().n_local;
   const int i2 = sub.y().n_local;
   const int i3 = sub.z().n_local;
   plan_x.create(i2 * i3, sub.topology().x().comm);
   plan_y.create(i1 * i3, sub.topology().y().comm);
   plan_z.create(i1 * i2, sub.topology().z().comm);
-  const std::size_t n_band = static_cast<std::size_t>(i1) * i2 * i3;
-  band_a.assign(n_band);
-  band_b.assign(n_band);
-  band_c.assign(n_band);
-  band_d.assign(n_band);
-  band_d2.assign(n_band);
+  ws.require(required_slot_elements(sub), "momentum::Solver");
 }
 
 void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc) {
@@ -221,6 +221,7 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
     throw std::invalid_argument(
         "momentum::solve_constant_property: Solver was created for a different "
         "subdomain");
+  solver.workspace->require(Solver::required_slot_elements(sub), "momentum::solve");
 
   // 전진 대입 dU → dV → dW (solve_variable_property 1:1 — 물성 자리만 상수)
   adi_sweeps_constant(solver, grid, sub, rhs_u.data(), U, U, V, W, /*own_axis=*/0,

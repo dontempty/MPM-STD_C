@@ -222,7 +222,10 @@ int main(int argc, char** argv) {
     Field U(nx, ny, nz, "U"), V(nx, ny, nz, "V"), W(nx, ny, nz, "W"), P(nx, ny, nz, "P");
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"),
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
-    momentum::Solver momentum_solver(sub);
+  // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
+    mpmstd::equation::Workspace workspace(std::max(momentum::Solver::required_slot_elements(sub),
+                                                   pressure::Solver::required_slot_elements(grid, sub)));
+    momentum::Solver momentum_solver(sub, workspace);
     if (mirror_wall) {  // 거울 ghost 와 짝인 음해 닫기 (δghost = −δq₁ → B −= A); value 는 기본 0 (drop)
       momentum_solver.wall_closure[2][0] = -1;
       momentum_solver.wall_closure[2][1] = -1;
@@ -233,7 +236,7 @@ int main(int argc, char** argv) {
     // 과구동 — 2026-10-04 수지 계측). 상수물성 충실 커널은 M-form 잔차·own ×2
     // 응력·cross-stress·전진 대입까지 참조 구조 그대로, **물성 배열을 만들지도
     // 참조하지도 않는다** — "가변 + μ̂≡1 배열" 과 비트 일치 검증됨.
-    pressure::Solver pressure_solver(grid, sub);
+    pressure::Solver pressure_solver(grid, sub, workspace);
     real_t mean_dPdx = 0;
     // ── LES (와점성): μ̂ = 1 + ν_t/ν 를 가변물성 운동량 커널의 viscosity 자리에, 1/ρ̂ ≡ 1 ──
     //    (1단계: 가변 경로 + 단위 1/ρ̂ 배열. 단위 배열을 컴파일 타임에 접는 *_variable_viscosity

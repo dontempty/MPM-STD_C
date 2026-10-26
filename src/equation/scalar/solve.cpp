@@ -46,20 +46,19 @@ stencil::WallMask make_wall_mask(const Solver& solver, const parallel::Subdomain
 }
 }  // namespace
 
-// 생성자 (2026-10-23 legacy_ob/solve.cpp 에서 옮김; legacy 전용 stage_first/second 버퍼는 삭제 → 장 2개 절감)
-Solver::Solver(const parallel::Subdomain& sub) {
+std::size_t Solver::required_slot_elements(const parallel::Subdomain& sub) {
+  return static_cast<std::size_t>(sub.x().n_local) * sub.y().n_local * sub.z().n_local;
+}
+
+// 생성자 (2026-10-23 legacy_ob/solve.cpp 에서 옮김). 밴드는 공용 Workspace 에서 빌린다 (plan.md A 단계).
+Solver::Solver(const parallel::Subdomain& sub, Workspace& ws) : workspace(&ws) {
   const int i1 = sub.x().n_local;
   const int i2 = sub.y().n_local;
   const int i3 = sub.z().n_local;
   plan_x.create(i2 * i3, sub.topology().x().comm);
   plan_y.create(i1 * i3, sub.topology().y().comm);
   plan_z.create(i1 * i2, sub.topology().z().comm);
-  const std::size_t n_band = static_cast<std::size_t>(i1) * i2 * i3;
-  band_a.assign(n_band);
-  band_b.assign(n_band);
-  band_c.assign(n_band);
-  band_d.assign(n_band);
-  band_d2.assign(n_band);
+  ws.require(required_slot_elements(sub), "scalar::Solver");
 }
 
 void set_wall_closure(Solver& solver, const boundary::BoundaryCondition& bc,
@@ -86,15 +85,15 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   check_field_matches("scalar::solve_variable_property", V, sub);
   check_field_matches("scalar::solve_variable_property", W, sub);
   check_field_matches("scalar::solve_variable_property", properties.conductivity, sub);
-  if (solver.band_a.size() != static_cast<std::size_t>(i1) * i2 * i3)
+  if (solver.workspace->slot_elements() < static_cast<std::size_t>(i1) * i2 * i3)
     throw std::invalid_argument(
         "scalar::solve_variable_property: Solver was created for a different subdomain");
 
-  real_t* A = solver.band_a.data();
-  real_t* B = solver.band_b.data();
-  real_t* C = solver.band_c.data();
-  real_t* D0 = solver.band_d.data();   // D 핑퐁 (band_layout.hpp): x → D0, y 는 D0 를 읽어 D1, z 는 D1 을 읽어 D0
-  real_t* D1 = solver.band_d2.data();
+  real_t* A = solver.workspace->slot(0);   // [최적화 2026-10-23] 공용 Workspace 슬롯 (plan.md §2.3)
+  real_t* B = solver.workspace->slot(1);
+  real_t* C = solver.workspace->slot(2);
+  real_t* D0 = solver.workspace->slot(3);   // D 핑퐁 (band_layout.hpp): x → D0, y 는 D0 를 읽어 D1, z 는 D1 을 읽어 D0
+  real_t* D1 = solver.workspace->slot(4);
   const stencil::WallMask wall = make_wall_mask(solver, sub);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
@@ -144,16 +143,16 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
   check_field_matches("scalar::solve_constant_property", U, sub);
   check_field_matches("scalar::solve_constant_property", V, sub);
   check_field_matches("scalar::solve_constant_property", W, sub);
-  if (solver.band_a.size() != static_cast<std::size_t>(i1) * i2 * i3)
+  if (solver.workspace->slot_elements() < static_cast<std::size_t>(i1) * i2 * i3)
     throw std::invalid_argument(
         "scalar::solve_constant_property: Solver was created for a different subdomain");
 
-  real_t* A = solver.band_a.data();
-  real_t* B = solver.band_b.data();
-  real_t* C = solver.band_c.data();
+  real_t* A = solver.workspace->slot(0);   // [최적화 2026-10-23] 공용 Workspace 슬롯 (plan.md §2.3)
+  real_t* B = solver.workspace->slot(1);
+  real_t* C = solver.workspace->slot(2);
   // [최적화 2026-10-18] 가변물성 판과 같은 D 밴드 핑퐁 + scatter_z 가 T += δT 를 바로
-  real_t* D0 = solver.band_d.data();
-  real_t* D1 = solver.band_d2.data();
+  real_t* D0 = solver.workspace->slot(3);
+  real_t* D1 = solver.workspace->slot(4);
   const stencil::WallMask wall = make_wall_mask(solver, sub);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)

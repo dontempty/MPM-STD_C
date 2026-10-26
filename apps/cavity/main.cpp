@@ -265,15 +265,19 @@ int main(int argc, char** argv) {
         T(nx, ny, nz, "T"), P(nx, ny, nz, "P");
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"),
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
-    momentum::Solver momentum_solver(sub);
+  // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
+    mpmstd::equation::Workspace workspace(std::max({momentum::Solver::required_slot_elements(sub),
+                                                    scalar::Solver::required_slot_elements(sub),
+                                                    pressure::Solver::required_slot_elements(grid, sub)}));
+    momentum::Solver momentum_solver(sub, workspace);
     // 접선 속도 벽 행 닫기를 ghost 정책과 일치 ([boundary] velocity_ghost: value → 0,
     // mirror → −1; slip → +1). 기본 value 는 1차(벽 마찰 절반) — 벤치마크는 mirror 권장.
     momentum::set_wall_closure(momentum_solver, bc);
-    scalar::Solver scalar_solver(sub);
+    scalar::Solver scalar_solver(sub, workspace);
     // 에너지 벽 행 닫기를 ghost 정책과 일치시킨다 (Dirichlet 거울 → −1, 단열 → +1).
     // 기본 drop(PaScaL 충실)은 dt·α/dx² ≳ 3 에서 벽 셀 모드가 폭주 (scalar/solve.hpp).
     scalar::set_wall_closure(scalar_solver, bc, boundary::Field::T);
-    pressure::Solver pressure_solver(grid, sub);
+    pressure::Solver pressure_solver(grid, sub, workspace);
 
     long restart_step = 0;
     double restart_time = 0;

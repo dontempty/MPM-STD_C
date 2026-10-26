@@ -187,15 +187,19 @@ int main(int argc, char** argv) {
         T(nx, ny, nz, "T"), P(nx, ny, nz, "P");
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"),
         rhs_W(nx, ny, nz, "rhs_W"), rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
-    momentum::Solver momentum_solver(sub);
-    scalar::Solver scalar_solver(sub);
+  // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
+    mpmstd::equation::Workspace workspace(std::max({momentum::Solver::required_slot_elements(sub),
+                                                    scalar::Solver::required_slot_elements(sub),
+                                                    pressure::Solver::required_slot_elements(grid, sub)}));
+    momentum::Solver momentum_solver(sub, workspace);
+    scalar::Solver scalar_solver(sub, workspace);
     if (mirror_wall) {
       // ghost 정책과 일치하는 음해 닫기: 속도 거울 → B−=A, 온도(거울 ghost) → B−=A.
       // value(기본)는 drop(참조 1:1)을 유지한다.
       momentum::set_wall_closure(momentum_solver, s.boundary.condition);
       scalar::set_wall_closure(scalar_solver, s.boundary.condition, mpmstd::boundary::Field::T);
     }
-    pressure::Solver pressure_solver(grid, sub);
+    pressure::Solver pressure_solver(grid, sub, workspace);
     real_t mean_dPdx = 0;  // 순 x유량 0 보정의 적립(진단) — 재시작 상태
 
     long restart_step = 0;

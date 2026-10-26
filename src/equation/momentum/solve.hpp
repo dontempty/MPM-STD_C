@@ -31,6 +31,7 @@
 #include "field/buffer.hpp"
 #include "field/field.hpp"
 #include "grid/grid.hpp"
+#include "equation/workspace.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
 #include "common/phase_timer.hpp"
@@ -38,14 +39,16 @@
 namespace mpmstd::equation::momentum {
 
 struct Solver {
-  explicit Solver(const parallel::Subdomain& sub);
+  Solver(const parallel::Subdomain& sub, Workspace& workspace);
   Solver(const Solver&) = delete;
   Solver& operator=(const Solver&) = delete;
+  // 이 솔버가 요구하는 Workspace 슬롯 크기 (밴드 [sys + row·nsys] = i1·i2·i3) — 앱이 최대값으로 Workspace 를 만든다.
+  static std::size_t required_slot_elements(const parallel::Subdomain& sub);
 
   linear_solver::TdmaPlan plan_x, plan_y, plan_z;
-  // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
-  field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
-  field::Buffer band_d2;                         // [최적화 2026-10-18] D 핑퐁 (scatter_x/y 없음)
+  // [최적화 2026-10-23] 밴드 A·B·C·D0·D1(핑퐁)은 솔버가 소유하지 않고 공용 Workspace 슬롯 0~4 를 빌려 쓴다
+  //   (docs/Memory/plan.md). 성분 dU·dV·dW 가 같은 슬롯을 차례로 쓴다 — 밴드는 한 스윕 안에서만 산다.
+  Workspace* workspace = nullptr;
 
   // 증분 δU, δV, δW — 블록 커플링의 스텐실이 이웃 증분을 읽으므로
   // halo 교환이 필요해 Field 로 소유한다 (벽 ghost 는 closure 에 맞춘 증분 ghost).

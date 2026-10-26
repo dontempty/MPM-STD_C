@@ -22,6 +22,7 @@
 #include "field/buffer.hpp"
 #include "field/field.hpp"
 #include "grid/grid.hpp"
+#include "equation/workspace.hpp"
 #include "linear_solver/tdma/tdma.hpp"
 #include "parallel/subdomain/subdomain.hpp"
 #include "boundary/boundary_condition.hpp"
@@ -32,9 +33,11 @@ namespace mpmstd::equation::scalar {
 
 // TDMA 플랜(통신 상대)과 작업 버퍼 — 한 번 만들어 매 스텝 재사용한다.
 struct Solver {
-  explicit Solver(const parallel::Subdomain& sub);
+  Solver(const parallel::Subdomain& sub, Workspace& workspace);
   Solver(const Solver&) = delete;
   Solver& operator=(const Solver&) = delete;
+  // 이 솔버가 요구하는 Workspace 슬롯 크기 (밴드 = i1·i2·i3) — 앱이 최대값으로 Workspace 를 만든다.
+  static std::size_t required_slot_elements(const parallel::Subdomain& sub);
 
   linear_solver::TdmaPlan plan_x, plan_y, plan_z;
   // 벽 행 음해 닫기 계수 [axis][side] — 0 = drop(PaScaL 충실, 기본: 기존 앱 비트 불변),
@@ -42,9 +45,8 @@ struct Solver {
   // scalar_stencil.hpp 의 WallMask::closure 주석. 새 앱은 set_wall_closure 로 ghost
   // 정책과 맞출 것 (cavity: 드롭이면 dt·κ/dx² ≳ 3 에서 폭주 — 실측).
   real_t wall_closure[3][2] = {{0, 0}, {0, 0}, {0, 0}};
-  // 밴드·스테이지는 그 빌드의 백엔드 메모리에 산다 (CPU=호스트, GPU=디바이스).
-  field::Buffer band_a, band_b, band_c, band_d;  // [sys + row·nsys]
-  field::Buffer band_d2;                         // [최적화 2026-10-18] D 핑퐁 (scatter_x/y 없음)
+  // [최적화 2026-10-23] 밴드 A·B·C·D0·D1(핑퐁)은 공용 Workspace 슬롯 0~4 를 빌려 쓴다 (docs/Memory/plan.md).
+  Workspace* workspace = nullptr;
 
   // 확장성 측정용 (docs/Scalability/plan.md §1.1): nullptr 이 아니면 solve_variable_property 가
   // 자기 안의 호출(조립·TDMA·scatter ×3축, 증분 적용)을 "scalar.<호출>" 구간으로 잰다. 수치 불변.

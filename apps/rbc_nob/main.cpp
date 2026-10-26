@@ -179,9 +179,13 @@ int main(int argc, char** argv) {
     Field pressure_predictor(nx, ny, nz, "dPhat"),
         previous_predictor(nx, ny, nz, "dP0");
     physics::PropertyFields properties(nx, ny, nz);
-    momentum::Solver momentum_solver(sub);
-    scalar::Solver scalar_solver(sub);
-    pressure::Solver pressure_solver(grid, sub);
+  // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
+    mpmstd::equation::Workspace workspace(std::max({momentum::Solver::required_slot_elements(sub),
+                                                    scalar::Solver::required_slot_elements(sub),
+                                                    pressure::Solver::required_slot_elements(grid, sub)}));
+    momentum::Solver momentum_solver(sub, workspace);
+    scalar::Solver scalar_solver(sub, workspace);
+    pressure::Solver pressure_solver(grid, sub, workspace);
 
     // ── 냉시작 vs 재시작 (M11) — 상태장 7장: U V W T P p̂ p̂₀.
     //    δp 는 매 스텝 fill(0) 후 재계산이라 상태가 아니다. ghost 는 저장하지

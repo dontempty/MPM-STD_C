@@ -95,7 +95,8 @@ Result run(const parallel::MpiContext& mpi, const int n, const bool discrete_rhs
       }
   rhs.upload(r);
 
-  equation::pressure::Solver solver(g, sub);
+  equation::Workspace workspace(equation::pressure::Solver::required_slot_elements(g, sub));
+  equation::pressure::Solver solver(g, sub, workspace);
   equation::pressure::solve(solver, g, sub, rhs, phi);
 
   // 비교 (solve 는 전역 평균 0; 정확해도 평균 0 — 셀중심 cos 의 대칭 합)

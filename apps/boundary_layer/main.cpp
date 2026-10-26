@@ -126,7 +126,10 @@ int main(int argc, char** argv) {
     Field U(nx, ny, nz, "U"), V(nx, ny, nz, "V"), W(nx, ny, nz, "W"), P(nx, ny, nz, "P");
     Field rhs_U(nx, ny, nz, "rhs_U"), rhs_V(nx, ny, nz, "rhs_V"), rhs_W(nx, ny, nz, "rhs_W"),
         rhs_P(nx, ny, nz, "rhs_P"), dP(nx, ny, nz, "dP");
-    momentum::Solver momentum_solver(sub);
+  // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
+    mpmstd::equation::Workspace workspace(std::max(momentum::Solver::required_slot_elements(sub),
+                                                   pressure::Solver::required_slot_elements(grid, sub)));
+    momentum::Solver momentum_solver(sub, workspace);
     momentum::set_wall_closure(momentum_solver, bc);
     // ── LES (채널 앱과 같은 배선): μ̂ = 1 + ν_t/ν 를 가변물성 운동량의 viscosity 자리에, 1/ρ̂ ≡ 1.
     //    model = none 이면 기존 상수물성 경로 그대로 (DNS 결과와 비트 동일).
@@ -139,7 +142,7 @@ int main(int argc, char** argv) {
       mu_hat->fill(1.0);
       unit_inverse_density->fill(1.0);
     }
-    pressure::Solver pressure_solver(grid, sub);
+    pressure::Solver pressure_solver(grid, sub, workspace);
 
     // 유입 평면 (로컬 (y,z), ghost 포함): blasius = z 프로파일 복제, recycling = 매 스텝 갱신
     const bool recycling = s.inflow.method == "recycling";

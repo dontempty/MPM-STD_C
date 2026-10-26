@@ -165,9 +165,13 @@ int main(int argc, char** argv) {
     // 통계 모듈(rbc_nob/statistics)이 ⟨μ̂⟩⟨κ̂⟩·Re_E 에 물성 필드를 읽는다 — 상수물성이라 ≡1 로 한 번 채운다.
     physics::PropertyFields properties(nx, ny, nz);
     const physics::PropertyModel unit_model;  // 선행 계수만 1 → 모든 물성 ≡ 1, 미분 ≡ 0
-    momentum::Solver momentum_solver(sub);
-    scalar::Solver scalar_solver(sub);
-    pressure::Solver pressure_solver(grid, sub);
+  // [최적화 2026-10-23] 솔버 공용 작업 영역 — 세 솔버가 밴드·스펙트럼 버퍼를 빌려 쓴다 (docs/Memory/plan.md)
+    mpmstd::equation::Workspace workspace(std::max({momentum::Solver::required_slot_elements(sub),
+                                                    scalar::Solver::required_slot_elements(sub),
+                                                    pressure::Solver::required_slot_elements(grid, sub)}));
+    momentum::Solver momentum_solver(sub, workspace);
+    scalar::Solver scalar_solver(sub, workspace);
+    pressure::Solver pressure_solver(grid, sub, workspace);
 
     // ── 냉시작 vs 재시작 — 상태장 5장 U V W T P (ghost 는 아래 sync 가 재구축) ──
     long restart_step = 0;
