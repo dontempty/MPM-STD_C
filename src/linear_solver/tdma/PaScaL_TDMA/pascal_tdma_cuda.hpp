@@ -31,6 +31,8 @@ inline std::size_t index2(const int sys, const int row, const int nsys) {
 void partition_1d(int start, int end, int nprocs, int rank, int& first, int& last);
 
 MpiBufferMode mpi_mode_from_env();
+// DeviceDirect 의 Alltoallv 에서 self 블록을 cudaMemcpyAsync 로 처리할지 (기본 true, MPMSTD_A2A_SELF=mpi 면 false)
+bool self_copy_from_env();
 
 struct SolveTimings {
     double total = 0.0;

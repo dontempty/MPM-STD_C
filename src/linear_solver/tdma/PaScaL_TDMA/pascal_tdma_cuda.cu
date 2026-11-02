@@ -432,7 +432,34 @@ void alltoallv_double(double* comm_seconds,
     const double _mpi_t0 = MPI_Wtime();
 
     int ierr = MPI_SUCCESS;
-    if (mode == MpiBufferMode::DeviceDirect) {
+    if (mode == MpiBufferMode::DeviceDirect && self_copy_from_env()) {
+        // [2026-11-02] self 블록은 디바이스 복사로, MPI 에는 self 개수 0 으로 — cray-mpich 9.0.1(GTL)은
+        // 노드당 랭크가 여럿이면 디바이스 버퍼 self 전송이 ~1 GB/s (Debug/bug.md). MPMSTD_A2A_SELF=mpi 면 아래 원래 경로.
+        int me = 0;
+        MPI_Comm_rank(comm, &me);
+        if (send_counts[me] != recv_counts[me]) {
+            throw std::runtime_error("pascal_tdma::alltoallv_double: self send/recv counts differ");
+        }
+        if (send_counts[me] > 0) {
+            PASCAL_TDMA_CUDA_CHECK(cudaMemcpyAsync(recv_dev + recv_displs[me],
+                                                   send_dev + send_displs[me],
+                                                   static_cast<std::size_t>(send_counts[me]) * sizeof(double),
+                                                   cudaMemcpyDeviceToDevice,
+                                                   stream));
+        }
+        std::vector<int> peer_send_counts(send_counts), peer_recv_counts(recv_counts);
+        peer_send_counts[me] = 0;
+        peer_recv_counts[me] = 0;
+        ierr = MPI_Alltoallv(send_dev,
+                             peer_send_counts.data(),
+                             send_displs.data(),
+                             MPI_DOUBLE,
+                             recv_dev,
+                             peer_recv_counts.data(),
+                             recv_displs.data(),
+                             MPI_DOUBLE,
+                             comm);
+    } else if (mode == MpiBufferMode::DeviceDirect) {
         ierr = MPI_Alltoallv(send_dev,
                              send_counts.data(),
                              send_displs.data(),
@@ -558,6 +585,14 @@ MpiBufferMode mpi_mode_from_env() {
         return MpiBufferMode::HostStaging;
     }
     return MpiBufferMode::DeviceDirect;
+}
+
+bool self_copy_from_env() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("MPMSTD_A2A_SELF");
+        return !(value != nullptr && std::strcmp(value, "mpi") == 0);
+    }();
+    return enabled;
 }
 
 PascalTdmaPlan::PascalTdmaPlan(PascalTdmaPlan&& other) noexcept {
