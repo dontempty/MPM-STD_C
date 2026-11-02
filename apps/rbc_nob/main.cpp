@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "boundary/wall.hpp"
-#include "common/phase_timer.hpp"
 #include "equation/momentum/rhs/rhs.hpp"
 #include "equation/momentum/solve.hpp"
 #include "equation/pressure/rhs/rhs.hpp"
@@ -133,7 +132,8 @@ int main(int argc, char** argv) {
     // 가변물성 경로(스킴) 때문인지 가르는 대조 런용 (2026-10-13). 상수물성 커널 자체는 rbc 앱.
     const bool constant_property_limit = s.physics.delta_temperature == 0;
     if (mpi.is_root()) {
-      std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
+      std::printf("# settings loaded from %s  (%d ranks, tdma=%s)\n", argv[1], mpi.world_size(),
+                  mpmstd::linear_solver::tdma_backend_name());
       std::fputs(rbc::format_settings(s).c_str(), stdout);
       std::filesystem::create_directories(s.output.stats_dir);
     }
@@ -291,103 +291,60 @@ int main(int argc, char** argv) {
         }
       }
     };
-    // ── 확장성 측정: main 호출 단위 구간 타이머 (docs/Scalability/plan.md §1·§2).
-    //    phase_timing_start_step > 0 이면 그 스텝부터 누적, 런 끝에 표 + CSV. 구간 이름은 plan.md §1 표가 정본.
-    //    분산 TDMA 의 MPI 시간은 플랜의 comm_seconds 훅(측정 오버헤드 없음)에서 읽되 워밍업 분을 뺀다.
-    mpmstd::common::PhaseTimer timer;
-    const long timing_start = s.output.phase_timing_start_step;
-    if (timing_start > 0) momentum_solver.timer = &timer;  // momentum_solve 안의 호출별 구간 (plan.md §1.1)
-    if (timing_start > 0) scalar_solver.timer = &timer;    // scalar_solve 안의 호출별 구간
-    if (timing_start > 0) pressure_solver.timer = &timer;  // pressure_solve 안의 단계별 구간
-    double tdma_base_scalar = 0, tdma_base_momentum = 0, tdma_base_pressure = 0;
+    // 구간 시간 측정(PhaseTimer)은 측정 전용 앱 apps/rbc_nob_scalability 로 분리했다 (2026-11-02) —
+    // 그 앱의 시간 루프는 이 루프와 같은 호출을 같은 순서로 부르고, 잡 스크립트의 게이트가 두 앱의
+    // 모니터 줄을 비교한다. 이 루프를 고치면 그쪽도 같이 고칠 것.
     rhs_dP.fill(0);   // ghost 는 여기서 한 번만 0 (전용 우변 빌드는 내부만 쓴다; 솔버도 내부만 읽는다)
     double wall_prev = MPI_Wtime();
     while (t < s.time.end_time && (s.time.max_step == 0 || step < s.time.max_step)) {
-      if (timing_start > 0 && !timer.active() && step >= timing_start) {
-        timer.activate();
-        tdma_base_scalar = scalar_solver.plan_z.comm_seconds;
-        tdma_base_momentum = momentum_solver.plan_z.comm_seconds;
-        tdma_base_pressure = pressure_solver.plan_z.comm_seconds;
-      }
-      timer.begin("step_total");
-      timer.begin("dt_cfl");
       real_t dt = mpmstd::time_integration::compute_cfl_dt(
           U, V, W, grid, sub, s.time.max_cfl, s.time.dt_max);
-      timer.end("dt_cfl");
       // ── 가변 점성 교차응력(명시 커플링) 한계 — time/viscous_time_step.hpp ──
-      timer.begin("dt_viscous");
       if (s.time.viscous_coupling_number > 0)
         dt = std::min(dt, mpmstd::time_integration::compute_viscous_coupling_dt(
                               properties.viscosity, grid, sub, Cmu,
                               static_cast<real_t>(s.time.viscous_coupling_number)).dt);
-      timer.end("dt_viscous");
 
       // ── 물성 갱신 (Tⁿ — ghost 포함; 참조 루프 자리) ──
-      timer.begin("properties_1");
       physics::update_properties(properties, T, model, sub);
-      timer.end("properties_1");
 
       // ── 에너지 (uⁿ, 가변-κ̂ 융합 ADI) → Tⁿ⁺¹ ──
-      timer.begin("scalar_solve");
       scalar::solve_variable_property(scalar_solver, grid, sub, T, U, V, W, properties, Ct, dt);
-      timer.end("scalar_solve");
-      timer.begin("sync_T");
       sync_temperature(T, sub);
-      timer.end("sync_T");
 
       // ── 운동량 예측자 (가변 μ̂; 부력은 Tⁿ⁺¹, 예측자는 −(1/ρ̂)∇Pⁿ) ──
-      timer.begin("momentum_rhs");
       // [최적화 2026-10-17] 전용 RHS 빌드 커널 — 8 패스 → 성분당 1 패스 (rhs/rhs.cu)
       momentum::build_variable_property_rhs(rhs_U, rhs_V, rhs_W, U, V, W, T, P,
                                             properties.viscosity, properties.inverse_density,
                                             grid, sub, Cmu, density_quadratic_ratio,
                                             s.physics.delta_temperature, dt);
-      timer.end("momentum_rhs");
-      timer.begin("momentum_solve");
       momentum::solve_variable_property(momentum_solver, grid, sub, rhs_U, rhs_V, rhs_W, U, V,
                                W, properties.viscosity, properties.inverse_density,
                                Cmu, dt);
-      timer.end("momentum_solve");
-      timer.begin("sync_UVW_1");
       sync_velocity(U, V, W, sub);
-      timer.end("sync_UVW_1");
 
       // ── 증분 투영 + NOB ExtraTerm/보정 (상수계수 Poisson 은 그대로) ──
       // ── 투영 직전 물성 재갱신 (Tⁿ⁺¹) — 참조 GPU 경로 1:1 (MPM-STD_C
       //    apps/rbc/main.cpp:307 "Update CPU properties for pressure"). 2026-10-06 적용
       //    (A/B: div max 4.9e-6 → 2.5e-13, θ_c 차 0.02%; docs/Debug/20261005_rbc_nob_dt60_div_spike.md).
-      timer.begin("properties_2");
       physics::update_properties(properties, T, model, sub);
-      timer.end("properties_2");
-      timer.begin("pressure_rhs");
       // [최적화 2026-10-18] 전용 Poisson 우변 빌드 — fill·∇·u*·ExtraTerm 3 패스 → 한 커널 (rhs/rhs.cu)
       pressure::build_variable_property_rhs(rhs_dP, U, V, W, pressure_predictor,
                                             properties.inverse_density, grid, sub, dt);
-      timer.end("pressure_rhs");
-      timer.begin("pressure_solve");
       pressure::solve(pressure_solver, grid, sub, rhs_dP, dP);
-      timer.end("pressure_solve");
-      timer.begin("pressure_correct");
       // [최적화 2026-10-18] 속도 보정 + P 누적(ghost 포함)을 한 커널로 (correction.cu)
       pressure::correct_velocity_and_accumulate_variable_property(
           U, V, W, P, dP, pressure_predictor, properties.inverse_density, grid, sub, dt);
-      timer.end("pressure_correct");
-      timer.begin("sync_UVW_2");
       sync_velocity(U, V, W, sub);
-      timer.end("sync_UVW_2");
 
       // 다음 스텝용 p̂ 2차 외삽 + ghost 동기화 (참조 §820-821 + ghostcell_update)
-      timer.begin("predictor");
       pressure::advance_pressure_predictor(pressure_predictor, previous_predictor, dP);
       sub.exchange_halo(pressure_predictor.data());
       mpmstd::boundary::fill_z_wall_zero_gradient(pressure_predictor, sub);
-      timer.end("predictor");
 
       // ── T 물리 클립 — **내부만** (ghost 까지 클램프하면 mirror 벽이 깨진다) ──
-      timer.begin("clip");
       mpmstd::equation::clip_interior(T, sub, kWallTemperatureTop,
                                       kWallTemperatureBottom);
-      timer.end("clip");
 
       t += dt;
       ++step;
@@ -404,7 +361,6 @@ int main(int argc, char** argv) {
       }
 
       if (step % s.output.monitor_interval == 0 || step == 1) {
-        timer.begin("monitor");
         const real_t div = mpmstd::post::max_divergence(U, V, W, grid, sub);
         const auto t_bar = mpmstd::post::plane_average(T, sub);
         const double theta_c_now = statistics.center_temperature(t_bar);
@@ -429,29 +385,12 @@ int main(int argc, char** argv) {
           std::fflush(stdout);
         }
         wall_prev = wall_now;
-        timer.end("monitor");
         if (!(div == div) || div > 1e3)
           throw std::runtime_error("divergence blew up — aborting");
       }
-      timer.end("step_total");
-      timer.count_step();
     }
 
-    if (timing_start > 0) {
-      timer.set_external("tdma_comm_scalar_z", scalar_solver.plan_z.comm_seconds - tdma_base_scalar);
-      timer.set_external("tdma_comm_momentum_z",
-                         momentum_solver.plan_z.comm_seconds - tdma_base_momentum);
-      timer.set_external("tdma_comm_pressure_z",
-                         pressure_solver.plan_z.comm_seconds - tdma_base_pressure);
-      timer.report(sub.topology().cart_comm(), s.output.stats_dir + "/phase_timing.csv",
-                   {{"nx", std::to_string(s.mesh.nx)}, {"ny", std::to_string(s.mesh.ny)},
-                    {"nz", std::to_string(s.mesh.nz)}, {"npz", std::to_string(s.process.npz)},
-                    {"ranks", std::to_string(mpi.world_size())},
-                    {"phase_timing_start_step", std::to_string(timing_start)},
-                    {"max_step", std::to_string(s.time.max_step)}});
-    }
-
-write_statistics(step, t);
+    write_statistics(step, t);
     if (s.output.checkpoint_interval > 0 && step % s.output.checkpoint_interval != 0)
       write_restart_checkpoint(step, t);  // 연장 런을 위한 마지막 상태
     if (mpi.is_root() && statistics.started())

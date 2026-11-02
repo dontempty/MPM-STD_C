@@ -1,0 +1,6 @@
+# channel_ftdma 산출물 (덱·스크립트·노트북·README 만 올린다)
+archive_*/
+input_*_run.ini
+stats_*/
+checkpoints*/
+log/

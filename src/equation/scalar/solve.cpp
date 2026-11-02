@@ -33,6 +33,14 @@ void solve_sweep(linear_solver::TdmaPlan& plan, real_t* A, real_t* B, real_t* C,
     linear_solver::solve_many(plan, A, B, C, D, nsys, nrow);
 }
 
+// Filtered 백엔드의 절단 허용오차 eps = dt·Δ̄² 를 세 축 플랜에 (PaScaL 빌드에서는 효과 없음; tdma.hpp).
+void set_sweep_tolerances(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
+                          const real_t dt) {
+  solver.plan_x.set_tolerance(linear_solver::truncation_tolerance(dt, grid.x.length, sub.x().n_global));
+  solver.plan_y.set_tolerance(linear_solver::truncation_tolerance(dt, grid.y.length, sub.y().n_global));
+  solver.plan_z.set_tolerance(linear_solver::truncation_tolerance(dt, grid.z.length, sub.z().n_global));
+}
+
 // 세 축의 벽 소유 + 닫기 계수 (주기 축은 소유 false — 기존 결과와 비트 동일)
 stencil::WallMask make_wall_mask(const Solver& solver, const parallel::Subdomain& sub) {
   stencil::WallMask m;
@@ -95,6 +103,7 @@ void solve_variable_property(Solver& solver, const grid::Grid& grid,
   real_t* D0 = solver.workspace->slot(3);   // D 핑퐁 (band_layout.hpp): x → D0, y 는 D0 를 읽어 D1, z 는 D1 을 읽어 D0
   real_t* D1 = solver.workspace->slot(4);
   const stencil::WallMask wall = make_wall_mask(solver, sub);
+  set_sweep_tolerances(solver, grid, sub, dt);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
   SCALAR_TIMER_BEGIN("scalar.build_x");
@@ -154,6 +163,7 @@ void solve_constant_property(Solver& solver, const grid::Grid& grid,
   real_t* D0 = solver.workspace->slot(3);
   real_t* D1 = solver.workspace->slot(4);
   const stencil::WallMask wall = make_wall_mask(solver, sub);
+  set_sweep_tolerances(solver, grid, sub, dt);
 
   // x 스윕 (첫 스윕, 융합 팩): 밴드 + D = dt·(R − ΣM·θⁿ + …)
   build_x_system_constant_property(A, B, C, D0, T.data(), U.data(), V.data(),

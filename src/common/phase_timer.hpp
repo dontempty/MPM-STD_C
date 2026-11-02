@@ -1,9 +1,9 @@
 #pragma once
 // main 호출 단위 구간 타이머 — 확장성 측정 (docs/Scalability/plan.md §2).
 //
-// 쓰는 법 (apps/rbc_nob/main.cpp 가 첫 소비자):
+// 쓰는 법 (apps/rbc_nob_scalability/main.cpp — rbc_nob 측정 전용 앱; 2026-11-02 까지는 rbc_nob 본 앱 안에 있었다):
 //   PhaseTimer timer;                       // 비활성으로 시작 — begin/end 는 no-op (워밍업)
-//   timer.activate();                       // 워밍업 끝 (phase_timing_start_step)
+//   timer.activate();                       // 워밍업 끝 ([timing] warmup_steps)
 //   timer.begin("momentum_solve"); …; timer.end("momentum_solve");
 //   timer.count_step();                     // 스텝 하나가 끝날 때
 //   timer.set_external("tdma_comm_momentum_z", seconds);   // 밖에서 누적된 값(TDMA 훅)도 같은 표에

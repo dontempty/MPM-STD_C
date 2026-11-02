@@ -24,6 +24,8 @@ apps/*/out_val_*/
 apps/*/plot/*.png
 apps/rbc_nob/scalability/log/
 apps/rbc_nob/scalability/out/
+apps/rbc_nob_scalability/results/
+apps/rbc_nob_scalability/plot/figures/
 apps/*/restart_val_*/
 apps/*/scale/log/
 apps/*/scale/out/

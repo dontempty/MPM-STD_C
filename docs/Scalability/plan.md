@@ -316,3 +316,6 @@ single-GPU(np 1)의 share 도 따로 본다: np 1 에서 이미 큰 구간은 �
 - **2026-10-18 (7, 마무리)**: plan_temp.md 후보 3 — scalar build_x/y 2-D 블록 매핑(비트 동일). np 1 만 측정(`v100sb`): scalar_solve 16.0 → 14.3, 스텝 84.2 → 81.4.
   GPU 배정이 안 돼 여기서 캠페인 종료(사용자). **최종: V100 256³ np 1 198 → 81.4 ms (×2.43)**, np 8 strong 41 → 28, weak 210 → 105, 512³ np 2 582 → 419.
   남은 후보(plan_temp.md): 조립 D 복사 제거·dt 리덕션 융합(각 <1 %), properties_1 삭제, 커플링·momentum_rhs(ncu), PaScaL 스크래치 출력 — 3차원 분할 뒤 재검토.
+- **2026-11-02**: 측정 코드 분리 + KISTI-6(GH200, natStr, srun) 이관 — 전용 앱 `apps/rbc_nob_scalability/`(main·덱 생성·잡·요약·게이트). `apps/rbc_nob/main.cpp` 의
+  구간 타이머와 공용 설정의 `[output] phase_timing_start_step` 을 빼고 이 앱의 `[timing] warmup_steps` 로 옮겼다(§2.1·§4.1 의 키 이름은 옛 것). 잡마다 rbc_nob 과
+  모니터 줄을 비교하는 게이트(비트 동일)를 먼저 돈다. 다노드가 배정되므로 np 64 까지(노드당 4). 사용법 `Build_KISTI6.md`. 풀이 안 단계 타이머 분리는 다음 단계.

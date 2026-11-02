@@ -54,6 +54,14 @@ void solve_sweep(const Solver& solver, linear_solver::TdmaPlan& plan, real_t* A,
   linear_solver::solve_many(plan, A, B, C, D, nsys, nrow);
 }
 
+// Filtered 백엔드의 절단 허용오차 eps = dt·Δ̄² 를 세 축 플랜에 (PaScaL 빌드에서는 효과 없음; tdma.hpp).
+void set_sweep_tolerances(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& sub,
+                          const real_t dt) {
+  solver.plan_x.set_tolerance(linear_solver::truncation_tolerance(dt, grid.x.length, sub.x().n_global));
+  solver.plan_y.set_tolerance(linear_solver::truncation_tolerance(dt, grid.y.length, sub.y().n_global));
+  solver.plan_z.set_tolerance(linear_solver::truncation_tolerance(dt, grid.z.length, sub.z().n_global));
+}
+
 // 증분 δq 의 벽 ghost (halo 교환 뒤): 법선 성분은 벽면 = 0; 접선 성분은 닫기 계수와
 // 짝 — 0: ghost = 0, −1: 거울(ghost = −δq₁), +1: 영구배(ghost = δq₁).
 void close_delta_wall_ghosts(const Solver& solver, field::Field& delta,
@@ -90,6 +98,7 @@ void adi_sweeps_variable_property(Solver& solver, const grid::Grid& grid,
   // D 핑퐁: x → D0, y 는 D0 를 읽어 D1, z 는 D1 을 읽어 D0 (band_layout.hpp).
   real_t* D0 = solver.workspace->slot(3);
   real_t* D1 = solver.workspace->slot(4);
+  set_sweep_tolerances(solver, grid, sub, dt);
   // 구간 이름 "momentum.dU.build_x" 등 (own_axis 0/1/2 = dU/dV/dW)
   const std::string prefix =
       std::string("momentum.") + (own_axis == 0 ? "dU" : own_axis == 1 ? "dV" : "dW") + ".";
@@ -144,6 +153,7 @@ void adi_sweeps_constant(Solver& solver, const grid::Grid& grid,
   // [최적화 2026-10-18] 가변물성 판과 같은 D 밴드 핑퐁(scatter_x/y 없음) + 타일 scatter_z(+ q += δ)
   real_t* D0 = solver.workspace->slot(3);
   real_t* D1 = solver.workspace->slot(4);
+  set_sweep_tolerances(solver, grid, sub, dt);
 
   build_x_sweep_constant_property(A, B, C, D0, rhs_data, q.data(), U.data(), grid, sub,
                                   own_axis, viscosity, dt);

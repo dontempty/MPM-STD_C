@@ -29,6 +29,17 @@ else
 BUILD ?= build
 endif
 
+# TDMA 백엔드 (2026-10-28): 기본 = PaScaL. `make TDMA=filtered` → 운동량·스칼라 ADI 가
+# Filtered_TDMA (압력 z 는 항상 PaScaL — src/linear_solver/tdma/tdma.hpp). 같은 .o 경로에
+# 다른 매크로의 오브젝트가 섞이면 안 되므로 빌드 디렉터리를 _filtered 로 분리한다
+# (build_filtered/, build_gpu_filtered/). 다른 값은 거부한다 (오타가 조용히 PaScaL 이 되지 않게).
+ifeq ($(TDMA),filtered)
+override BUILD := $(BUILD)_filtered
+INC += -DMPMSTD_TDMA_FILTERED   # INC 는 모든 컴파일 규칙(_scale 포함)이 쓴다
+else ifneq ($(TDMA),)
+$(error TDMA=$(TDMA) — 'filtered' 만 받는다 (기본 PaScaL 은 TDMA 를 비운다))
+endif
+
 # CPU 빌드 = 모든 .cpp. GPU 빌드(GPU=1) = "같은 이름의 .cu 쌍둥이가 있는 .cpp 는
 # .cu 로 대체"하고 나머지 .cpp 는 그대로 — 같은 헤더 API 를 백엔드별 TU 가
 # 구현한다 (수식은 *_stencil.hpp 공유, 분기 스위치는 MPMSTD_GPU 하나 — D4·D5).

@@ -234,7 +234,8 @@ int main(int argc, char** argv) {
     // 그때 벽 Nu 진단은 의미 없다)
 
     if (mpi.is_root()) {
-      std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
+      std::printf("# settings loaded from %s  (%d ranks, tdma=%s)\n", argv[1], mpi.world_size(),
+                  mpmstd::linear_solver::tdma_backend_name());
       std::fputs(rbc::format_settings(s).c_str(), stdout);
       std::printf("# boundary condition table:\n%s",
                   boundary::format_boundary_condition(bc).c_str());

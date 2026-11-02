@@ -73,7 +73,7 @@ struct Solver {
   int mode_offset = 0;    // 그 첫 모드 번호 (λ_x 오프셋·(0,0) 핀 판정)
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
-  linear_solver::TdmaPlan plan_z;
+  linear_solver::ExactTdmaPlan plan_z;  // 백엔드와 무관하게 PaScaL 정확해 — (0,0) 모드는 대각지배가 아니다 (tdma.hpp 2)
   // [최적화 2026-10-23] 밴드 a·b·c(D 는 spectrum_xy)·라인·스펙트럼·cuFFT 작업 영역은 공용 Workspace 슬롯을 가리키는
   //   포인터다 (docs/Memory/plan.md §2.3: 0 = real_lines ↔ band_c, 1 = spectrum_x, 2 = spectrum_xy, 3 = band_a ↔ fft_work,
   //   4 = band_b; ↔ = 수명이 겹치지 않는 쌍). 주소는 Workspace 생성 뒤 고정 — FFTW 플랜이 이 주소에 묶인다.

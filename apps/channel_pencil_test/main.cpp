@@ -195,7 +195,8 @@ int main(int argc, char** argv) {
     const channel::Settings s = channel::load_settings(argv[1]);
     const bool mirror_wall = s.boundary.velocity_ghost == "mirror";
     if (mpi.is_root()) {
-      std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
+      std::printf("# settings loaded from %s  (%d ranks, tdma=%s)\n", argv[1], mpi.world_size(),
+                  mpmstd::linear_solver::tdma_backend_name());
       std::fputs(channel::format_settings(s).c_str(), stdout);
       std::filesystem::create_directories(s.output.stats_dir);
     }

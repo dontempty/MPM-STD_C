@@ -107,7 +107,8 @@ int main(int argc, char** argv) {
     const boundary_layer::Settings s = boundary_layer::load_settings(argv[1]);
     const BoundaryCondition& bc = s.boundary.condition;
     if (mpi.is_root()) {
-      std::printf("# settings loaded from %s  (%d ranks)\n", argv[1], mpi.world_size());
+      std::printf("# settings loaded from %s  (%d ranks, tdma=%s)\n", argv[1], mpi.world_size(),
+                  mpmstd::linear_solver::tdma_backend_name());
       std::fputs(boundary_layer::format_settings(s).c_str(), stdout);
       std::printf("# boundary condition table:\n%s", boundary::format_boundary_condition(bc).c_str());
       std::filesystem::create_directories(s.output.stats_dir);
