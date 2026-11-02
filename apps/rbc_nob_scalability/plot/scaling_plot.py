@@ -388,7 +388,8 @@ def loss_chart(data, mode, *, title, fname=None):
     ax.axvline(0, color=INK2, lw=0.8, zorder=2)
     ax.grid(axis="y", visible=False)
     ax.set_xlabel("loss at np = %d  [ms/step]   (%s)" % (
-        top, "T(np) − T(1)/np" if mode == "strong" else "T(np) − T(1)"))
+        top, "T(np) − T(%d)·%d/np" % (list(data)[0], list(data)[0]) if mode == "strong"
+        else "T(np) − T(%d)" % list(data)[0]))
     ax.set_title(title, loc="left")
     ax.annotate("step total loss %.2f ms/step" % total_loss, xy=(1, 0), xycoords="axes fraction",
                 xytext=(0, -34), textcoords="offset points", ha="right", va="top", fontsize=9, color=INK2)

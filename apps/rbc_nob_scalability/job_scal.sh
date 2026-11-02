@@ -29,6 +29,7 @@
 #      GATE        1            0 이면 rbc_nob 대조 게이트를 건너뛴다
 #      RUN_TIMEOUT 900          런당 상한(초) — 하나가 걸려도 잡 전체를 태우지 않는다
 #      RESULTS     results/     결과 최상위 폴더 (시험 런은 RESULTS=$PWD/results/_test)
+#      DECKS       decks/       덱 최상위 폴더 — <study>/ 와 gate/ 를 찾는다 (gen_decks.py --out 으로 만든 다른 덱 세트)
 #
 #  결과: ${RESULTS}/<study>/<study>_np<N>_n<노드>x<rpn>_r<k>_j<job>.{csv,log}   (CSV = 구간 표, log = 런 출력)
 #        ${RESULTS}/env/environment_j<job>.txt                    (git·모듈·GPU·노드)
@@ -48,6 +49,7 @@ REPS=${REPS:-2}
 GATE=${GATE:-1}
 RUN_TIMEOUT=${RUN_TIMEOUT:-900}
 RESULTS=${RESULTS:-${APP}/results}
+DECKS=${DECKS:-${APP}/decks}
 
 BIN=${REPO}/build_gpu/bin               # PaScaL 빌드 (make GPU=1 …; TDMA=filtered 빌드는 build_gpu_filtered/ 라 섞이지 않는다)
 GPN=4                                   # GH200 노드당 GPU
@@ -97,7 +99,7 @@ done
 for st in ${STUDIES}; do
     for e in ${NP_LIST}; do
         np=$(entry_np "${e}")
-        f=${APP}/decks/${st}/${st}_np${np}.ini
+        f=${DECKS}/${st}/${st}_np${np}.ini
         [ -f "${f}" ] || echo "WARN: 덱 없음 ${f} — 이 조합은 건너뛴다 (gen_decks.py 가 만들지 않은 조합일 수 있다)"
     done
 done
@@ -107,7 +109,7 @@ done
 {
     echo "# job=${JOB} nodes=${NNODES} nodelist=${SLURM_JOB_NODELIST:-?} date=$(date -Is)"
     echo "# git=$(git -C "${REPO}" rev-parse --short HEAD 2>/dev/null) dirty_files=$(git -C "${REPO}" status --porcelain 2>/dev/null | wc -l)"
-    echo "# MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED:-} PASCAL_TDMA_MPI_MODE=${PASCAL_TDMA_MPI_MODE:-device}"
+    echo "# MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED:-} PASCAL_TDMA_MPI_MODE=${PASCAL_TDMA_MPI_MODE:-device} MPMSTD_A2A_SELF=${MPMSTD_A2A_SELF:-copy}"
     module -t list 2>&1 | tr '\n' ' '; echo
     nvidia-smi --query-gpu=name,memory.total,driver_version,clocks.max.sm --format=csv
     nvidia-smi topo -m 2>/dev/null | head -8
@@ -131,10 +133,10 @@ if [ "${GATE}" != 0 ]; then
     echo "==== 게이트 np=${NP_TOP} ($(entry_nodes "${TOP}")노드 x $(entry_tpn "${TOP}")): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ===="
     ref=${LOGDIR}/gate_ref_np${NP_TOP}.log new=${LOGDIR}/gate_np${NP_TOP}.log
     timeout -k 10 300 srun $(srun_args "${TOP}") "${BIN}/rbc_nob" \
-        "${APP}/decks/gate/gate_ref_np${NP_TOP}.ini" > "${ref}" 2>&1
+        "${DECKS}/gate/gate_ref_np${NP_TOP}.ini" > "${ref}" 2>&1
     rc_ref=$?
     timeout -k 10 300 srun $(srun_args "${TOP}") "${BIN}/rbc_nob_scalability" \
-        "${APP}/decks/gate/gate_np${NP_TOP}.ini" > "${new}" 2>&1
+        "${DECKS}/gate/gate_np${NP_TOP}.ini" > "${new}" 2>&1
     rc_new=$?
     if [ ${rc_ref} -ne 0 ] || [ ${rc_new} -ne 0 ]; then
         echo "  실패 rc(rbc_nob)=${rc_ref} rc(scalability)=${rc_new} — 중단"
@@ -153,7 +155,7 @@ NRUN=0; NBAD=0; BAD=""
 run() {   # run <study> <NP_LIST 항목> <rep>
     local st=$1 e=$2 k=$3
     local np=$(entry_np "${e}")
-    local deck=${APP}/decks/${st}/${st}_np${np}.ini
+    local deck=${DECKS}/${st}/${st}_np${np}.ini
     [ -f "${deck}" ] || return 0
     local tag=${st}_np${np}_n$(entry_nodes "${e}")x$(entry_tpn "${e}")_r${k}_j${JOB}
     local out=${RESULTS}/${st}

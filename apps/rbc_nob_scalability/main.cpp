@@ -234,6 +234,14 @@ int main(int argc, char** argv) {
         {"tdma_comm_momentum_z", &momentum_solver.plan_z.comm_seconds, 0},
         {"tdma_comm_pressure_z", &pressure_solver.plan_z.comm_seconds, 0},
     };
+    // 압력 펜슬 전치 4 종의 MPI(Alltoallv)만 — 이름에 '.' 을 넣어 top-level 구간 합에서 빠지게 (pressure_solve 안의 몫)
+    if (pressure_solver.pencil) {
+      auto& L = *pressure_solver.pencil;
+      comm_probes.push_back({"pressure.comm.block_to_lines", &L.block_to_lines.comm_seconds, 0});
+      comm_probes.push_back({"pressure.comm.x_to_y", &L.x_to_y_spectrum.comm_seconds, 0});
+      comm_probes.push_back({"pressure.comm.y_to_x", &L.y_to_x_spectrum.comm_seconds, 0});
+      comm_probes.push_back({"pressure.comm.lines_to_block", &L.lines_to_block.comm_seconds, 0});
+    }
 
     real_t t = 0;
     long step = 0;

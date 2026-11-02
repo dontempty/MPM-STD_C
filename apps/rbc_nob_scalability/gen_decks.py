@@ -38,23 +38,24 @@ perturb = 0.05
 """
 
 
-def split(np_, decomp):
-    """np → (npx, npy, npz)"""
+def split(np_, decomp, order="xyz"):
+    """np → (npx, npy, npz). pencil 은 order 의 축 순서로 2 씩 나눈다 (zyx → 1x1x2, 1x2x2, 2x2x2, 2x2x4, 2x4x4, 4x4x4)."""
     if decomp == "slab":
         return (1, 1, np_)
     if np_ & (np_ - 1):
         raise SystemExit(f"pencil 분할은 np = 2^k 만 받는다 (np {np_})")
     p = [1, 1, 1]
-    axis = 0
+    axes = ["xyz".index(c) for c in order]
+    k = 0
     while p[0] * p[1] * p[2] < np_:
-        p[axis] *= 2
-        axis = (axis + 1) % 3
+        p[axes[k]] *= 2
+        k = (k + 1) % 3
     return tuple(p)
 
 
-def case(mode, n, decomp, np_):
+def case(mode, n, decomp, np_, order="xyz"):
     """(전역 격자, 도메인, 프로세스 격자) 또는 만들 수 없으면 (None, 이유)"""
-    procs = split(np_, decomp)
+    procs = split(np_, decomp, order)
     if mode == "strong":
         mesh = (n, n, n)
         length = BASE_L
@@ -117,7 +118,14 @@ def main():
     ap.add_argument("--steps", type=int, default=200, help="max_step (기본 200)")
     ap.add_argument("--warmup", type=int, default=50, help="timing.warmup_steps (기본 50 → 150 스텝 누적)")
     ap.add_argument("--monitor", type=int, default=50, help="output.monitor_interval")
+    ap.add_argument("--solver-phases", action="store_true",
+                    help="[timing] solver_phases = true (풀이 안의 호출별 구간까지; 경계 동기화가 늘어 느려진다)")
+    ap.add_argument("--pencil-order", default="xyz", help="pencil 을 나누는 축 순서 (기본 xyz, 예: zyx)")
+    ap.add_argument("--out", default=os.path.join(HERE, "decks"),
+                    help="덱 최상위 폴더 (기본 decks/; 다르면 job_scal.sh 에 DECKS= 로 넘긴다)")
     a = ap.parse_args()
+    if sorted(a.pencil_order) != ["x", "y", "z"]:
+        raise SystemExit(f"--pencil-order 는 x·y·z 를 한 번씩 (받은 값 {a.pencil_order})")
 
     n_written = 0
     for n in a.sizes:
@@ -125,7 +133,7 @@ def main():
             for decomp in a.decomps:
                 study = f"{mode}_{n}_{decomp}"
                 for np_ in a.nps:
-                    built, why = case(mode, n, decomp, np_)
+                    built, why = case(mode, n, decomp, np_, a.pencil_order)
                     if built is None:
                         print(f"  skip {study} np {np_}: {why}")
                         continue
@@ -135,24 +143,25 @@ def main():
                     text = deck_text(title, mesh, length, procs,
                                      f"max_step = {a.steps}",
                                      f"monitor_interval = {a.monitor}",
-                                     f"\n[timing]\nwarmup_steps = {a.warmup}\n")
-                    write(os.path.join(HERE, "decks", study, f"{study}_np{np_}.ini"), text)
+                                     f"\n[timing]\nwarmup_steps = {a.warmup}\n"
+                                     + ("solver_phases = true\n" if a.solver_phases else ""))
+                    write(os.path.join(a.out, study, f"{study}_np{np_}.ini"), text)
                     n_written += 1
 
     # 게이트 짝: 작은 slab 격자(64×64×16·np)를 60 스텝 — 노드 간 통신까지 거친다.
     for np_ in a.nps:
         mesh, length, procs = (64, 64, 16 * np_), BASE_L, (1, 1, np_)
         title = f"게이트 — 이 앱 (rbc_nob 대조), 64x64x{mesh[2]}, npz {np_}"
-        write(os.path.join(HERE, "decks", "gate", f"gate_np{np_}.ini"),
+        write(os.path.join(a.out, "gate", f"gate_np{np_}.ini"),
               deck_text(title, mesh, length, procs, "max_step = 60", "monitor_interval = 10",
                         "\n[timing]\nwarmup_steps = 10\n"))
         title = f"게이트 — rbc_nob 대조 런 (통계·체크포인트 끔), 64x64x{mesh[2]}, npz {np_}"
-        write(os.path.join(HERE, "decks", "gate", f"gate_ref_np{np_}.ini"),
+        write(os.path.join(a.out, "gate", f"gate_ref_np{np_}.ini"),
               deck_text(title, mesh, length, procs, "end_time = 1.0e9\nmax_step = 60",
                         'monitor_interval = 10\nstats_start_time = 1.0e9\ncheckpoint_interval = 0\n'
                         'stats_dir = "../../log/gate_stats/"'))
         n_written += 2
-    print(f"{n_written} decks → {os.path.join(HERE, 'decks')}")
+    print(f"{n_written} decks → {a.out}")
 
 
 if __name__ == "__main__":
