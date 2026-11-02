@@ -75,6 +75,11 @@ PencilLayout::PencilLayout(const parallel::Subdomain& sub, const int n_modes,
   const int bx0 = block_x_offset[rank], bxn = block_x_count[rank];
   const int by0 = block_y_offset[rank], byn = block_y_count[rank];
   const int line = mirrored_lines ? 2 * n_x : n_x;
+  halo = h;
+  ny_total = nyt;
+  nz_total = nzt;
+  this->line = line;
+  mirrored = mirrored_lines;
   const auto field_at = [&](int x, int y, int k) {  // 내 블록의 전역 (x, y) → 장 배열 번호
     return static_cast<int>((static_cast<std::size_t>(x - bx0 + h) * nyt + (y - by0 + h)) * nzt + (k + h));
   };
@@ -164,8 +169,14 @@ PencilLayout::PencilLayout(const parallel::Subdomain& sub, const int n_modes,
     }
     finish_counts(e, send_n, recv_n);
   }
-  for (PencilExchange* e : {&block_to_lines, &lines_to_block, &x_to_y_spectrum, &y_to_x_spectrum})
+  block_to_lines.kind = PencilKind::block_to_lines;
+  lines_to_block.kind = PencilKind::lines_to_block;
+  x_to_y_spectrum.kind = PencilKind::x_to_y;
+  y_to_x_spectrum.kind = PencilKind::y_to_x;
+  for (PencilExchange* e : {&block_to_lines, &lines_to_block, &x_to_y_spectrum, &y_to_x_spectrum}) {
+    e->layout = this;
     prepare_exchange(*e);
+  }
 }
 
 PencilLayout::~PencilLayout() {

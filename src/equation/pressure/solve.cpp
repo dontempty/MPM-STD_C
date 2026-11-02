@@ -333,26 +333,39 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     const bool has_mean_mode = solver.mode_offset == 0;  // 로컬 모드 0 = 전역 (0,0) 모드인 랭크
     PRESSURE_TIMER_BEGIN("pressure.pencil_forward");
     // ① 블록 → x 라인 (주기: 길이 Nx / 벽: 거울 2Nx) → x 변환. 전치는 백엔드 버퍼끼리 (GPU↔GPU)
+    //    (세부 타이머 pressure.pencil.* 는 측정 전용 — solver_phases 가 꺼져 있으면 no-op)
+    PRESSURE_TIMER_BEGIN("pressure.pencil.block_to_lines");
     run_exchange(L.block_to_lines, rhs.data(), solver.real_lines, L.comm, L.host_staging);
+    PRESSURE_TIMER_END("pressure.pencil.block_to_lines");
+    PRESSURE_TIMER_BEGIN("pressure.pencil.fft_x_fwd");
     run_forward_x(solver);
     if (solver.x_neumann)
       dct_twiddle_forward(solver.spectrum_x, solver.mirror_spectrum.data(),
                           ny_lines * nz_local, n_x);
+    PRESSURE_TIMER_END("pressure.pencil.fft_x_fwd");
     // ② x-펜슬 스펙트럼 → y-펜슬 → y 변환
+    PRESSURE_TIMER_BEGIN("pressure.pencil.x_to_y");
     run_exchange(L.x_to_y_spectrum, solver.spectrum_x, solver.spectrum_xy, L.comm,
                  L.host_staging);
+    PRESSURE_TIMER_END("pressure.pencil.x_to_y");
+    PRESSURE_TIMER_BEGIN("pressure.pencil.fft_y_fwd");
     run_forward_y(solver);
+    PRESSURE_TIMER_END("pressure.pencil.fft_y_fwd");
     PRESSURE_TIMER_END("pressure.pencil_forward");
     // z 삼중대각 — spectrum_xy 를 D 로 바로 (로컬 x 모드 조각, λ_x 오프셋). (0,0) 핀은 그 모드를 가진 랭크만
     PRESSURE_TIMER_BEGIN("pressure.tdma_z");
+    PRESSURE_TIMER_BEGIN("pressure.pencil.build_z");
     if (owns_bottom && has_mean_mode) pin_mean_row(solver.spectrum_xy);
     build_z_modes_system(solver.band_a, solver.band_b,
                          solver.band_c, grid, sub,
                          solver.lambda_x.data() + solver.mode_offset, nml,
                          solver.lambda_y.data(), n_y, has_mean_mode);
+    PRESSURE_TIMER_END("pressure.pencil.build_z");
+    PRESSURE_TIMER_BEGIN("pressure.pencil.solve_z");
     linear_solver::solve_many(solver.plan_z, solver.band_a,
                               solver.band_b, solver.band_c,
                               solver.spectrum_xy, nsys, nz_local);
+    PRESSURE_TIMER_END("pressure.pencil.solve_z");
     PRESSURE_TIMER_END("pressure.tdma_z");
     // 전역 평균(게이지) — DC 모드는 모드 오프셋 0 인 랭크(z 블록마다 하나)에만 있다
     PRESSURE_TIMER_BEGIN("pressure.mean_remove");
@@ -364,17 +377,25 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
     const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
     PRESSURE_TIMER_END("pressure.mean_remove");
     PRESSURE_TIMER_BEGIN("pressure.pencil_backward");
+    PRESSURE_TIMER_BEGIN("pressure.pencil.fft_y_bwd");
     run_backward_y(solver);
+    PRESSURE_TIMER_END("pressure.pencil.fft_y_bwd");
     // ②⁻¹ y-펜슬 → x-펜슬 → 역 x 변환
+    PRESSURE_TIMER_BEGIN("pressure.pencil.y_to_x");
     run_exchange(L.y_to_x_spectrum, solver.spectrum_xy, solver.spectrum_x, L.comm,
                  L.host_staging);
+    PRESSURE_TIMER_END("pressure.pencil.y_to_x");
+    PRESSURE_TIMER_BEGIN("pressure.pencil.fft_x_bwd");
     if (solver.x_neumann)
       dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x,
                            ny_lines * nz_local, n_x);
     run_backward_x(solver);
+    PRESSURE_TIMER_END("pressure.pencil.fft_x_bwd");
     // ①⁻¹ x 라인 → 블록 (정규화·평균 빼기를 팩 커널에서; 장의 ghost 는 건드리지 않는다)
+    PRESSURE_TIMER_BEGIN("pressure.pencil.lines_to_block");
     run_exchange(L.lines_to_block, solver.real_lines, phi.data(), L.comm, L.host_staging,
                  scale, mean);
+    PRESSURE_TIMER_END("pressure.pencil.lines_to_block");
     PRESSURE_TIMER_END("pressure.pencil_backward");
   }
 

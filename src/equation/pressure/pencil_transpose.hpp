@@ -31,12 +31,21 @@
 
 namespace mpmstd::equation::pressure {
 
+struct PencilLayout;
+
+// 네 전치의 종류 — GPU 백엔드가 인덱스 표 대신 구조화 커널(타일 전치 + 행 복사)을 고르는 데 쓴다 (2026-11-02).
+// generic 이면 언제나 인덱스 표 경로.
+enum class PencilKind { generic, block_to_lines, lines_to_block, x_to_y, y_to_x };
+
 // 한 방향 전치 하나: 송신 원소 n 은 src[send_index[n]] (× scale − subtract), 수신 원소 n 은
 // dst[recv_index[n]] (거울이면 dst[recv_mirror[n]] 에도). width = 원소당 double 수 (실수 1 / 복소 2).
 struct PencilExchange {
   int width = 1;
+  PencilKind kind = PencilKind::generic;
+  const PencilLayout* layout = nullptr;  // kind != generic 일 때 구조화 커널이 읽는 차원
   std::vector<int> send_counts, send_displs, recv_counts, recv_displs;  // double 단위
   std::vector<int> send_index, recv_index, recv_mirror;                 // 원소 단위 (호스트 정본)
+  double comm_seconds = 0;  // MPI_Alltoallv 만의 누적 초 (팩·언팩 제외) — 측정 앱의 훅 (PaScaL plan.comm_seconds 와 같은 역할)
   // 백엔드 자원 (pencil_exchange.{cpp,cu}): 인덱스 표의 백엔드 사본 + 송·수신 버퍼
   int* device_send_index = nullptr;
   int* device_recv_index = nullptr;
@@ -53,6 +62,9 @@ struct PencilLayout {
   int size = 1, rank = 0;
   int n_x = 0, n_y = 0, nz_local = 0, n_mode_x = 0;
   bool host_staging = false;      // PASCAL_TDMA_MPI_MODE=host
+  // 장 배열 차원(ghost 포함)과 x 라인 길이 — 구조화 커널용
+  int halo = 0, ny_total = 0, nz_total = 0, line = 0;
+  bool mirrored = false;
   // 그룹 랭크 r 의 블록 범위 (전역 내부 번호)
   std::vector<int> block_x_offset, block_x_count, block_y_offset, block_y_count;
   // x-펜슬 y 조각, y-펜슬 x 모드 조각

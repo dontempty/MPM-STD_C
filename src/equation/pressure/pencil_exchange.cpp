@@ -29,9 +29,11 @@ void run_exchange(PencilExchange& e, const real_t* src, real_t* dst, MPI_Comm co
   for (std::size_t n = 0; n < n_send; ++n)
     for (int c = 0; c < w; ++c)
       send[n * w + c] = src[static_cast<std::size_t>(e.send_index[n]) * w + c] * scale - subtract;
-  if (MPI_Alltoallv(send, e.send_counts.data(), e.send_displs.data(), MPI_DOUBLE, recv,
-                    e.recv_counts.data(), e.recv_displs.data(), MPI_DOUBLE, comm) != MPI_SUCCESS)
-    throw std::runtime_error("pressure pencil: MPI_Alltoallv failed");
+  const double mpi_t0 = MPI_Wtime();
+  const int status = MPI_Alltoallv(send, e.send_counts.data(), e.send_displs.data(), MPI_DOUBLE, recv,
+                                   e.recv_counts.data(), e.recv_displs.data(), MPI_DOUBLE, comm);
+  e.comm_seconds += MPI_Wtime() - mpi_t0;
+  if (status != MPI_SUCCESS) throw std::runtime_error("pressure pencil: MPI_Alltoallv failed");
   for (std::size_t n = 0; n < n_recv; ++n)
     for (int c = 0; c < w; ++c) {
       dst[static_cast<std::size_t>(e.recv_index[n]) * w + c] = recv[n * w + c];
