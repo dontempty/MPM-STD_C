@@ -90,12 +90,27 @@ void run_backward_y(Solver& s) { fftw_execute(s.backward_y); }
 }  // namespace
 
 std::size_t Solver::required_slot_elements(const grid::Grid&, const parallel::Subdomain& sub) {
-  // 슬랩 상한 (펜슬은 y 조각·모드 조각이라 더 작다): real_lines = ny·nz_l·line_x, 스펙트럼·밴드 = 2·n_mode_x·ny·nz_l
-  const bool neumann = !sub.topology().x().periodic;
-  const std::size_t nx = sub.x().n_global, ny = sub.y().n_global, nzl = sub.z().n_local;
-  const std::size_t n_mode_x = neumann ? nx : nx / 2 + 1;
+  // 생성자의 ws.require 와 같은 식 — 펜슬이면 이 랭크의 y 조각·모드 조각 (PencilLayout 과 같은
+  // split_evenly, 그룹 랭크 = y.rank·npx + x.rank), 슬랩(P = 1)이면 전역 ny·n_mode_x 그대로.
+  // [2026-11-02] 전에는 펜슬도 슬랩 상한(전역 nx·ny·nz_l)을 써서 슬롯이 P = npx·npy 배로 컸다
+  //   (4x4x4, 랭크당 512³ → 5 슬롯 86 GB, GH200 OOM).
+  const auto& topo = sub.topology();
+  const bool neumann = !topo.x().periodic;
+  const int nx = sub.x().n_global, ny = sub.y().n_global;
+  const std::size_t nzl = sub.z().n_local;
+  const int n_mode_x = neumann ? nx : nx / 2 + 1;
   const std::size_t line_x = neumann ? 2 * nx : nx;
-  return std::max(ny * nzl * line_x, 2 * n_mode_x * ny * nzl);
+  const int groups = topo.x().nprocs * topo.y().nprocs;
+  const int group_rank = topo.y().rank * topo.x().nprocs + topo.x().rank;
+  std::size_t ny_lines = ny, n_mode_local = n_mode_x;
+  if (groups > 1 && ny >= groups && n_mode_x >= groups) {  // 조건 위반은 PencilLayout 이 알린다
+    ny_lines = parallel::split_evenly(ny, groups, group_rank).count;
+    n_mode_local = parallel::split_evenly(n_mode_x, groups, group_rank).count;
+  }
+  const std::size_t n_lines = ny_lines * nzl * line_x;
+  const std::size_t n_sx = 2 * ny_lines * nzl * n_mode_x;
+  const std::size_t n_sxy = 2 * nzl * n_mode_local * ny;  // == n_band
+  return std::max({n_lines, n_sx, n_sxy});
 }
 
 Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub, Workspace& ws) {
