@@ -4,6 +4,8 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -89,6 +91,15 @@ void run_backward_y(Solver& s) { fftw_execute(s.backward_y); }
 
 }  // namespace
 
+// 펜슬 분할(npx·npy > 1)에서 평면 묶음 경로를 쓸지 — 기본 예, MPMSTD_PRESSURE_PENCIL=transpose4 면 전치 4 회 경로.
+// 평면 경로가 못 쓰이는 분할(그룹 랭크당 z 행 < 2)도 전치 4 회로. 집합 호출 (PlaneLayout::usable 이 Allreduce).
+bool use_plane_path(const parallel::Subdomain& sub) {
+  if (sub.topology().x().nprocs * sub.topology().y().nprocs <= 1) return false;
+  const char* mode = std::getenv("MPMSTD_PRESSURE_PENCIL");
+  if (mode != nullptr && std::strcmp(mode, "transpose4") == 0) return false;
+  return PlaneLayout::usable(sub);
+}
+
 std::size_t Solver::required_slot_elements(const grid::Grid&, const parallel::Subdomain& sub) {
   // 생성자의 ws.require 와 같은 식 — 펜슬이면 이 랭크의 y 조각·모드 조각 (PencilLayout 과 같은
   // split_evenly, 그룹 랭크 = y.rank·npx + x.rank), 슬랩(P = 1)이면 전역 ny·n_mode_x 그대로.
@@ -103,6 +114,10 @@ std::size_t Solver::required_slot_elements(const grid::Grid&, const parallel::Su
   const int groups = topo.x().nprocs * topo.y().nprocs;
   const int group_rank = topo.y().rank * topo.x().nprocs + topo.x().rank;
   std::size_t ny_lines = ny, n_mode_local = n_mode_x;
+  if (use_plane_path(sub)) {   // 평면 묶음: 전역 ny × 모든 모드 × 내 평면 (PlaneLayout 과 같은 split_evenly)
+    const std::size_t nzp = parallel::split_evenly(sub.z().n_local, groups, group_rank).count;
+    return std::max({ny * nzp * line_x, 2 * ny * nzp * n_mode_x});
+  }
   if (groups > 1 && ny >= groups && n_mode_x >= groups) {  // 조건 위반은 PencilLayout 이 알린다
     ny_lines = parallel::split_evenly(ny, groups, group_rank).count;
     n_mode_local = parallel::split_evenly(n_mode_x, groups, group_rank).count;
@@ -127,12 +142,15 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub, Workspace
   n_y = sub.y().n_global;
   n_mode_x = x_neumann ? n_x : n_x / 2 + 1;
   nz_local = sub.z().n_local;
-  // 펜슬: x·y 가 쪼개져 있으면 xy-평면 그룹 레이아웃 (슬랩이면 전치 없음 — 기존 경로)
-  if (sub.topology().x().nprocs * sub.topology().y().nprocs > 1)
+  // x·y 가 쪼개져 있으면: 평면 묶음(기본, 전치 2 회) 또는 펜슬(전치 4 회). 슬랩이면 전치 없음 — 기존 경로
+  if (use_plane_path(sub))
+    planes = std::make_unique<PlaneLayout>(sub, x_neumann);
+  else if (sub.topology().x().nprocs * sub.topology().y().nprocs > 1)
     pencil = std::make_unique<PencilLayout>(sub, n_mode_x, x_neumann);
   ny_lines = pencil ? pencil->my_y_count() : n_y;
   n_mode_local = pencil ? pencil->my_mode_count() : n_mode_x;
   mode_offset = pencil ? pencil->my_mode_offset() : 0;
+  nz_lines = planes ? planes->my_plane_count() : nz_local;
 
   // λ 표 — 호스트에서 만들어 그 빌드의 백엔드 메모리로.
   const std::vector<real_t> lambda_x_host =
@@ -144,15 +162,15 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub, Workspace
   lambda_y.upload(lambda_y_host);
 
   const int nsys = 2 * n_mode_local * n_y;  // 실·허수부를 나란한 시스템으로 (로컬 x 모드)
-  plan_z.create(nsys, sub.topology().z().comm);
-  const std::size_t n_band = static_cast<std::size_t>(nsys) * nz_local;
+  plan_z.create(nsys, planes ? planes->z_comm : sub.topology().z().comm);   // 평면 묶음: 전체 랭크 z 사슬
+  const std::size_t n_band = static_cast<std::size_t>(nsys) * nz_lines;
 
   // x 변환의 실제 길이/출력: 주기 = (Nx → Nx/2+1), 벽 DCT = 거울 (2Nx → Nx+1)
   const int line_x = x_neumann ? 2 * n_x : n_x;
   const int spec_x = x_neumann ? n_x + 1 : n_mode_x;
-  const std::size_t n_lines = static_cast<std::size_t>(ny_lines) * nz_local * line_x;
-  const std::size_t n_sx = 2 * static_cast<std::size_t>(ny_lines) * nz_local * n_mode_x;
-  const std::size_t n_sxy = 2 * static_cast<std::size_t>(nz_local) * n_mode_local * n_y;  // == n_band
+  const std::size_t n_lines = static_cast<std::size_t>(ny_lines) * nz_lines * line_x;
+  const std::size_t n_sx = 2 * static_cast<std::size_t>(ny_lines) * nz_lines * n_mode_x;
+  const std::size_t n_sxy = 2 * static_cast<std::size_t>(nz_lines) * n_mode_local * n_y;  // == n_band
   // [최적화 2026-10-23] 밴드·라인·스펙트럼·cuFFT 작업 영역은 공용 Workspace 슬롯 (docs/Memory/plan.md §2.3·§3 B).
   //   수명이 겹치지 않는 쌍이 슬롯을 나눠 쓴다: 0 = real_lines(팩~FFT x 정방향, FFT x 역방향~산포) ↔ band_c(build_z~tdma),
   //   3 = band_a(build_z~tdma) ↔ fft_work(FFT 실행 중). solve() 의 단계 순서가 근거 — 순서를 바꾸면 배정을 다시 본다.
@@ -164,16 +182,16 @@ Solver::Solver(const grid::Grid& grid, const parallel::Subdomain& sub, Workspace
   spectrum_xy = ws.slot(2);
   band_a = ws.slot(3);
   band_b = ws.slot(4);
-  if (x_neumann) mirror_spectrum.assign(2 * static_cast<std::size_t>(ny_lines) * nz_local * spec_x);
+  if (x_neumann) mirror_spectrum.assign(2 * static_cast<std::size_t>(ny_lines) * nz_lines * spec_x);
   real_t* x_spectrum_target = x_neumann ? mirror_spectrum.data() : spectrum_x;
 
   // FFT 플랜 — 버퍼 주소에 묶인다 (Buffer 는 재할당하지 않는다). many 배치의
   // 의미는 양쪽 백엔드가 같다: x = 실수 r2c/c2r (howmany = Ny·nz), y = 복소
   // c2c (in-place).
   int length_x = line_x;
-  const int howmany_x = ny_lines * nz_local;
+  const int howmany_x = ny_lines * nz_lines;
   int length_y = n_y;
-  const int howmany_y = n_mode_local * nz_local;
+  const int howmany_y = n_mode_local * nz_lines;
 #ifdef MPMSTD_GPU_FFT
   // [최적화 2026-10-23] 계획마다 cuFFT 가 작업 영역을 따로 잡던 것을 공용 하나로 (FFT 는 차례로 실행 → 겹치지 않음).
   //   자동 할당을 끄고 MakePlanMany 가 알려 준 크기의 최대값만큼 fft_work 를 잡아 세 계획에 붙인다. 수치 불변.
@@ -246,7 +264,60 @@ void solve(Solver& solver, const grid::Grid& grid, const parallel::Subdomain& su
   const int nz_local = solver.nz_local;
   const bool owns_bottom = sub.topology().z().minus_neighbor == MPI_PROC_NULL;
 
-  if (!solver.pencil) {
+  if (solver.planes) {
+    // ── 평면 묶음 경로 (npx·npy > 1 기본, 2026-11-02) — 블록 →① 전체 xy 평면 × 내 평면 → 슬랩 경로와 같은
+    //    x FFT · 재배열 · y FFT (통신 없음) → z 사슬(전체 랭크) PaScaL → 역순 →①⁻¹ 블록. 전치 2 회 (펜슬은 4 회).
+    PlaneLayout& L = *solver.planes;
+    const int nzp = solver.nz_lines;
+    const int nsys = 2 * n_mode_x * n_y;
+    PRESSURE_TIMER_BEGIN("pressure.plane.block_to_planes");
+    run_exchange(L.block_to_planes, rhs.data(), solver.real_lines, L.comm, L.host_staging);
+    PRESSURE_TIMER_END("pressure.plane.block_to_planes");
+    PRESSURE_TIMER_BEGIN("pressure.fft_x_fwd");
+    run_forward_x(solver);
+    if (solver.x_neumann)
+      dct_twiddle_forward(solver.spectrum_x, solver.mirror_spectrum.data(), n_y * nzp, n_x);
+    PRESSURE_TIMER_END("pressure.fft_x_fwd");
+    PRESSURE_TIMER_BEGIN("pressure.reorder_x_to_y");
+    reorder_x_to_y(solver.spectrum_xy, solver.spectrum_x, n_y, nzp, n_mode_x);
+    PRESSURE_TIMER_END("pressure.reorder_x_to_y");
+    PRESSURE_TIMER_BEGIN("pressure.fft_y_fwd");
+    run_forward_y(solver);
+    PRESSURE_TIMER_END("pressure.fft_y_fwd");
+    PRESSURE_TIMER_BEGIN("pressure.build_z");
+    if (L.owns_bottom) pin_mean_row(solver.spectrum_xy);
+    build_z_modes_system_rows(solver.band_a, solver.band_b, solver.band_c, grid, L.my_plane_offset(), nzp,
+                              L.owns_bottom, L.owns_top, solver.lambda_x.data(), n_mode_x,
+                              solver.lambda_y.data(), n_y, /*pin_mean=*/true);
+    PRESSURE_TIMER_END("pressure.build_z");
+    PRESSURE_TIMER_BEGIN("pressure.tdma_z");
+    linear_solver::solve_many(solver.plan_z, solver.band_a, solver.band_b, solver.band_c,
+                              solver.spectrum_xy, nsys, nzp);
+    PRESSURE_TIMER_END("pressure.tdma_z");
+    PRESSURE_TIMER_BEGIN("pressure.mean_remove");
+    const real_t scale = solver.x_neumann ? 1 / (static_cast<real_t>(2 * n_x) * n_y)
+                                          : 1 / (static_cast<real_t>(n_x) * n_y);
+    real_t local_dc = dc_mode_sum(solver.spectrum_xy, nzp, n_mode_x, n_y);
+    real_t global_dc = 0;
+    MPI_Allreduce(&local_dc, &global_dc, 1, MPI_DOUBLE, MPI_SUM, sub.topology().cart_comm());
+    const real_t mean = global_dc * scale / static_cast<real_t>(sub.z().n_global);
+    PRESSURE_TIMER_END("pressure.mean_remove");
+    PRESSURE_TIMER_BEGIN("pressure.fft_y_bwd");
+    run_backward_y(solver);
+    PRESSURE_TIMER_END("pressure.fft_y_bwd");
+    PRESSURE_TIMER_BEGIN("pressure.reorder_y_to_x");
+    reorder_y_to_x(solver.spectrum_x, solver.spectrum_xy, n_y, nzp, n_mode_x);
+    PRESSURE_TIMER_END("pressure.reorder_y_to_x");
+    PRESSURE_TIMER_BEGIN("pressure.fft_x_bwd");
+    if (solver.x_neumann)
+      dct_twiddle_backward(solver.mirror_spectrum.data(), solver.spectrum_x, n_y * nzp, n_x);
+    run_backward_x(solver);
+    PRESSURE_TIMER_END("pressure.fft_x_bwd");
+    // ①⁻¹ 평면 → 블록 (정규화·평균 빼기를 팩에서; 장의 ghost 는 건드리지 않는다)
+    PRESSURE_TIMER_BEGIN("pressure.plane.planes_to_block");
+    run_exchange(L.planes_to_block, solver.real_lines, phi.data(), L.comm, L.host_staging, scale, mean);
+    PRESSURE_TIMER_END("pressure.plane.planes_to_block");
+  } else if (!solver.pencil) {
     // ── 슬랩 경로 (npx = npy = 1) — 10-18 최적화 경로 그대로 (pin_mean = true 만 추가) ──
     const int nsys = 2 * n_mode_x * n_y;
     // ① rhs 내부 → x-라인 팩 → x 변환(주기 r2c / 벽 거울 r2c+트위들 = DCT-II)

@@ -57,16 +57,24 @@ void build_z_modes_system(real_t* A, real_t* B, real_t* C, const grid::Grid& gri
                           const parallel::Subdomain& sub, const real_t* lambda_x,
                           const int n_mode_x, const real_t* lambda_y,
                           const int n_mode_y, const bool pin_mean) {
+  build_z_modes_system_rows(A, B, C, grid, 0, sub.z().n_local,
+                            sub.topology().z().minus_neighbor == MPI_PROC_NULL,
+                            sub.topology().z().plus_neighbor == MPI_PROC_NULL, lambda_x, n_mode_x,
+                            lambda_y, n_mode_y, pin_mean);
+}
+
+void build_z_modes_system_rows(real_t* A, real_t* B, real_t* C, const grid::Grid& grid,
+                               const int row_first, const int n_rows, const bool owns_bottom,
+                               const bool owns_top, const real_t* lambda_x, const int n_mode_x,
+                               const real_t* lambda_y, const int n_mode_y, const bool pin_mean) {
   const int h = halo_width;
-  const int nz_local = sub.z().n_local;
+  const int nz_local = n_rows;
   const int nsys = 2 * n_mode_x * n_mode_y;
-  const bool owns_bottom = sub.topology().z().minus_neighbor == MPI_PROC_NULL;
-  const bool owns_top = sub.topology().z().plus_neighbor == MPI_PROC_NULL;
   const real_t* dz = grid.z.cell_width.data();
   const real_t* dmz = grid.z.center_distance.data();
 
-  for (int k = h; k < h + nz_local; ++k) {
-    const int row = k - h;
+  for (int k = h + row_first; k < h + row_first + n_rows; ++k) {
+    const int row = k - h - row_first;
     for (int mx = 0; mx < n_mode_x; ++mx) {
       for (int jy = 0; jy < n_mode_y; ++jy) {
         stencil::Band band = stencil::z_mode_band(

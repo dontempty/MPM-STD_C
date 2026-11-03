@@ -32,17 +32,19 @@
 namespace mpmstd::equation::pressure {
 
 struct PencilLayout;
+struct PlaneLayout;
 
 // 네 전치의 종류 — GPU 백엔드가 인덱스 표 대신 구조화 커널(타일 전치 + 행 복사)을 고르는 데 쓴다 (2026-11-02).
 // generic 이면 언제나 인덱스 표 경로.
-enum class PencilKind { generic, block_to_lines, lines_to_block, x_to_y, y_to_x };
+enum class PencilKind { generic, block_to_lines, lines_to_block, x_to_y, y_to_x, block_to_planes, planes_to_block };
 
 // 한 방향 전치 하나: 송신 원소 n 은 src[send_index[n]] (× scale − subtract), 수신 원소 n 은
 // dst[recv_index[n]] (거울이면 dst[recv_mirror[n]] 에도). width = 원소당 double 수 (실수 1 / 복소 2).
 struct PencilExchange {
   int width = 1;
   PencilKind kind = PencilKind::generic;
-  const PencilLayout* layout = nullptr;  // kind != generic 일 때 구조화 커널이 읽는 차원
+  const PencilLayout* layout = nullptr;  // 펜슬 4 종일 때 구조화 커널이 읽는 차원
+  const PlaneLayout* planes = nullptr;   // block_to_planes / planes_to_block 일 때
   std::vector<int> send_counts, send_displs, recv_counts, recv_displs;  // double 단위
   std::vector<int> send_index, recv_index, recv_mirror;                 // 원소 단위 (호스트 정본)
   double comm_seconds = 0;  // MPI_Alltoallv 만의 누적 초 (팩·언팩 제외) — 측정 앱의 훅 (PaScaL plan.comm_seconds 와 같은 역할)
@@ -81,6 +83,37 @@ struct PencilLayout {
   int my_y_count() const { return y_count[rank]; }
   int my_mode_offset() const { return mode_offset[rank]; }
   int my_mode_count() const { return mode_count[rank]; }
+};
+
+// ── 평면 묶음 레이아웃 (2026-11-02) — 펜슬 분할(npx·npy > 1)에서 전치 4 회 대신 2 회 ──────────────────
+// 같은 z 블록의 xy 그룹(P 랭크) 안에서 블록 → "전체 xy 평면 × nz_local/P 장" 으로 한 번 전치하면 x·y 라인이
+// 랭크 안에서 완결된다 → x FFT · y FFT 는 슬랩 경로 그대로 (통신 없음). z 삼중대각은 전체 랭크를 잇는 z 사슬
+// (순서 = z 블록, 그 안 그룹 랭크)에서 PaScaL 로. 풀고 나면 역전치 한 번으로 블록에 돌려놓는다.
+//   그룹 랭크 g 의 평면: 로컬 z 행 split_evenly(nz_local, P, g)   (모든 랭크가 모든 모드를 가진다)
+//   평면 x 라인: [(j·nzp + kk)·line + i]   j 전역 y, kk ∈ 내 평면, line = Nx (주기) / 2Nx (거울)
+//   전치 ① 의 r 조각: r 블록 y × 내 평면 × r 블록 x, 순서 (y, kk, x)
+struct PlaneLayout {
+  MPI_Comm comm = MPI_COMM_NULL;    // xy-평면 그룹 (같은 z 블록) — PencilLayout 과 같은 분할·순서
+  MPI_Comm z_comm = MPI_COMM_NULL;  // z 사슬: 전체 랭크, 키 = z 블록·P + 그룹 랭크
+  int size = 1, rank = 0;
+  int n_x = 0, n_y = 0, nz_local = 0;
+  bool host_staging = false;
+  int halo = 0, ny_total = 0, nz_total = 0, line = 0;
+  bool mirrored = false;
+  bool owns_bottom = false, owns_top = false;  // 전역 z 벽 행을 가진 평면 묶음인가
+  std::vector<int> block_x_offset, block_x_count, block_y_offset, block_y_count;  // 그룹 랭크 r 의 블록
+  std::vector<int> plane_offset, plane_count;  // 그룹 랭크 g 의 평면 (로컬 z 행)
+  PencilExchange block_to_planes, planes_to_block;
+
+  PlaneLayout(const parallel::Subdomain& sub, bool mirrored_lines);
+  ~PlaneLayout();
+  PlaneLayout(const PlaneLayout&) = delete;
+  PlaneLayout& operator=(const PlaneLayout&) = delete;
+
+  int my_plane_offset() const { return plane_offset[rank]; }
+  int my_plane_count() const { return plane_count[rank]; }
+  // 이 분할에서 평면 경로를 쓸 수 있나 (집합 호출 — 모든 랭크가 같은 답): P > 1 이고 모든 그룹 랭크가 2 행 이상
+  static bool usable(const parallel::Subdomain& sub);
 };
 
 // ── 백엔드 (pencil_exchange.cpp = CPU 호스트 루프, pencil_exchange.cu = GPU 커널 + CUDA-aware MPI) ──

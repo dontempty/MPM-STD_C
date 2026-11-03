@@ -68,9 +68,10 @@ bool self_copy_enabled() {
 constexpr int kTile = 32;
 constexpr int kTileRows = 8;
 
-// 장 (x,y,k) k 연속 → 버퍼 [(yl·nz + k)·bxn + xl] x 연속 (× scale − subtract). 그리드 (⌈bxn/32⌉, ⌈nz/32⌉, byn)
+// 장 (x,y,kz0+k) k 연속 → 버퍼 [(yl·nz + k)·bxn + xl] x 연속 (× scale − subtract), k < nz. 그리드 (⌈bxn/32⌉, ⌈nz/32⌉, byn)
 __global__ void field_to_rows_kernel(real_t* buf, const real_t* f, const int h, const int nyt, const int nzt,
-                                     const int bxn, const int nz, const real_t scale, const real_t subtract) {
+                                     const int kz0, const int bxn, const int nz, const real_t scale,
+                                     const real_t subtract) {
   __shared__ real_t tile[kTile][kTile + 1];
   const int yl = static_cast<int>(blockIdx.z);
   const int x0 = static_cast<int>(blockIdx.x) * kTile, k0 = static_cast<int>(blockIdx.y) * kTile;
@@ -78,7 +79,7 @@ __global__ void field_to_rows_kernel(real_t* buf, const real_t* f, const int h, 
   for (int q = 0; q < kTile; q += kTileRows) {          // 읽기: tx 가 k 를 걷는다
     const int xl = x0 + ty + q, k = k0 + tx;
     if (xl < bxn && k < nz)
-      tile[ty + q][tx] = f[(static_cast<std::size_t>(xl + h) * nyt + (yl + h)) * nzt + (k + h)];
+      tile[ty + q][tx] = f[(static_cast<std::size_t>(xl + h) * nyt + (yl + h)) * nzt + (kz0 + k + h)];
   }
   __syncthreads();
   for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 x 를 걷는다
@@ -88,9 +89,9 @@ __global__ void field_to_rows_kernel(real_t* buf, const real_t* f, const int h, 
   }
 }
 
-// 역: 버퍼 [(yl·nz + k)·bxn + xl] → 장 (x,y,k). 그리드 (⌈nz/32⌉, ⌈bxn/32⌉, byn)
+// 역: 버퍼 [(yl·nz + k)·bxn + xl] → 장 (x,y,kz0+k). 그리드 (⌈nz/32⌉, ⌈bxn/32⌉, byn)
 __global__ void rows_to_field_kernel(real_t* f, const real_t* buf, const int h, const int nyt, const int nzt,
-                                     const int bxn, const int nz) {
+                                     const int kz0, const int bxn, const int nz) {
   __shared__ real_t tile[kTile][kTile + 1];
   const int yl = static_cast<int>(blockIdx.z);
   const int k0 = static_cast<int>(blockIdx.x) * kTile, x0 = static_cast<int>(blockIdx.y) * kTile;
@@ -103,7 +104,7 @@ __global__ void rows_to_field_kernel(real_t* f, const real_t* buf, const int h, 
   for (int q = 0; q < kTile; q += kTileRows) {          // 쓰기: tx 가 k 를 걷는다
     const int k = k0 + tx, xl = x0 + ty + q;
     if (xl < bxn && k < nz)
-      f[(static_cast<std::size_t>(xl + h) * nyt + (yl + h)) * nzt + (k + h)] = tile[tx][ty + q];
+      f[(static_cast<std::size_t>(xl + h) * nyt + (yl + h)) * nzt + (kz0 + k + h)] = tile[tx][ty + q];
   }
 }
 
@@ -185,12 +186,68 @@ bool structured_enabled() {
 }
 
 bool use_structured(const PencilExchange& e) {
-  return e.kind != PencilKind::generic && e.layout != nullptr && structured_enabled();
+  return e.kind != PencilKind::generic && (e.layout != nullptr || e.planes != nullptr) && structured_enabled();
+}
+
+// 평면 묶음 전치 (PlaneLayout) — 송신 (블록 → 평면): g 마다 내 블록 (y, g 의 평면, x) 를 타일 전치.
+// 수신: r 마다 r 블록 (y, 내 평면, x) 가 평면 라인의 연속 행 [by0_r·nzp, (by0_r+byn_r)·nzp) 의 x 구간 → 행 복사.
+void pack_planes(const PencilExchange& e, const real_t* src, real_t* send, const real_t scale,
+                 const real_t subtract) {
+  const PlaneLayout& L = *e.planes;
+  const int me = L.rank, nzp = L.my_plane_count();
+  const int bxn = L.block_x_count[me], byn = L.block_y_count[me];
+  const dim3 threads(kTile, kTileRows);
+  if (e.kind == PencilKind::block_to_planes) {
+    for (int g = 0; g < L.size; ++g) {
+      const int nk = L.plane_count[g];
+      if (nk == 0) continue;
+      const dim3 blocks((bxn + kTile - 1) / kTile, (nk + kTile - 1) / kTile, byn);
+      field_to_rows_kernel<<<blocks, threads>>>(send + e.send_displs[g], src, L.halo, L.ny_total, L.nz_total,
+                                                L.plane_offset[g], bxn, nk, scale, subtract);
+      MPMSTD_CUDA_CHECK_LAUNCH();
+    }
+  } else {   // planes_to_block: r 마다 평면 라인의 r 블록 구간 → (y, kk, x)
+    for (int r = 0; r < L.size; ++r) {
+      if (L.block_x_count[r] == 0 || L.block_y_count[r] == 0) continue;
+      copy_rows(send + e.send_displs[r], L.block_x_count[r],
+                src + static_cast<std::size_t>(L.block_y_offset[r]) * nzp * L.line + L.block_x_offset[r], L.line,
+                static_cast<long long>(L.block_y_count[r]) * nzp, L.block_x_count[r], scale, subtract);
+    }
+  }
+}
+
+void unpack_planes(const PencilExchange& e, const real_t* recv, real_t* dst) {
+  const PlaneLayout& L = *e.planes;
+  const int me = L.rank, nzp = L.my_plane_count();
+  const dim3 threads(kTile, kTileRows);
+  if (e.kind == PencilKind::block_to_planes) {
+    for (int r = 0; r < L.size; ++r) {
+      if (L.block_x_count[r] == 0 || L.block_y_count[r] == 0) continue;
+      const int x0 = L.block_x_offset[r];
+      copy_rows(dst + static_cast<std::size_t>(L.block_y_offset[r]) * nzp * L.line + x0, L.line,
+                recv + e.recv_displs[r], L.block_x_count[r], static_cast<long long>(L.block_y_count[r]) * nzp,
+                L.block_x_count[r], 1, 0, L.mirrored ? L.line : 0, x0);
+    }
+  } else {   // planes_to_block: g 마다 (y, g 의 평면, x) → 장
+    const int bxn = L.block_x_count[me], byn = L.block_y_count[me];
+    for (int g = 0; g < L.size; ++g) {
+      const int nk = L.plane_count[g];
+      if (nk == 0) continue;
+      const dim3 blocks((nk + kTile - 1) / kTile, (bxn + kTile - 1) / kTile, byn);
+      rows_to_field_kernel<<<blocks, threads>>>(dst, recv + e.recv_displs[g], L.halo, L.ny_total, L.nz_total,
+                                                L.plane_offset[g], bxn, nk);
+      MPMSTD_CUDA_CHECK_LAUNCH();
+    }
+  }
 }
 
 // 송신 버퍼 채우기 (pencil_layout.cpp 의 send_index 와 같은 순서·값)
 void pack_structured(const PencilExchange& e, const real_t* src, real_t* send, const real_t scale,
                      const real_t subtract) {
+  if (e.kind == PencilKind::block_to_planes || e.kind == PencilKind::planes_to_block) {
+    pack_planes(e, src, send, scale, subtract);
+    return;
+  }
   const PencilLayout& L = *e.layout;
   const int nz = L.nz_local, me = L.rank;
   const dim3 threads(kTile, kTileRows);
@@ -198,7 +255,7 @@ void pack_structured(const PencilExchange& e, const real_t* src, real_t* send, c
     case PencilKind::block_to_lines: {   // 장 → (y, k, x) 블록 전체 = r 조각의 연결
       const int bxn = L.block_x_count[me], byn = L.block_y_count[me];
       const dim3 blocks((bxn + kTile - 1) / kTile, (nz + kTile - 1) / kTile, byn);
-      field_to_rows_kernel<<<blocks, threads>>>(send, src, L.halo, L.ny_total, L.nz_total, bxn, nz, scale,
+      field_to_rows_kernel<<<blocks, threads>>>(send, src, L.halo, L.ny_total, L.nz_total, 0, bxn, nz, scale,
                                                 subtract);
       MPMSTD_CUDA_CHECK_LAUNCH();
       break;
@@ -230,6 +287,9 @@ void pack_structured(const PencilExchange& e, const real_t* src, real_t* send, c
       MPMSTD_CUDA_CHECK_LAUNCH();
       break;
     }
+    case PencilKind::block_to_planes:   // 위에서 먼저 처리
+    case PencilKind::planes_to_block:
+      break;
     case PencilKind::generic:
       break;
   }
@@ -237,6 +297,10 @@ void pack_structured(const PencilExchange& e, const real_t* src, real_t* send, c
 
 // 수신 버퍼 풀기 (recv_index / recv_mirror 와 같은 순서·값)
 void unpack_structured(const PencilExchange& e, const real_t* recv, real_t* dst) {
+  if (e.kind == PencilKind::block_to_planes || e.kind == PencilKind::planes_to_block) {
+    unpack_planes(e, recv, dst);
+    return;
+  }
   const PencilLayout& L = *e.layout;
   const int nz = L.nz_local, me = L.rank;
   const dim3 threads(kTile, kTileRows);
@@ -256,7 +320,7 @@ void unpack_structured(const PencilExchange& e, const real_t* recv, real_t* dst)
     case PencilKind::lines_to_block: {   // (y, k, x) 블록 전체 → 장
       const int bxn = L.block_x_count[me], byn = L.block_y_count[me];
       const dim3 blocks((nz + kTile - 1) / kTile, (bxn + kTile - 1) / kTile, byn);
-      rows_to_field_kernel<<<blocks, threads>>>(dst, recv, L.halo, L.ny_total, L.nz_total, bxn, nz);
+      rows_to_field_kernel<<<blocks, threads>>>(dst, recv, L.halo, L.ny_total, L.nz_total, 0, bxn, nz);
       MPMSTD_CUDA_CHECK_LAUNCH();
       break;
     }
@@ -276,6 +340,9 @@ void unpack_structured(const PencilExchange& e, const real_t* recv, real_t* dst)
       }
       break;
     }
+    case PencilKind::block_to_planes:   // 위에서 먼저 처리
+    case PencilKind::planes_to_block:
+      break;
     case PencilKind::generic:
       break;
   }

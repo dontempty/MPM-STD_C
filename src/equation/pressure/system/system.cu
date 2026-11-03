@@ -29,7 +29,7 @@ enum : int { kThreads = 256 };
 //   (2026-10-18: 나눗셈 → 역수는 효과 없음(저장 패턴이 병목)이라 되돌림; 스크래치 출력 방식은 라이브러리 수정이라 보류).
 __global__ void build_kernel(real_t* A, real_t* B, real_t* C, const real_t* dz,
                              const real_t* dmz, const real_t* lambda_x,
-                             const real_t* lambda_y, const int h, const int nz_local,
+                             const real_t* lambda_y, const int h, const int row_first, const int nz_local,
                              const int n_mode_x, const int n_mode_y,
                              const bool owns_bottom, const bool owns_top,
                              const bool pin_mean) {
@@ -38,7 +38,7 @@ __global__ void build_kernel(real_t* A, real_t* B, real_t* C, const real_t* dz,
   const int jy = static_cast<int>(idx % n_mode_y);
   const int mx = static_cast<int>((idx / n_mode_y) % n_mode_x);
   const int row = static_cast<int>(idx / (static_cast<long long>(n_mode_y) * n_mode_x));
-  const int k = row + h;
+  const int k = row_first + row + h;
   const int nsys = 2 * n_mode_x * n_mode_y;
 
   stencil::Band band = stencil::z_mode_band(
@@ -92,13 +92,21 @@ void build_z_modes_system(real_t* A, real_t* B, real_t* C, const grid::Grid& gri
                           const parallel::Subdomain& sub, const real_t* lambda_x,
                           const int n_mode_x, const real_t* lambda_y,
                           const int n_mode_y, const bool pin_mean) {
-  const int nz_local = sub.z().n_local;
-  const long long n = static_cast<long long>(nz_local) * n_mode_x * n_mode_y;
+  build_z_modes_system_rows(A, B, C, grid, 0, sub.z().n_local,
+                            sub.topology().z().minus_neighbor == MPI_PROC_NULL,
+                            sub.topology().z().plus_neighbor == MPI_PROC_NULL, lambda_x, n_mode_x,
+                            lambda_y, n_mode_y, pin_mean);
+}
+
+void build_z_modes_system_rows(real_t* A, real_t* B, real_t* C, const grid::Grid& grid,
+                               const int row_first, const int n_rows, const bool owns_bottom,
+                               const bool owns_top, const real_t* lambda_x, const int n_mode_x,
+                               const real_t* lambda_y, const int n_mode_y, const bool pin_mean) {
+  const long long n = static_cast<long long>(n_rows) * n_mode_x * n_mode_y;
   build_kernel<<<static_cast<int>((n + kThreads - 1) / kThreads), kThreads>>>(
       A, B, C, grid.z.device_cell_width.data(),
-      grid.z.device_center_distance.data(), lambda_x, lambda_y, halo_width, nz_local,
-      n_mode_x, n_mode_y, sub.topology().z().minus_neighbor == MPI_PROC_NULL,
-      sub.topology().z().plus_neighbor == MPI_PROC_NULL, pin_mean);
+      grid.z.device_center_distance.data(), lambda_x, lambda_y, halo_width, row_first, n_rows,
+      n_mode_x, n_mode_y, owns_bottom, owns_top, pin_mean);
   MPMSTD_CUDA_CHECK_LAUNCH();
 }
 

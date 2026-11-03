@@ -71,6 +71,10 @@ struct Solver {
   int ny_lines = 0;       // x-펜슬의 로컬 y 라인 수
   int n_mode_local = 0;   // y-펜슬의 로컬 x 모드 수
   int mode_offset = 0;    // 그 첫 모드 번호 (λ_x 오프셋·(0,0) 핀 판정)
+  // 평면 묶음 (npx·npy > 1 의 기본 경로, 2026-11-02 — pencil_transpose.hpp PlaneLayout). 이면 pencil = nullptr,
+  // ny_lines = n_y, n_mode_local = n_mode_x, 라인·스펙트럼·밴드의 z 행 = 내 평면 수 (nz_lines). plan_z 는 z 사슬.
+  std::unique_ptr<PlaneLayout> planes;
+  int nz_lines = 0;       // 라인·스펙트럼·밴드의 z 행 수: 슬랩·펜슬 = nz_local, 평면 묶음 = 내 평면 수
 
   field::Buffer lambda_x, lambda_y;  // 차분 고유값 표 (백엔드 메모리)
   linear_solver::ExactTdmaPlan plan_z;  // 백엔드와 무관하게 PaScaL 정확해 — (0,0) 모드는 대각지배가 아니다 (tdma.hpp 2)

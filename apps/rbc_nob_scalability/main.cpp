@@ -242,6 +242,11 @@ int main(int argc, char** argv) {
       comm_probes.push_back({"pressure.comm.y_to_x", &L.y_to_x_spectrum.comm_seconds, 0});
       comm_probes.push_back({"pressure.comm.lines_to_block", &L.lines_to_block.comm_seconds, 0});
     }
+    if (pressure_solver.planes) {   // 평면 묶음 경로 (전치 2 회)
+      auto& L = *pressure_solver.planes;
+      comm_probes.push_back({"pressure.comm.block_to_planes", &L.block_to_planes.comm_seconds, 0});
+      comm_probes.push_back({"pressure.comm.planes_to_block", &L.planes_to_block.comm_seconds, 0});
+    }
 
     real_t t = 0;
     long step = 0;

@@ -50,5 +50,10 @@ std::vector<real_t> make_lambda_y(const grid::Grid& grid, const parallel::Subdom
 void build_z_modes_system(real_t* A, real_t* B, real_t* C, const grid::Grid& grid,
                           const parallel::Subdomain& sub, const real_t* lambda_x,
                           int n_mode_x, const real_t* lambda_y, int n_mode_y, bool pin_mean);
+// 같은 밴드를 z 블록의 일부 행만 (평면 묶음 경로, 2026-11-02): 로컬 행 row_first … row_first+n_rows−1 (halo 제외 번호),
+// 벽 접기는 owns_bottom(첫 행)·owns_top(끝 행)으로 직접 준다. 위의 함수 = (0, nz_local, z 벽 소유) 인 경우.
+void build_z_modes_system_rows(real_t* A, real_t* B, real_t* C, const grid::Grid& grid, int row_first,
+                               int n_rows, bool owns_bottom, bool owns_top, const real_t* lambda_x,
+                               int n_mode_x, const real_t* lambda_y, int n_mode_y, bool pin_mean);
 
 }  // namespace mpmstd::equation::pressure
