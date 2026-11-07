@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <string>
 #include <vector>
@@ -100,6 +101,28 @@ void conduction_initial_condition(Field& W, Field& T, const mpmstd::grid::Grid& 
   T.upload(stage_t);
 }
 
+// MPMSTD_MEM_REPORT=1 이면 초기화 단계마다 GPU 메모리 사용량(cudaMemGetInfo 의 total − free, 랭크 max)을 찍는다.
+// 직전 표시 이후 증가분도 같이 — 어느 할당이 큰지 보는 진단용. 미설정이면 아무것도 안 한다.
+void mem_mark(const char* label, MPI_Comm comm, const bool root) {
+#ifdef MPMSTD_GPU
+  static const bool enabled = [] {
+    const char* v = std::getenv("MPMSTD_MEM_REPORT");
+    return v != nullptr && v[0] != '\0' && v[0] != '0';
+  }();
+  static double previous = 0;
+  if (!enabled) return;
+  cudaDeviceSynchronize();
+  std::size_t free_bytes = 0, total_bytes = 0;
+  cudaMemGetInfo(&free_bytes, &total_bytes);
+  double used = static_cast<double>(total_bytes - free_bytes) / 1e9, max_used = 0;
+  MPI_Allreduce(&used, &max_used, 1, MPI_DOUBLE, MPI_MAX, comm);
+  if (root) std::printf("# mem %-26s %8.2f GB  (+%7.2f)\n", label, max_used, max_used - previous);
+  previous = max_used;
+#else
+  (void)label; (void)comm; (void)root;
+#endif
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -129,6 +152,7 @@ int main(int argc, char** argv) {
     const Topology topo(mpi, s.process.npx, s.process.npy, s.process.npz,
                         /*periodic_x=*/true, /*periodic_y=*/true, /*periodic_z=*/false);
     const Subdomain sub(topo, s.mesh.nx, s.mesh.ny, s.mesh.nz);
+    mem_mark("context + topology", mpi.world_comm(), mpi.is_root());
     const auto faces_x = mpmstd::grid::make_uniform_faces(s.mesh.nx, s.domain.lx);
     const auto faces_y = mpmstd::grid::make_uniform_faces(s.mesh.ny, s.domain.ly);
     const auto faces_z =
@@ -162,13 +186,19 @@ int main(int argc, char** argv) {
     Field& rhs_dP = rhs_U;
     Field& dP = rhs_dP;
     Field pressure_predictor(nx, ny, nz, "dPhat"), previous_predictor(nx, ny, nz, "dP0");
+    mem_mark("app fields (10)", mpi.world_comm(), mpi.is_root());
     physics::PropertyFields properties(nx, ny, nz);
+    mem_mark("property fields (6)", mpi.world_comm(), mpi.is_root());
     mpmstd::equation::Workspace workspace(std::max({momentum::Solver::required_slot_elements(sub),
                                                     scalar::Solver::required_slot_elements(sub),
                                                     pressure::Solver::required_slot_elements(grid, sub)}));
+    mem_mark("workspace (5 slots)", mpi.world_comm(), mpi.is_root());
     momentum::Solver momentum_solver(sub, workspace);
+    mem_mark("momentum solver", mpi.world_comm(), mpi.is_root());
     scalar::Solver scalar_solver(sub, workspace);
+    mem_mark("scalar solver", mpi.world_comm(), mpi.is_root());
     pressure::Solver pressure_solver(grid, sub, workspace);
+    mem_mark("pressure solver", mpi.world_comm(), mpi.is_root());
 
     conduction_initial_condition(W, T, grid, sub, s.domain.lx, s.domain.ly, s.domain.lz,
                                  s.initial.perturb);
@@ -198,6 +228,7 @@ int main(int argc, char** argv) {
     stats_config.wall_temperature_bottom = kWallTemperatureBottom;
     stats_config.wall_temperature_top = kWallTemperatureTop;
     rbc_nob::Statistics statistics(stats_config, sub);
+    mem_mark("statistics", mpi.world_comm(), mpi.is_root());
 
     if (mpi.is_root()) {
       std::printf("# %s: Ra=%.3g Pr=%.3g DeltaT=%.1fK | %dx%dx%d on %dx%dx%d ranks, "
@@ -358,6 +389,7 @@ int main(int argc, char** argv) {
       }
       timer.end("step_total");
       timer.count_step();
+      if (step == 1) mem_mark("after step 1", mpi.world_comm(), mpi.is_root());
     }
 
     for (const auto& probe : comm_probes) timer.set_external(probe.name, *probe.seconds - probe.base);
