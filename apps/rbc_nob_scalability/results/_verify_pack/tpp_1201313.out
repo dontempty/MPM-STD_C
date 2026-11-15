@@ -1,0 +1,32 @@
+=== 2x2x2 index
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-7.81015876971657974e-15 sumsq=3.70499999999998363e+03
+periodic x: max|phi_h - phi| = 3.442e-15   checksum sum=-2.67633137873701799e-14 sumsq=3.70499999999997635e+03
+PASS test_pressure_pencil
+=== 2x2x2 struct
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-7.81015876971657974e-15 sumsq=3.70499999999998363e+03
+periodic x: max|phi_h - phi| = 3.442e-15   checksum sum=-2.67633137873701799e-14 sumsq=3.70499999999997635e+03
+PASS test_pressure_pencil
+=== 1x2x2 index
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-1.68060010352633071e-14 sumsq=3.70499999999997544e+03
+periodic x: max|phi_h - phi| = 3.442e-15   checksum sum=9.52016243616071733e-15 sumsq=3.70499999999999227e+03
+PASS test_pressure_pencil
+=== 1x2x2 struct
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-1.68060010352633071e-14 sumsq=3.70499999999997544e+03
+periodic x: max|phi_h - phi| = 3.442e-15   checksum sum=9.52016243616071733e-15 sumsq=3.70499999999999227e+03
+PASS test_pressure_pencil
+=== 2x1x2 index
+wall     x: max|phi_h - phi| = 3.220e-15   checksum sum=-6.66172846053303402e-14 sumsq=3.70499999999997635e+03
+periodic x: max|phi_h - phi| = 2.998e-15   checksum sum=2.45983788893511246e-14 sumsq=3.70499999999996135e+03
+PASS test_pressure_pencil
+=== 2x1x2 struct
+wall     x: max|phi_h - phi| = 3.220e-15   checksum sum=-6.66172846053303402e-14 sumsq=3.70499999999997635e+03
+periodic x: max|phi_h - phi| = 2.998e-15   checksum sum=2.45983788893511246e-14 sumsq=3.70499999999996135e+03
+PASS test_pressure_pencil
+=== 4x2x1 index
+wall     x: max|phi_h - phi| = 3.886e-15   checksum sum=-1.75415237890774733e-14 sumsq=3.70499999999997817e+03
+periodic x: max|phi_h - phi| = 3.553e-15   checksum sum=2.89527328035573770e-14 sumsq=3.70499999999996953e+03
+PASS test_pressure_pencil
+=== 4x2x1 struct
+wall     x: max|phi_h - phi| = 3.886e-15   checksum sum=-1.75415237890774733e-14 sumsq=3.70499999999997817e+03
+periodic x: max|phi_h - phi| = 3.553e-15   checksum sum=2.89527328035573770e-14 sumsq=3.70499999999996953e+03
+PASS test_pressure_pencil

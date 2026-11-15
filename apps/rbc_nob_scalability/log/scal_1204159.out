@@ -1,0 +1,57 @@
+############################################################
+ job      1204159   nodes 8 (node[0529-0536])   2026-11-03 11:14:22
+ np       32   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_512_pencil
+ reps 2   gate 1   timeout 600s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/weak512_zyx_plane256
+ bin      2026-11-03 10:11:56  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-25db9dc6-1cf4-6a1b-8f65-7703c1d92350)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-266b3dce-4011-b06d-3099-d06b33ed84fe)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-6479c5fc-92c9-1df4-94fb-b958a6dae2d6)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-a31a1463-2053-7b92-c901-ae35cc7bda63)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-c6ad5079-a4a0-1bee-35bd-62f58e4d1bdc)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-cdc0a683-8d27-d86b-b34b-abaadbead8fc)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-dd5096ac-83f6-0592-f924-f5cff6e723af)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-e523858c-2479-c961-b4c8-22b5d33f2fe2)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-26b9c1b5-8ec7-4726-22a4-6f70944d077d)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-36f7268c-bd4a-02ab-9c9d-32e64f7d5051)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-9bffdaf9-3ca0-173a-d9e3-35b6d3b7a3c6)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-aa5fa463-796a-8188-3623-6b269cbbb45a)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-ad734e2d-b174-7737-5653-0d787ab0a514)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-ea961149-7937-31e0-52e8-4695ddd24708)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-f0174185-8b8b-de99-2c90-7d1691a0ce18)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-f9ac1ed4-6e35-eb7f-7d5a-7e3a9320421e)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-02b1f273-8372-3fbb-f66a-8da264df014c)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-06e1787a-d986-9fc9-c00f-6904f0e5640d)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-37ab3cb8-3e1e-5eab-8f48-442b8c00d06d)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-647eb05c-b2c9-8efc-6e4c-69e13ef69deb)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-8600c0f1-25ce-6054-904f-584a31c96c1f)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-cbbd3309-f975-ffa0-9a90-1dce769bff18)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-d1000a7b-6745-f33d-3275-b1ac1e8bc516)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-de9a9110-f82e-6063-7859-93519063145b)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-1cb0abb3-bbaa-70ce-f53a-60dfff7749a9)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-1ebf911f-cc41-fb40-adcd-8713f8d73460)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-593261b9-3f1e-caf0-ba6a-f1cf182d4543)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-697c3801-fd26-aaf3-1ff1-3b7ab7a8b396)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-ac73b642-92f1-853d-75e4-59cf79fab188)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-b28a586e-e432-b7df-9ad0-7aec6d913618)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-c08e01db-9130-1127-8ba3-94761d3d34b8)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-e2cf1b86-18c1-2ba9-bf4c-31baa311841b)
+  rank 0 node0529 localid 0 cpus 0-71
+  rank 1 node0529 localid 1 cpus 72-143
+  rank 2 node0529 localid 2 cpus 144-215
+  rank 3 node0529 localid 3 cpus 216-287
+
+==== 게이트 np=32 (8노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_512_pencil ====
+  weak_512_pencil_np32_n8x4_r1         step_total   267.926 ms/step (rank max)   (64s)
+  weak_512_pencil_np32_n8x4_r2         step_total   267.268 ms/step (rank max)   (64s)
+
+==== DONE 2026-11-03 11:17:05 ====
+==== 전 2 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

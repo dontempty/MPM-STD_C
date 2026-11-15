@@ -1,0 +1,66 @@
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/gate/gate_ref_np32.ini  (32 ranks, tdma=pascal)
+[mesh]
+nx = 64
+ny = 64
+nz = 512
+
+[domain]
+lx = 6
+ly = 6
+lz = 1
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 1
+npy = 1
+npz = 32
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+gravity_axis = 2
+
+[initial]
+perturb = 0.05
+restart_from = ""
+warmstart_from = ""
+
+[boundary]
+x = periodic
+y = periodic
+z = wall
+velocity_ghost = value
+
+[time]
+end_time = 1000000000
+dt_max = 0.05
+max_cfl = 0.3
+max_step = 60
+viscous_coupling_number = 12
+
+[output]
+stats_dir = "/scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/log/gate_stats"
+monitor_interval = 10
+stats_start_time = 1000000000
+stats_interval = 0
+checkpoint_interval = 0
+checkpoint_dir = "/scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/gate/checkpoints"
+stats_sample_interval = 1
+conditional_interval = 0
+spectra_interval = 0
+richardson_threshold = 0.1
+richardson_z_plus = 15
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K -> Cmu=5.0468e-02 Ct=1.9815e-05 a2/a1=7.9244e-04 | 64x64x512, dz_wall=0.0007619
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+# kappa_wall bottom/top = 1.00773 / 0.99227, viscous_coupling_number = 12
+      1     0.004   0.00360   3.47e-11   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  2.818e-02  2.783e-02    0.052
+     10     0.036   0.00360   6.94e-13   0.00000   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  2.581e-02  3.070e-02    0.007
+     20     0.072   0.00360   4.04e-13   0.00000   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  1.737e-02  2.361e-02    0.008
+     30     0.108   0.00360   2.42e-13   0.00000   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  1.269e-02  1.938e-02    0.008
+     40     0.144   0.00360   2.24e-13   0.00000   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  9.649e-03  1.643e-02    0.008
+     50     0.180   0.00360   1.28e-13   0.00000   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  7.524e-03  1.419e-02    0.007
+     60     0.216   0.00360   1.07e-13   0.00000   0.0000  -0.4996   0.4996   1.0078   0.9922   12.00  5.970e-03  1.242e-02    0.007

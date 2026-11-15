@@ -1,0 +1,73 @@
+ 0: # settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/_diag/mid.ini  (64 ranks, tdma=pascal)
+ 0: [mesh]
+ 0: nx = 1024
+ 0: ny = 1024
+ 0: nz = 1024
+ 0: 
+ 0: [domain]
+ 0: lx = 24
+ 0: ly = 24
+ 0: lz = 4
+ 0: 
+ 0: [stretch]
+ 0: uniform_z = false
+ 0: gamma_z = 2.6
+ 0: 
+ 0: [process]
+ 0: npx = 4
+ 0: npy = 4
+ 0: npz = 4
+ 0: 
+ 0: [physics]
+ 0: rayleigh = 1000000
+ 0: prandtl = 2547
+ 0: delta_temperature = 40
+ 0: 
+ 0: [initial]
+ 0: perturb = 0.05
+ 0: 
+ 0: [time]
+ 0: max_step = 4
+ 0: dt_max = 0.05
+ 0: max_cfl = 0.3
+ 0: viscous_coupling_number = 12
+ 0: 
+ 0: [output]
+ 0: monitor_interval = 1
+ 0: 
+ 0: [timing]
+ 0: warmup_steps = 1
+ 0: solver_phases = false
+ 0: # NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 1024x1024x1024 on 4x4x4 ranks, warmup 1 of 4 steps
+ 0: # step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+ 0:       1     0.002   0.00180   5.48e-11   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.835e-02  2.828e-02    0.304
+ 0:       2     0.004   0.00180   5.42e-11   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.794e-02  4.753e-02    0.062
+ 0:       3     0.005   0.00180   4.14e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.437e-02  4.428e-02    0.063
+ 0:       4     0.007   0.00180   2.19e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  1.443e-02  3.973e-02    0.062
+ 0: # phase timing: 3 steps, 64 ranks (ms/step; share = max/step_total)
+ 0: # phase                           min        avg        max   share%    imbal%
+ 0: # step_total                   62.419     62.423     62.424   100.00      0.01
+ 0: # dt_cfl                        1.262      1.277      1.282     2.05      1.55
+ 0: # dt_viscous                    0.612      0.616      0.619     0.99      1.12
+ 0: # properties_1                  0.288      0.291      0.296     0.47      2.53
+ 0: # scalar_solve                  6.101      6.123      6.141     9.84      0.65
+ 0: # sync_T                        0.201      0.217      0.245     0.39     20.02
+ 0: # momentum_rhs                  1.813      1.824      1.838     2.94      1.40
+ 0: # momentum_solve               20.075     20.097     20.109    32.21      0.17
+ 0: # sync_UVW_1                    0.560      0.570      0.608     0.97      8.38
+ 0: # properties_2                  0.289      0.291      0.294     0.47      1.74
+ 0: # pressure_rhs                  0.358      0.360      0.364     0.58      1.58
+ 0: # pressure_solve               25.260     25.672     25.822    41.37      2.19
+ 0: # pressure_correct              0.684      0.686      0.689     1.10      0.67
+ 0: # sync_UVW_2                    0.583      0.727      1.137     1.82     76.13
+ 0: # predictor                     0.383      0.388      0.392     0.63      2.41
+ 0: # clip                          0.094      0.095      0.096     0.15      2.14
+ 0: # monitor                       3.153      3.159      3.170     5.08      0.54
+ 0: # tdma_comm_scalar_x            0.127      0.138      0.152     0.24     18.08
+ 0: # tdma_comm_scalar_y            0.114      0.126      0.143     0.23     23.02
+ 0: # tdma_comm_scalar_z            1.301      1.317      1.339     2.15      2.94
+ 0: # tdma_comm_momentum_x          0.363      0.405      0.442     0.71     19.40
+ 0: # tdma_comm_momentum_y          0.344      0.378      0.423     0.68     20.97
+ 0: # tdma_comm_momentum_z          3.875      3.922      3.971     6.36      2.45
+ 0: # tdma_comm_pressure_z          1.488      2.208      3.281     5.26     81.17
+ 0: # timing csv: /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/_diag/mid.csv

@@ -1,0 +1,74 @@
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/weak_512_slab/weak_512_slab_np8.ini  (8 ranks, tdma=pascal)
+[mesh]
+nx = 1024
+ny = 1024
+nz = 1024
+
+[domain]
+lx = 12
+ly = 12
+lz = 2
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 1
+npy = 1
+npz = 8
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 200
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 50
+
+[timing]
+warmup_steps = 50
+solver_phases = false
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 1024x1024x1024 on 1x1x8 ranks, warmup 50 of 200 steps
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+      1     0.000   0.00045   9.40e-11   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.835e-02  2.828e-02    0.010
+     50     0.022   0.00045   1.27e-13   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  6.137e-04  1.260e-02    0.181
+    100     0.045   0.00045   5.45e-14   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  4.655e-04  6.160e-03    0.185
+    150     0.067   0.00045   2.13e-14   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  3.823e-04  3.409e-03    0.185
+    200     0.090   0.00045   1.55e-14   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  3.318e-04  2.002e-03    0.185
+# phase timing: 150 steps, 8 ranks (ms/step; share = max/step_total)
+# phase                           min        avg        max   share%    imbal%
+# step_total                  185.277    185.277    185.277   100.00      0.00
+# dt_cfl                        2.760      2.909      3.047     1.64      9.86
+# dt_viscous                    1.175      1.176      1.176     0.63      0.10
+# properties_1                  2.251      2.266      2.280     1.23      1.30
+# scalar_solve                 30.370     30.383     30.396    16.41      0.08
+# sync_T                        0.442      0.522      0.646     0.35     39.04
+# momentum_rhs                 14.501     14.767     14.951     8.07      3.04
+# momentum_solve              101.074    101.342    101.558    54.81      0.48
+# sync_UVW_1                    1.797      1.841      1.905     1.03      5.88
+# properties_2                  2.245      2.254      2.263     1.22      0.76
+# pressure_rhs                  2.751      2.785      2.811     1.52      2.15
+# pressure_solve               14.251     14.314     14.411     7.78      1.12
+# pressure_correct              5.425      5.480      5.517     2.98      1.69
+# sync_UVW_2                    1.673      1.810      1.884     1.02     11.65
+# predictor                     2.141      2.148      2.164     1.17      1.09
+# clip                          0.701      0.720      0.729     0.39      3.88
+# monitor                       0.533      0.535      0.538     0.29      1.07
+# tdma_comm_scalar_x            0.000      0.000      0.000     0.00      0.00
+# tdma_comm_scalar_y            0.000      0.000      0.000     0.00      0.00
+# tdma_comm_scalar_z            1.172      1.278      1.450     0.78     21.75
+# tdma_comm_momentum_x          0.000      0.000      0.000     0.00      0.00
+# tdma_comm_momentum_y          0.000      0.000      0.000     0.00      0.00
+# tdma_comm_momentum_z          3.491      3.908      5.059     2.73     40.14
+# tdma_comm_pressure_z          1.147      1.252      1.396     0.75     19.87
+# timing csv: /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx/weak_512_slab/weak_512_slab_np8_n2x4_r1_j1285467.csv

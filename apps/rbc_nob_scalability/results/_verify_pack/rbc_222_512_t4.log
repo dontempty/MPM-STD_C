@@ -1,0 +1,76 @@
+# settings loaded from rbc_222_512.ini  (8 ranks, tdma=pascal)
+[mesh]
+nx = 1024
+ny = 1024
+nz = 1024
+
+[domain]
+lx = 12
+ly = 12
+lz = 2
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 2
+npy = 2
+npz = 2
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 15
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 5
+
+[timing]
+warmup_steps = 5
+solver_phases = false
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 1024x1024x1024 on 2x2x2 ranks, warmup 5 of 15 steps
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+      1     0.000   0.00045   1.05e-10   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.835e-02  2.828e-02    0.061
+      5     0.002   0.00045   1.89e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  1.556e-02  3.854e-02    0.208
+     10     0.004   0.00045   4.88e-13   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  3.758e-03  3.043e-02    0.259
+     15     0.007   0.00045   4.83e-13   0.00000   0.0000  -0.4998   0.4998   1.0078   0.9922   12.00  3.711e-03  2.665e-02    0.259
+# phase timing: 10 steps, 8 ranks (ms/step; share = max/step_total)
+# phase                           min        avg        max   share%    imbal%
+# step_total                  259.312    259.312    259.312   100.00      0.00
+# dt_cfl                        3.109      3.112      3.115     1.20      0.20
+# dt_viscous                    0.975      0.977      0.979     0.38      0.34
+# properties_1                  2.218      2.225      2.229     0.86      0.48
+# scalar_solve                 30.976     30.985     30.996    11.95      0.07
+# sync_T                        0.354      0.361      0.368     0.14      3.78
+# momentum_rhs                 14.457     14.532     14.624     5.64      1.15
+# momentum_solve              102.030    102.082    102.117    39.38      0.09
+# sync_UVW_1                    1.036      1.075      1.115     0.43      7.34
+# properties_2                  2.223      2.235      2.243     0.86      0.88
+# pressure_rhs                  2.767      2.801      2.829     1.09      2.20
+# pressure_solve               87.990     88.024     88.064    33.96      0.08
+# pressure_correct              5.387      5.399      5.405     2.08      0.33
+# sync_UVW_2                    1.042      1.057      1.066     0.41      2.25
+# predictor                     1.855      1.856      1.856     0.72      0.04
+# clip                          0.689      0.691      0.694     0.27      0.68
+# monitor                       1.872      1.874      1.875     0.72      0.16
+# tdma_comm_scalar_x            0.224      0.238      0.277     0.11     22.20
+# tdma_comm_scalar_y            0.110      0.120      0.136     0.05     21.81
+# tdma_comm_scalar_z            0.107      0.117      0.129     0.05     19.03
+# tdma_comm_momentum_x          0.674      0.786      1.002     0.39     41.74
+# tdma_comm_momentum_y          0.332      0.516      0.810     0.31     92.68
+# tdma_comm_momentum_z          0.323      0.543      0.897     0.35    105.73
+# tdma_comm_pressure_z          0.169      1.726      6.171     2.38    347.77
+# pressure.comm.block_to_lines     13.336     13.360     13.430     5.18      0.70
+# pressure.comm.x_to_y         14.979     20.549     22.752     8.77     37.83
+# pressure.comm.y_to_x         14.897     20.862     23.005     8.87     38.87
+# pressure.comm.lines_to_block     13.294     15.314     21.261     8.20     52.02

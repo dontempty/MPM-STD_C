@@ -1,0 +1,8 @@
+srun: error: task 0 launch failed: Error configuring interconnect
+srun: error: task 1 launch failed: Error configuring interconnect
+srun: error: task 2 launch failed: Error configuring interconnect
+srun: error: task 3 launch failed: Error configuring interconnect
+srun: error: task 4 launch failed: Error configuring interconnect
+srun: error: task 5 launch failed: Error configuring interconnect
+srun: error: task 6 launch failed: Error configuring interconnect
+srun: error: task 7 launch failed: Error configuring interconnect

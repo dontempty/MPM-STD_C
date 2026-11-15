@@ -1,0 +1,71 @@
+############################################################
+ job      1285515   nodes 8 (node[0184-0191])   2026-11-16 07:49:47
+ np       32   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_512_pencil weak_512_slab strong_1024_pencil strong_1024_slab strong_2048_pencil strong_2048_slab
+ reps 1   gate 1   timeout 900s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx_phases
+ bin      2026-11-03 10:11:56  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-18d23db1-a11d-791c-15a6-6a9830f5a9f5)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-3860349f-e9a3-1ccc-03bb-6c8535d0cc46)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-81d8c6c7-8443-2020-75e8-a40b7e3d42dc)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-959ea3a5-b8e1-0ffa-f106-0e163b98f68d)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-97cb35d1-313d-af28-580a-e131ffd632d5)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-a372e85e-ba95-81cb-8830-f0a67d0b7332)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-ae3640cf-9927-9881-98d9-d26a20287dfa)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-cfb5ed46-9e6a-5553-9783-2afcfefc2afe)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-141e7b8e-3156-d10c-34dd-9ee31ea11cf4)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-4b4e38c0-2ef5-ea29-5493-8c8fbec00732)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-5a79a2f6-2a28-a159-c668-d2baf8ba0c4a)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-8b7e5116-abeb-3103-c56a-a7a830e8e25e)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-9cdf48c2-b28c-4c49-668e-45f2d6370fd1)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-b2788e4f-6996-3efd-9be6-1475f674aeae)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-b28d4ec8-c06c-40b7-435f-7c8f3616fdbf)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-fbf95c68-6435-c945-bf2b-4c53d824743c)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-08ca6655-39cf-b337-17f6-4bf22a68814a)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-2b587f1d-680f-16be-6a7f-dc0121bb2abf)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-456ff6fc-157e-8468-610d-e7bb88ca04fa)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-78f3f6de-b46f-c0bc-70e5-977e8456ae74)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-8ecd952a-6f26-720a-c467-f0e95101a1ee)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-a670ad04-077b-13a1-7ce0-dd1b2123748c)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-d4c2a51c-5d4e-41e6-9b05-85829b8cce63)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-edeaa221-43b4-95d5-10e6-312ffbca0bf9)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-1e347eee-ff33-259d-4f1a-2236831f53b0)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-22e2d9c3-a5af-3e0a-f2da-1c5c0ca7460a)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-5534fd5e-af91-b6cc-e2b0-118bc4282b02)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-6bdc4a93-f130-997f-4067-d0c0eda24159)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-9d491e2f-75b2-ef7c-c29d-dddcc1eb6c8c)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-b294746c-06d8-d8d2-2174-23d0b46e9c49)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-bfb1f00e-82b2-61c5-e4a8-b2497d34afa6)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-e0241f28-f927-aee2-db88-499806cc882f)
+  rank 0 node0184 localid 0 cpus 0-71
+  rank 1 node0184 localid 1 cpus 72-143
+  rank 2 node0184 localid 2 cpus 144-215
+  rank 3 node0184 localid 3 cpus 216-287
+
+==== 게이트 np=32 (8노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_512_pencil ====
+  weak_512_pencil_np32_n8x4_r1         step_total   285.431 ms/step (rank max)   (68s)
+
+==== weak_512_slab ====
+  weak_512_slab_np32_n8x4_r1           step_total   213.923 ms/step (rank max)   (52s)
+
+==== strong_1024_pencil ====
+  strong_1024_pencil_np32_n8x4_r1      step_total    76.957 ms/step (rank max)   (24s)
+
+==== strong_1024_slab ====
+  strong_1024_slab_np32_n8x4_r1        step_total    75.075 ms/step (rank max)   (25s)
+
+==== strong_2048_pencil ====
+  strong_2048_pencil_np32_n8x4_r1      step_total   567.171 ms/step (rank max)   (125s)
+
+==== strong_2048_slab ====
+  strong_2048_slab_np32_n8x4_r1        step_total   414.044 ms/step (rank max)   (94s)
+
+==== DONE 2026-11-16 07:56:36 ====
+==== 전 6 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

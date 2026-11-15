@@ -1,0 +1,120 @@
+error (rank 2): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 2] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0331] - Abort(1) (rank 2 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 2
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 2
+error (rank 3): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 3] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0331] - Abort(1) (rank 3 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 3
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 3
+error (rank 0): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 0] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0331] - Abort(1) (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 0
+
+# settings loaded from bl_222_wall.ini  (8 ranks, tdma=pascal)
+[mesh]
+nx = 190
+ny = 62
+nz = 96
+
+[domain]
+lx = 100
+ly = 5
+lz = 6
+
+[stretch]
+uniform_z = false
+gamma_z = 2.5
+
+[process]
+npx = 2
+npy = 2
+npz = 2
+
+[physics]
+u_infinity = 1
+reynolds = 4500
+convective_velocity = 0
+
+[inflow]
+method = recycling
+recycle_x = 80
+delta99 = 1
+relaxation_time = 20
+noise = 0.1
+
+[trip]
+amplitude = 0.01
+x_center = 8
+length_x = 4
+length_z = 0.8
+time_scale = 4
+modes = 10
+end_time = 0
+[les]
+model = wale
+c_s = 0.12
+c_w = 0.5
+
+[initial]
+profile = blasius
+restart_from = ""
+
+[boundary]
+x = inflow_outflow
+y = periodic
+z = wall
+velocity_ghost = mirror
+inflow_profile = recycling
+u_z_plus = slip
+v_z_plus = slip
+w_z_plus = freestream
+
+[time]
+end_time = 1000000000
+dt_max = 0.05
+max_cfl = 0.8
+max_step = 30
+
+[output]
+stats_dir = "/scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/_verify_pack/bl_stats"
+monitor_interval = 5
+stats_interval = 100
+stats_start_time = 1000000000
+stations = "1000,1410,1551"
+checkpoint_interval = 0
+checkpoint_dir = "checkpoints/re4500_les_wale"
+# boundary condition table:
+  velocity_ghost: mirror
+  x: inflow_outflow  u-=inflow(profile)  u+=outflow  v-=dirichlet(0)  v+=outflow  w-=dirichlet(0)  w+=outflow  p-=neumann  p+=neumann  t-=dirichlet(0)  t+=neumann
+  y: periodic
+  z: wall  u-=dirichlet(0)  u+=neumann  v-=dirichlet(0)  v+=neumann  w-=dirichlet(0)  w+=freestream  p-=neumann  p+=neumann  t-=dirichlet(0)  t+=dirichlet(0)
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 0
+error (rank 1): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 1] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0331] - Abort(1) (rank 1 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 1
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 1
+error (rank 6): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 6] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0332] - Abort(1) (rank 6 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 6
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 6
+error (rank 4): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 4] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0332] - Abort(1) (rank 4 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 4
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 4
+error (rank 5): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 5] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0332] - Abort(1) (rank 5 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 5
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 5
+error (rank 7): SpatialStatistics: z-slab decomposition only
+MPICH ERROR [Rank 7] [job id 1201301.7] [Mon Nov  2 22:12:15 2026] [node0332] - Abort(1) (rank 7 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 1) - process 7
+
+aborting job:
+application called MPI_Abort(MPI_COMM_WORLD, 1) - process 7
+srun: error: node0331: tasks 0-3: Exited with exit code 255
+srun: error: node0332: tasks 4-7: Exited with exit code 255

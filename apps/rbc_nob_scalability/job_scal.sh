@@ -1,7 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=rbc_scal
 #SBATCH --comment="field=mae;appl=in_house"
-#SBATCH --partition=natStr
+#SBATCH --partition=exclusive02
+#SBATCH --account=bs0242
+#SBATCH --qos=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=72
@@ -10,14 +12,15 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=log/scal_%j.out
 # =============================================================================
-#  rbc_nob 확장성 측정 (strong / weak) — KISTI-6 GH200, natStr, 노드당 GPU 4 (1 랭크 = 1 GPU).
+#  rbc_nob 확장성 측정 (strong / weak) — KISTI-6 GH200, 노드당 GPU 4 (1 랭크 = 1 GPU).
+#  파티션: 2026-11-09 부터 그룹 bs0242 는 exclusive02 만 (node[0065-0192], 128 노드). 11-02/03 결과는 normal.
 #  TDMA 백엔드는 PaScaL 만 쓴다 (기본 빌드 build_gpu/bin). apps/rbc_nob_scalability/ 에서 제출한다:
 #
 #      한 노드 수:          sbatch -N 2 job_scal.sh
 #      노드 수별로 한꺼번에: bash submit_scal.sh
 #
 #  노드 수가 담당 np 를 정한다 (그 노드 수를 꽉 채우는 np 만 돈다):
-#      -N 1 → np 1 2 4    -N 2 → np 8    -N 4 → np 16    -N 8 → np 32    -N 16 → np 64
+#      -N 1 → np 1 2 4    -N 2 → np 8    -N 4 → np 16    -N 8 → np 32    -N 16 → np 64    -N 32/64/128 → np 128/256/512
 #
 #  환경변수 (sbatch --export=ALL,VAR=... 또는 submit_scal.sh 앞에):
 #      STUDIES     "strong_256_slab weak_256_slab"   decks/<study>/<study>_np<N>.ini (gen_decks.py)
@@ -43,7 +46,7 @@ REPO=$(cd "${APP}/../.." && pwd)
 source "${APP}/env_kisti6.sh"
 
 STUDIES=${STUDIES:-"strong_256_slab weak_256_slab"}
-NP_ALL=${NP_ALL:-"1 2 4 8 16 32 64"}
+NP_ALL=${NP_ALL:-"1 2 4 8 16 32 64 128 256 512"}
 NP_LIST=${NP_LIST:-}
 REPS=${REPS:-2}
 GATE=${GATE:-1}
@@ -110,6 +113,7 @@ done
     echo "# job=${JOB} nodes=${NNODES} nodelist=${SLURM_JOB_NODELIST:-?} date=$(date -Is)"
     echo "# git=$(git -C "${REPO}" rev-parse --short HEAD 2>/dev/null) dirty_files=$(git -C "${REPO}" status --porcelain 2>/dev/null | wc -l)"
     echo "# MPICH_GPU_SUPPORT_ENABLED=${MPICH_GPU_SUPPORT_ENABLED:-} PASCAL_TDMA_MPI_MODE=${PASCAL_TDMA_MPI_MODE:-device} MPMSTD_A2A_SELF=${MPMSTD_A2A_SELF:-copy}"
+    echo "# MPMSTD_PRESSURE_PENCIL=${MPMSTD_PRESSURE_PENCIL:-plane(default)} MPMSTD_PENCIL_PACK=${MPMSTD_PENCIL_PACK:-structured(default)} FI_MR_CACHE_MONITOR=${FI_MR_CACHE_MONITOR:-}"
     module -t list 2>&1 | tr '\n' ' '; echo
     nvidia-smi --query-gpu=name,memory.total,driver_version,clocks.max.sm --format=csv
     nvidia-smi topo -m 2>/dev/null | head -8

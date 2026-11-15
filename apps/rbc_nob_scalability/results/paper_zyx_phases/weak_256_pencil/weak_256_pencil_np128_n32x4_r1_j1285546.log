@@ -1,0 +1,88 @@
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx_phases/weak_256_pencil/weak_256_pencil_np128.ini  (128 ranks, tdma=pascal)
+[mesh]
+nx = 1024
+ny = 1024
+nz = 2048
+
+[domain]
+lx = 24
+ly = 24
+lz = 8
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 4
+npy = 4
+npz = 8
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 200
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 50
+
+[timing]
+warmup_steps = 50
+solver_phases = true
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 1024x1024x2048 on 4x4x8 ranks, warmup 50 of 200 steps
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+      1     0.002   0.00179   6.39e-11   0.00000   0.0000  -0.4999   0.4999   1.0077   0.9923   12.00  2.899e-02  2.893e-02    0.006
+     50     0.090   0.00179   6.00e-14   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  6.597e-04  1.308e-02    0.047
+    100     0.179   0.00179   2.47e-14   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  4.986e-04  6.433e-03    0.048
+    150     0.269   0.00179   1.19e-14   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  4.121e-04  3.575e-03    0.048
+    200     0.359   0.00179   6.50e-15   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  3.610e-04  2.104e-03    0.048
+srun: forcing job termination
+srun: got SIGCONT
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+[2026-11-16T08:20:09.113] error: *** STEP 1285546.4 ON node0095 CANCELLED AT 2026-11-16T08:20:09 DUE to SIGNAL Killed ***
+srun: error: node0175: task 116: Killed
+srun: error: node0105: task 40: Killed
+srun: error: node0095: task 0: Killed
+srun: error: node0172: task 104: Killed
+srun: error: node0174: tasks 112,114-115: Killed
+srun: error: node0097: tasks 8-11: Killed
+srun: error: node0164: tasks 72-75: Killed
+srun: error: node0109: tasks 56-59: Killed
+srun: error: node0170: tasks 96-99: Killed
+srun: error: node0174: task 113: Killed
+srun: error: node0168: tasks 88-91: Killed
+srun: error: node0099: tasks 16-19: Killed
+srun: error: node0177: tasks 124-127: Killed
+srun: error: node0100: tasks 20-23: Killed
+srun: error: node0106: tasks 44-47: Killed
+srun: error: node0110: tasks 60-63: Killed
+srun: error: node0162: tasks 64-67: Killed
+srun: error: node0173: tasks 108-111: Killed
+srun: error: node0108: tasks 52-55: Killed
+srun: error: node0166: tasks 80-83: Killed
+srun: error: node0107: tasks 48-51: Killed
+srun: error: node0102: tasks 28-31: Killed
+srun: error: node0169: tasks 92-95: Killed
+srun: error: node0175: tasks 117-119: Killed
+srun: error: node0105: tasks 41-43: Killed
+srun: error: node0104: tasks 36-39: Killed
+srun: error: node0165: tasks 76-79: Killed
+srun: error: node0176: tasks 120-123: Killed
+srun: error: node0098: tasks 12-15: Killed
+srun: error: node0101: tasks 24-27: Killed
+srun: error: node0167: tasks 84-87: Killed
+srun: error: node0163: tasks 68-71: Killed
+srun: error: node0103: tasks 32-35: Killed
+srun: error: node0096: tasks 4-7: Killed
+srun: error: node0172: tasks 105-107: Killed
+srun: error: node0171: tasks 100-103: Killed
+srun: error: node0095: tasks 1-3: Killed

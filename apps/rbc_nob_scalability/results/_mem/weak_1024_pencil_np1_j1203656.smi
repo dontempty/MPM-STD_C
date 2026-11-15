@@ -1,0 +1,4 @@
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+[2026-11-03T09:56:45.540] error: *** STEP 1203656.2 ON node1047 CANCELLED AT 2026-11-03T09:56:45 DUE to SIGNAL Killed ***
+srun: error: node1047: task 0: Killed

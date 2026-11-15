@@ -1,0 +1,75 @@
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/gate/gate_np16.ini  (16 ranks, tdma=pascal)
+[mesh]
+nx = 64
+ny = 64
+nz = 256
+
+[domain]
+lx = 6
+ly = 6
+lz = 1
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 1
+npy = 1
+npz = 16
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 60
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 10
+
+[timing]
+warmup_steps = 10
+solver_phases = false
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 64x64x256 on 1x1x16 ranks, warmup 10 of 60 steps
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+      1     0.007   0.00725   9.58e-12   0.00000   0.0000  -0.4992   0.4992   1.0077   0.9923   12.00  2.810e-02  2.745e-02    0.026
+     10     0.072   0.00725   1.90e-13   0.00000   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  1.769e-02  2.391e-02    0.004
+     20     0.145   0.00725   9.88e-14   0.00000   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  9.651e-03  1.654e-02    0.005
+     30     0.217   0.00725   5.53e-14   0.00000   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  5.895e-03  1.248e-02    0.005
+     40     0.290   0.00725   3.65e-14   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  3.797e-03  9.824e-03    0.005
+     50     0.362   0.00725   3.07e-14   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  2.525e-03  7.968e-03    0.005
+     60     0.435   0.00725   2.65e-14   0.00001   0.0000  -0.4992   0.4992   1.0078   0.9922   12.00  1.713e-03  6.588e-03    0.005
+# phase timing: 50 steps, 16 ranks (ms/step; share = max/step_total)
+# phase                           min        avg        max   share%    imbal%
+# step_total                    5.239      5.239      5.239   100.00      0.00
+# dt_cfl                        0.189      0.192      0.197     3.75      3.75
+# dt_viscous                    0.172      0.173      0.174     3.33      1.48
+# properties_1                  0.011      0.012      0.012     0.23      6.72
+# scalar_solve                  0.785      0.798      0.811    15.48      3.27
+# sync_T                        0.072      0.082      0.097     1.86     31.31
+# momentum_rhs                  0.020      0.020      0.021     0.40      3.91
+# momentum_solve                2.448      2.457      2.466    47.06      0.73
+# sync_UVW_1                    0.211      0.213      0.215     4.10      1.82
+# properties_2                  0.010      0.011      0.011     0.21      8.29
+# pressure_rhs                  0.010      0.010      0.011     0.20      4.45
+# pressure_solve                0.877      0.884      0.896    17.10      2.16
+# pressure_correct              0.014      0.014      0.014     0.27      4.12
+# sync_UVW_2                    0.211      0.213      0.216     4.12      2.46
+# predictor                     0.077      0.079      0.081     1.55      5.11
+# clip                          0.008      0.009      0.009     0.17      3.15
+# monitor                       0.049      0.049      0.050     0.96      3.45
+# tdma_comm_scalar_x            0.000      0.000      0.000     0.00      0.00
+# tdma_comm_scalar_y            0.000      0.000      0.000     0.00      0.00
+# tdma_comm_scalar_z            0.326      0.348      0.363     6.92     10.61
+# tdma_comm_momentum_x          0.000      0.000      0.000     0.00      0.00
+# tdma_comm_momentum_y          0.000      0.000      0.000     0.00      0.00
+# tdma_comm_momentum_z          0.749      0.813      0.856    16.35     13.20
+# tdma_comm_pressure_z          0.317      0.347      0.373     7.13     16.13

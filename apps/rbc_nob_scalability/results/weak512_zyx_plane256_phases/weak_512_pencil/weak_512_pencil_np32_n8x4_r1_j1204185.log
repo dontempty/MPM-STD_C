@@ -1,0 +1,129 @@
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx_phases/weak_512_pencil/weak_512_pencil_np32.ini  (32 ranks, tdma=pascal)
+[mesh]
+nx = 1024
+ny = 2048
+nz = 2048
+
+[domain]
+lx = 12
+ly = 24
+lz = 4
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 2
+npy = 4
+npz = 4
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 200
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 50
+
+[timing]
+warmup_steps = 50
+solver_phases = true
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 1024x2048x2048 on 2x4x4 ranks, warmup 50 of 200 steps
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+      1     0.000   0.00045   1.57e-10   0.00000   0.0000  -0.4999   0.4999   1.0077   0.9923   12.00  3.789e-02  3.783e-02    0.012
+     50     0.022   0.00045   1.40e-13   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  8.509e-04  1.756e-02    0.263
+    100     0.045   0.00045   5.87e-14   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  6.414e-04  8.713e-03    0.268
+    150     0.067   0.00045   2.75e-14   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  5.275e-04  4.875e-03    0.269
+    200     0.090   0.00045   1.55e-14   0.00000   0.0000  -0.4999   0.4999   1.0078   0.9922   12.00  4.592e-04  2.888e-03    0.267
+# phase timing: 150 steps, 32 ranks (ms/step; share = max/step_total)
+# phase                           min        avg        max   share%    imbal%
+# step_total                  267.907    267.908    267.908   100.00      0.00
+# dt_cfl                        3.984      4.018      4.053     1.51      1.73
+# dt_viscous                    1.302      1.334      1.365     0.51      4.67
+# properties_1                  2.216      2.226      2.245     0.84      1.29
+# scalar_solve                 31.559     31.588     31.609    11.80      0.16
+# scalar.build_x                6.335      6.356      6.386     2.38      0.81
+# scalar.tdma_x                 5.621      5.634      5.680     2.12      1.05
+# scalar.build_y                3.406      3.418      3.439     1.28      0.97
+# scalar.tdma_y                 5.765      5.806      5.876     2.19      1.92
+# scalar.build_z                3.372      3.384      3.404     1.27      0.96
+# scalar.tdma_z                 5.740      5.803      5.844     2.18      1.78
+# scalar.scatter_z              1.170      1.174      1.185     0.44      1.24
+# sync_T                        0.514      0.543      0.561     0.21      8.56
+# momentum_rhs                 14.438     14.516     14.690     5.48      1.73
+# momentum_solve              105.026    105.126    105.200    39.27      0.17
+# momentum.dU.build_x           3.268      3.289      3.321     1.24      1.62
+# momentum.dU.tdma_x            5.641      5.712      5.856     2.19      3.77
+# momentum.dU.build_y           3.931      3.963      4.009     1.50      1.97
+# momentum.dU.tdma_y            5.832      6.007      6.139     2.29      5.11
+# momentum.dU.build_z           3.853      3.886      3.938     1.47      2.17
+# momentum.dU.tdma_z            5.925      6.047      6.205     2.32      4.64
+# momentum.dU.scatter_z         0.763      0.768      0.773     0.29      1.33
+# momentum.dU.halo              0.606      0.699      0.791     0.30     26.50
+# momentum.dU.wall_ghost        0.002      0.011      0.021     0.01    176.76
+# momentum.dV.couple_rhs        2.794      2.825      2.869     1.07      2.65
+# momentum.dV.build_x           3.890      3.920      3.975     1.48      2.17
+# momentum.dV.tdma_x            5.659      5.692      5.794     2.16      2.36
+# momentum.dV.build_y           3.419      3.448      3.492     1.30      2.11
+# momentum.dV.tdma_y            5.803      5.893      5.992     2.24      3.20
+# momentum.dV.build_z           3.552      3.579      3.622     1.35      1.97
+# momentum.dV.tdma_z            5.687      5.783      5.872     2.19      3.20
+# momentum.dV.scatter_z         0.760      0.764      0.770     0.29      1.30
+# momentum.dV.halo              0.564      0.614      0.659     0.25     15.48
+# momentum.dV.wall_ghost        0.002      0.011      0.020     0.01    174.77
+# momentum.dW.couple_rhs        3.469      3.499      3.552     1.33      2.38
+# momentum.dW.build_x           3.737      3.766      3.839     1.43      2.70
+# momentum.dW.tdma_x            5.648      5.686      5.793     2.16      2.55
+# momentum.dW.build_y           3.786      3.812      3.869     1.44      2.17
+# momentum.dW.tdma_y            5.800      5.905      6.039     2.25      4.05
+# momentum.dW.build_z           3.201      3.222      3.248     1.21      1.46
+# momentum.dW.tdma_z            5.741      5.848      5.954     2.22      3.65
+# momentum.dW.scatter_z         1.633      1.644      1.654     0.62      1.32
+# momentum.dW.halo              0.528      0.556      0.592     0.22     11.43
+# momentum.dW.wall_ghost        0.002      0.011      0.020     0.01    174.04
+# momentum.post.block_couple_v      2.374      2.393      2.430     0.91      2.36
+# momentum.post.halo_dV         0.387      0.417      0.446     0.17     14.14
+# momentum.post.wall_ghost_dV      0.002      0.011      0.020     0.01    175.94
+# momentum.post.block_couple_u      3.382      3.415      3.471     1.30      2.62
+# momentum.post.add_increment      1.959      1.971      1.990     0.74      1.54
+# sync_UVW_1                    1.189      1.262      1.307     0.49      9.40
+# properties_2                  2.225      2.238      2.259     0.84      1.49
+# pressure_rhs                  2.790      2.816      2.873     1.07      2.97
+# pressure_solve               92.545     92.679     92.778    34.63      0.25
+# pressure.plane.block_to_planes     34.795     36.800     37.638    14.05      7.73
+# pressure.fft_x_fwd            0.608      0.610      0.616     0.23      1.42
+# pressure.reorder_x_to_y       0.621      0.623      0.626     0.23      0.86
+# pressure.fft_y_fwd            0.615      0.617      0.617     0.23      0.31
+# pressure.build_z              1.600      1.614      1.635     0.61      2.17
+# pressure.tdma_z              10.621     11.484     13.540     5.05     25.41
+# pressure.mean_remove          0.071      0.104      0.155     0.06     80.89
+# pressure.fft_y_bwd            0.612      0.614      0.614     0.23      0.32
+# pressure.reorder_y_to_x       0.655      0.659      0.664     0.25      1.32
+# pressure.fft_x_bwd            0.614      0.619      0.625     0.23      1.82
+# pressure.plane.planes_to_block     34.030     35.999     37.260    13.91      8.97
+# pressure.halo                 1.725      2.916      4.852     1.81    107.25
+# pressure_correct              5.390      5.400      5.411     2.02      0.38
+# sync_UVW_2                    1.223      1.301      1.433     0.53     16.19
+# predictor                     1.915      1.946      1.953     0.73      1.96
+# clip                          0.687      0.691      0.696     0.26      1.32
+# monitor                       0.198      0.198      0.199     0.07      0.28
+# tdma_comm_scalar_x            0.212      0.225      0.278     0.10     29.48
+# tdma_comm_scalar_y            0.307      0.352      0.429     0.16     34.67
+# tdma_comm_scalar_z            0.291      0.348      0.394     0.15     29.51
+# tdma_comm_momentum_x          0.635      0.786      1.133     0.42     63.33
+# tdma_comm_momentum_y          0.955      1.348      1.649     0.62     51.47
+# tdma_comm_momentum_z          0.942      1.214      1.467     0.55     43.26
+# tdma_comm_pressure_z          4.409      5.301      7.378     2.75     56.01
+# pressure.comm.block_to_planes     33.407     35.412     36.251    13.53      8.03
+# pressure.comm.planes_to_block     32.228     34.197     35.458    13.24      9.45
+# timing csv: /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/weak512_zyx_plane256_phases/weak_512_pencil/weak_512_pencil_np32_n8x4_r1_j1204185.csv

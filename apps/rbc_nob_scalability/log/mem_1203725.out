@@ -1,0 +1,37 @@
+== weak_512_pencil_np1_j1203725  rc=0
+   node0321 gpu0  peak 25868 MiB / 97871 MiB
+   node0321 gpu1  peak 5 MiB / 97871 MiB
+   node0321 gpu2  peak 3 MiB / 97871 MiB
+   node0321 gpu3  peak 5 MiB / 97871 MiB
+   >       3     0.001   0.00045   4.74e-12   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  2.436e-02  4.285e-02    0.108
+   >       6     0.003   0.00045   8.50e-13   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  8.867e-03  3.371e-02    0.160
+== weak_512_pencil_np8_j1203725  rc=0
+   node0321 gpu0  peak 30789 MiB / 97871 MiB
+   node0321 gpu1  peak 29101 MiB / 97871 MiB
+   node0321 gpu2  peak 29100 MiB / 97871 MiB
+   node0321 gpu3  peak 29101 MiB / 97871 MiB
+   node0322 gpu0  peak 30788 MiB / 97871 MiB
+   node0322 gpu1  peak 29099 MiB / 97871 MiB
+   node0322 gpu2  peak 29101 MiB / 97871 MiB
+   node0322 gpu3  peak 29101 MiB / 97871 MiB
+   >       3     0.001   0.00045   7.78e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.437e-02  4.428e-02    0.157
+   >       6     0.003   0.00045   9.22e-13   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  8.872e-03  3.567e-02    0.233
+== weak_768_pencil_np1_j1203725  rc=0
+   node0322 gpu0  peak 85081 MiB / 97871 MiB
+   node0322 gpu1  peak 6 MiB / 97871 MiB
+   node0322 gpu2  peak 7 MiB / 97871 MiB
+   node0322 gpu3  peak 7 MiB / 97871 MiB
+   >       3     0.001   0.00020   9.72e-12   0.00000   0.0000  -0.4997   0.4997   1.0077   0.9923   12.00  2.437e-02  4.381e-02    0.392
+   >       6     0.001   0.00020   1.60e-12   0.00000   0.0000  -0.4997   0.4997   1.0077   0.9923   12.00  8.872e-03  3.501e-02    0.586
+== weak_640_pencil_np8_j1203725  rc=0
+   node0321 gpu0  peak 57677 MiB / 97871 MiB
+   node0321 gpu1  peak 55981 MiB / 97871 MiB
+   node0321 gpu2  peak 55980 MiB / 97871 MiB
+   node0321 gpu3  peak 55983 MiB / 97871 MiB
+   node0322 gpu0  peak 57674 MiB / 97871 MiB
+   node0322 gpu1  peak 55982 MiB / 97871 MiB
+   node0322 gpu2  peak 55981 MiB / 97871 MiB
+   node0322 gpu3  peak 55983 MiB / 97871 MiB
+   >       3     0.001   0.00029   1.17e-11   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.437e-02  4.457e-02    0.309
+   >       6     0.002   0.00029   1.38e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  8.871e-03  3.608e-02    0.455
+[2026-11-03T10:10:27.560] error: *** JOB 1203725 ON node0321 CANCELLED AT 2026-11-03T10:10:27 DUE to SIGNAL Terminated ***

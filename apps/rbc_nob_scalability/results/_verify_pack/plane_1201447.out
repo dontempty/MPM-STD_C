@@ -1,0 +1,54 @@
+=== 2x2x2 plane
+wall     x: max|phi_h - phi| = 3.331e-15   checksum sum=-4.45255811387657019e-14 sumsq=3.70499999999998454e+03
+periodic x: max|phi_h - phi| = 2.554e-15   checksum sum=1.46826995006676952e-14 sumsq=3.70499999999998681e+03
+PASS test_pressure_pencil
+=== 2x2x2 plane_index
+wall     x: max|phi_h - phi| = 3.331e-15   checksum sum=-4.45255811387657019e-14 sumsq=3.70499999999998454e+03
+periodic x: max|phi_h - phi| = 2.554e-15   checksum sum=1.46826995006676952e-14 sumsq=3.70499999999998681e+03
+PASS test_pressure_pencil
+=== 2x2x2 t4
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-7.81015876971657974e-15 sumsq=3.70499999999998363e+03
+periodic x: max|phi_h - phi| = 3.442e-15   checksum sum=-2.67633137873701799e-14 sumsq=3.70499999999997635e+03
+PASS test_pressure_pencil
+=== 1x2x2 plane
+wall     x: max|phi_h - phi| = 3.442e-15   checksum sum=3.51940698806174623e-14 sumsq=3.70499999999997590e+03
+periodic x: max|phi_h - phi| = 2.665e-15   checksum sum=9.71445146547011973e-15 sumsq=3.70500000000000227e+03
+PASS test_pressure_pencil
+=== 1x2x2 plane_index
+wall     x: max|phi_h - phi| = 3.442e-15   checksum sum=3.51940698806174623e-14 sumsq=3.70499999999997590e+03
+periodic x: max|phi_h - phi| = 2.665e-15   checksum sum=9.71445146547011973e-15 sumsq=3.70500000000000227e+03
+PASS test_pressure_pencil
+=== 1x2x2 t4
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-1.68060010352633071e-14 sumsq=3.70499999999997544e+03
+periodic x: max|phi_h - phi| = 3.442e-15   checksum sum=9.52016243616071733e-15 sumsq=3.70499999999999227e+03
+PASS test_pressure_pencil
+=== 2x1x2 plane
+wall     x: max|phi_h - phi| = 3.331e-15   checksum sum=-1.32441800582139280e-14 sumsq=3.70499999999997453e+03
+periodic x: max|phi_h - phi| = 2.554e-15   checksum sum=6.26027008010510144e-14 sumsq=3.70499999999996226e+03
+PASS test_pressure_pencil
+=== 2x1x2 plane_index
+wall     x: max|phi_h - phi| = 3.331e-15   checksum sum=-1.32441800582139280e-14 sumsq=3.70499999999997453e+03
+periodic x: max|phi_h - phi| = 2.554e-15   checksum sum=6.26027008010510144e-14 sumsq=3.70499999999996226e+03
+PASS test_pressure_pencil
+=== 2x1x2 t4
+wall     x: max|phi_h - phi| = 3.220e-15   checksum sum=-6.66172846053303402e-14 sumsq=3.70499999999997635e+03
+periodic x: max|phi_h - phi| = 2.998e-15   checksum sum=2.45983788893511246e-14 sumsq=3.70499999999996135e+03
+PASS test_pressure_pencil
+=== 4x2x1 plane
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-1.06997743998249462e-14 sumsq=3.70499999999997726e+03
+periodic x: max|phi_h - phi| = 2.887e-15   checksum sum=-6.44429363700078769e-15 sumsq=3.70499999999998045e+03
+PASS test_pressure_pencil
+=== 4x2x1 plane_index
+wall     x: max|phi_h - phi| = 3.664e-15   checksum sum=-1.06997743998249462e-14 sumsq=3.70499999999997726e+03
+periodic x: max|phi_h - phi| = 2.887e-15   checksum sum=-6.44429363700078769e-15 sumsq=3.70499999999998045e+03
+PASS test_pressure_pencil
+=== 4x2x1 t4
+wall     x: max|phi_h - phi| = 3.886e-15   checksum sum=-1.75415237890774733e-14 sumsq=3.70499999999997817e+03
+periodic x: max|phi_h - phi| = 3.553e-15   checksum sum=2.89527328035573770e-14 sumsq=3.70499999999996953e+03
+PASS test_pressure_pencil
+rbc_222_uneven plane rc=0
+rbc_222_uneven t4 rc=0
+rbc_122_uneven plane rc=0
+rbc_122_uneven t4 rc=0
+rbc_222_512 plane rc=0
+rbc_222_512 t4 rc=0

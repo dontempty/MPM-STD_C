@@ -1,0 +1,12 @@
+== weak_512_pencil_np1_j1203671  rc=0
+   >       3     0.001   0.00045   4.74e-12   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  2.436e-02  4.285e-02    0.109
+   >       6     0.003   0.00045   8.50e-13   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  8.867e-03  3.371e-02    0.162
+== weak_512_pencil_np8_j1203671  rc=0
+   >       3     0.001   0.00045   7.78e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.437e-02  4.428e-02    0.153
+   >       6     0.003   0.00045   9.22e-13   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  8.872e-03  3.567e-02    0.231
+== weak_1024_pencil_np8_j1203671  rc=1
+   | error (rank 7): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+   | error (rank 6): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+   | error (rank 5): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+   | error (rank 4): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+   | error (rank 2): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory

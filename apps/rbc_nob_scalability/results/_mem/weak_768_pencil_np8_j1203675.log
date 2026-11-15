@@ -1,0 +1,4 @@
+error (rank 4): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 0): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+[2026-11-03T10:08:45.382] error: *** STEP 1203675.3 ON node1047 CANCELLED AT 2026-11-03T10:08:45 DUE to SIGNAL Terminated ***

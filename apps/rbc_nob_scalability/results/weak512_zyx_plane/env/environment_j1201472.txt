@@ -1,0 +1,19 @@
+# job=1201472 nodes=8 nodelist=node[0636,0639,0649-0653,0661] date=2026-11-02T22:43:52+09:00
+# git=4193820 dirty_files=18
+# MPICH_GPU_SUPPORT_ENABLED=1 PASCAL_TDMA_MPI_MODE=device MPMSTD_A2A_SELF=copy
+Currently Loaded Modulefiles: craype-arm-grace nvidia/26.3 craype/2.7.36 cray-dsmml/0.3.1 libfabric/2.3.1 craype-network-ofi cray-mpich/9.0.1 cray-libsci/26.03.0 PrgEnv-nvidia/8.7.0 cuda/12.9_26.3 craype-accel-nvidia90 
+name, memory.total [MiB], driver_version, clocks.max.sm [MHz]
+NVIDIA GH200 120GB, 97871 MiB, 570.124.06, 1980 MHz
+NVIDIA GH200 120GB, 97871 MiB, 570.124.06, 1980 MHz
+NVIDIA GH200 120GB, 97871 MiB, 570.124.06, 1980 MHz
+NVIDIA GH200 120GB, 97871 MiB, 570.124.06, 1980 MHz
+	[4mGPU0	GPU1	GPU2	GPU3	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NV6	NV6	NV6	0-71	0		4
+GPU1	NV6	 X 	NV6	NV6	72-143	1		12
+GPU2	NV6	NV6	 X 	NV6	144-215	2		20
+GPU3	NV6	NV6	NV6	 X 	216-287	3		28
+
+Legend:
+
+# bin /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability (2026-11-02 22:40:29.000000000 +0900)
+# bin /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob (2026-11-02 22:40:29.000000000 +0900)

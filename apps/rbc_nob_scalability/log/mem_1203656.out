@@ -1,0 +1,37 @@
+== weak_512_pencil_np1_j1203656  rc=0
+   [2026-11-03T09:56:35.821] gpuerror:  peak 0 MiB / 0 MiB
+   node1047 gpu0  peak 9 MiB / 97871 MiB
+   node1047 gpu1  peak 0 MiB / 0 MiB
+   node1047 gpu2  peak 10 MiB / 97871 MiB
+   node1047 gpu3  peak 7 MiB / 97871 MiB
+   srun: gpuforcing  peak 0 MiB / 0 MiB
+   srun: gpuJob  peak 0 MiB / 0 MiB
+   >       3     0.001   0.00045   4.74e-12   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  2.436e-02  4.285e-02    0.108
+   >       6     0.003   0.00045   8.50e-13   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  8.867e-03  3.371e-02    0.161
+== weak_1024_pencil_np1_j1203656  rc=1
+   [2026-11-03T09:56:45.540] gpuerror:  peak 0 MiB / 0 MiB
+   srun: gpuerror:  peak 0 MiB / 0 MiB
+   srun: gpuforcing  peak 0 MiB / 0 MiB
+   srun: gpuJob  peak 0 MiB / 0 MiB
+   | error (rank 0): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+   | srun: error: node1048: task 0: Exited with exit code 1
+== weak_512_pencil_np8_j1203656  rc=1
+   [2026-11-03T09:56:51.188] gpuerror:  peak 0 MiB / 0 MiB
+   srun: gpuerror:  peak 0 MiB / 0 MiB
+   srun: gpuforcing  peak 0 MiB / 0 MiB
+   srun: gpuJob  peak 0 MiB / 0 MiB
+   | srun: error: task 0 launch failed: Error configuring interconnect
+   | srun: error: task 1 launch failed: Error configuring interconnect
+   | srun: error: task 2 launch failed: Error configuring interconnect
+   | srun: error: task 3 launch failed: Error configuring interconnect
+   | srun: error: task 4 launch failed: Error configuring interconnect
+== weak_1024_pencil_np8_j1203656  rc=1
+   [2026-11-03T09:56:56.351] gpuerror:  peak 0 MiB / 0 MiB
+   srun: gpuerror:  peak 0 MiB / 0 MiB
+   srun: gpuforcing  peak 0 MiB / 0 MiB
+   srun: gpuJob  peak 0 MiB / 0 MiB
+   | srun: error: task 4 launch failed: Error configuring interconnect
+   | srun: error: task 5 launch failed: Error configuring interconnect
+   | srun: error: task 6 launch failed: Error configuring interconnect
+   | srun: error: task 7 launch failed: Error configuring interconnect
+   | srun: error: task 0 launch failed: Error configuring interconnect

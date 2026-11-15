@@ -1,0 +1,39 @@
+############################################################
+ job      1201321   nodes 2 (node[1157,1161])   2026-11-02 22:15:22
+ np       1/4 2/4 4/4 8/4   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_512_pencil
+ reps 2   gate 1   timeout 400s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/weak512_zyx_packopt_phases
+ bin      2026-11-02 22:10:01  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-9227ae09-f62d-a857-97d2-d65442897a32)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-f6c39ddf-8ce4-9e22-648d-1409ef3299d7)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-00bf4ff9-616f-d4d2-0d1a-f84236925cdd)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-d7ee77ce-7a19-0639-3c08-892bb5086516)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-b9ad7248-0ab0-0e3a-6d68-d280b4acc0a0)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-e0c90989-83b0-511e-57d0-46acb2fbba11)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-3b81eeaf-eea6-d035-671a-fc6545af0902)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-dbaf07f2-02b0-5799-437d-96e1299eebe6)
+  rank 0 node1157 localid 0 cpus 0-71
+  rank 1 node1157 localid 1 cpus 72-143
+  rank 2 node1157 localid 2 cpus 144-215
+  rank 3 node1157 localid 3 cpus 216-287
+
+==== 게이트 np=8 (2노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_512_pencil ====
+  weak_512_pencil_np1_n1x1_r1          step_total   158.472 ms/step (rank max)   (35s)
+  weak_512_pencil_np1_n1x1_r2          step_total   159.543 ms/step (rank max)   (36s)
+  weak_512_pencil_np2_n1x2_r1          step_total   173.275 ms/step (rank max)   (39s)
+  weak_512_pencil_np2_n1x2_r2          step_total   173.681 ms/step (rank max)   (40s)
+  weak_512_pencil_np4_n1x4_r1          step_total   192.074 ms/step (rank max)   (47s)
+  weak_512_pencil_np4_n1x4_r2          step_total   192.001 ms/step (rank max)   (47s)
+  weak_512_pencil_np8_n2x4_r1          step_total   257.234 ms/step (rank max)   (61s)
+  weak_512_pencil_np8_n2x4_r2          step_total   257.409 ms/step (rank max)   (61s)
+
+==== DONE 2026-11-02 22:21:59 ====
+==== 전 8 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

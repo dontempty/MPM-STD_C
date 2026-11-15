@@ -1,0 +1,65 @@
+############################################################
+ job      1285467   nodes 2 (node[0066-0067])   2026-11-16 07:35:22
+ np       8   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_256_pencil weak_256_slab weak_512_pencil weak_512_slab strong_1024_pencil strong_1024_slab strong_2048_pencil strong_2048_slab
+ reps 3   gate 1   timeout 900s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx
+ bin      2026-11-03 10:11:56  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+WARN: 덱 없음 /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/strong_2048_pencil/strong_2048_pencil_np8.ini — 이 조합은 건너뛴다 (gen_decks.py 가 만들지 않은 조합일 수 있다)
+WARN: 덱 없음 /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/strong_2048_slab/strong_2048_slab_np8.ini — 이 조합은 건너뛴다 (gen_decks.py 가 만들지 않은 조합일 수 있다)
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-16d30bbe-4ab4-509c-b51a-11f98823e085)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-e3a8abac-0e4d-e65e-84a3-ce6066edf5b3)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-06761284-ed5b-a8be-a97e-b1dd487a7f42)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-d9c5aa2c-0a2c-6003-a81d-fb329f4d3307)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-2d6f2a65-ab7a-f281-f222-67440efcb894)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-a704e8af-9e32-7e2e-3198-821f38c726e6)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-4f41417d-f4dc-3f54-2dda-66a49152d37c)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-6217bb34-db3b-f4d1-a0a2-fa2fc4ec754b)
+  rank 0 node0066 localid 0 cpus 0-71
+  rank 1 node0066 localid 1 cpus 72-143
+  rank 2 node0066 localid 2 cpus 144-215
+  rank 3 node0066 localid 3 cpus 216-287
+
+==== 게이트 np=8 (2노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_256_pencil ====
+  weak_256_pencil_np8_n2x4_r1          step_total    32.710 ms/step (rank max)   (14s)
+  weak_256_pencil_np8_n2x4_r2          step_total    32.124 ms/step (rank max)   (15s)
+  weak_256_pencil_np8_n2x4_r3          step_total    32.084 ms/step (rank max)   (15s)
+
+==== weak_256_slab ====
+  weak_256_slab_np8_n2x4_r1            step_total    31.587 ms/step (rank max)   (14s)
+  weak_256_slab_np8_n2x4_r2            step_total    31.570 ms/step (rank max)   (14s)
+  weak_256_slab_np8_n2x4_r3            step_total    31.539 ms/step (rank max)   (14s)
+
+==== weak_512_pencil ====
+  weak_512_pencil_np8_n2x4_r1          step_total   230.662 ms/step (rank max)   (56s)
+  weak_512_pencil_np8_n2x4_r2          step_total   230.509 ms/step (rank max)   (55s)
+  weak_512_pencil_np8_n2x4_r3          step_total   230.682 ms/step (rank max)   (56s)
+
+==== weak_512_slab ====
+  weak_512_slab_np8_n2x4_r1            step_total   185.277 ms/step (rank max)   (46s)
+  weak_512_slab_np8_n2x4_r2            step_total   185.418 ms/step (rank max)   (46s)
+  weak_512_slab_np8_n2x4_r3            step_total   185.402 ms/step (rank max)   (46s)
+
+==== strong_1024_pencil ====
+  strong_1024_pencil_np8_n2x4_r1       step_total   230.632 ms/step (rank max)   (55s)
+  strong_1024_pencil_np8_n2x4_r2       step_total   230.561 ms/step (rank max)   (55s)
+  strong_1024_pencil_np8_n2x4_r3       step_total   231.310 ms/step (rank max)   (56s)
+
+==== strong_1024_slab ====
+  strong_1024_slab_np8_n2x4_r1         step_total   185.458 ms/step (rank max)   (46s)
+  strong_1024_slab_np8_n2x4_r2         step_total   185.485 ms/step (rank max)   (46s)
+  strong_1024_slab_np8_n2x4_r3         step_total   185.511 ms/step (rank max)   (46s)
+
+==== strong_2048_pencil ====
+
+==== strong_2048_slab ====
+
+==== DONE 2026-11-16 07:47:17 ====
+==== 전 18 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

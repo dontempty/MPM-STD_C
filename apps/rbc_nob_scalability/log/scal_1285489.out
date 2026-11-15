@@ -1,0 +1,112 @@
+############################################################
+ job      1285489   nodes 16 (node[0168-0183])   2026-11-16 07:40:32
+ np       64   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  strong_1024_pencil strong_1024_slab strong_2048_pencil strong_2048_slab
+ reps 3   gate 1   timeout 900s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx
+ bin      2026-11-03 10:11:56  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-1d425e3f-dbd0-8ef9-feb6-6b29351bd3e3)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-1fabade3-dbad-eb0a-76de-89680b91be9a)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-42ccaebf-f589-2744-c913-97c43d18ad89)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-43fbb739-28ec-a80b-33d7-c879136f47ec)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-45498a5f-27f8-3333-717f-65868ea949be)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-46308957-6240-47c1-0738-1aa5037fb562)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-4f736ade-8e72-b05a-2eba-9fc2147e36ca)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-5175c653-65fa-9bea-d921-e6eef4a62c88)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-549bb710-b8c8-c3d3-b51a-79b09670c009)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-5d44780a-8b7f-c0b3-543d-f48447f4b60e)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-603df580-1f58-3ab4-6da3-805761ad7ba5)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-a04760ac-1235-4bc8-bff7-20a4f8514564)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-b690e241-5ac7-f7ec-f5b6-5a3bb31b9f18)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-c8f0765b-02ae-ba77-abcb-5917da261f4e)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-ceb39f61-9970-3118-6301-a0bf9bc5219e)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-e69c541e-8a41-4457-c968-973869eb942c)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-3c4cbd7d-3e9d-0933-3433-f9b4e3a6ebda)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-4300a96a-355b-fe55-2d16-d983103510dc)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-6111a073-4da6-e45a-8f72-d20ba1de0bb8)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-67c96833-9502-87c7-f062-6eea17ed0b8f)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-68547a17-9a11-32a2-2513-6762738977fa)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-6b2efa23-d6cd-6aab-22f3-2fe5a9a54596)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-6bd368d5-7084-ed17-a126-e6960dc774e9)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-80074a72-4d0a-087d-7b2a-621b47ceedc3)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-8d976853-54aa-59c7-84e5-169da7450ab1)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-9b405bab-4097-f6df-6129-69246e73af80)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-abb86d4c-fe4d-5163-4f5a-5e0a94f89d86)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-afac7833-cf01-9a33-5a72-341b8d780a7f)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-c308e9d9-1b3e-3447-dcd5-36c6e048ca91)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-e174575b-d8c6-8dbe-680b-b93e91bc6ecb)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-ebbdcc5a-aa5f-eae0-eced-77fc8c1b9d51)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-fc7a6490-1c0e-f86d-dc9f-ca69316eb8ca)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-0857cc69-f29c-ec12-2a92-b24ada9fc88e)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-101c9f07-f373-3120-13d3-ff099dc4fa84)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-14c875a5-ab7a-764b-d3ec-3fb15a193209)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-267c7311-8921-47a2-a198-5d10d03e09f4)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-44d9a9f3-f90d-d92f-a681-0ea79bb46fa4)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-51f328cc-b863-cebf-f4cc-f15a814f3fe5)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-595288c1-b0e9-c7bc-e56d-c7444c59b009)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-5e065963-123f-83c1-6102-0a4ada089d5a)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-616de94f-14e1-fe15-9e53-1289574af964)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-78fc2f16-2fad-21d2-dd34-bc602f73a3cc)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-83bf7c2c-7a36-1dc5-de64-68f23736adc5)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-8ef1fa8a-c378-4131-0cb4-f8a35c702a2c)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-8f3b8d1b-40fe-2849-76d1-30e599e1ab59)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-b327cc33-fbd2-9fe4-d0d9-7145f032fcec)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-d40e3f9e-dec6-412f-91a8-376db9225be4)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-ea34f16a-d707-592e-6427-727584bff4fb)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-1013a596-a159-580e-e047-1b445e1f4383)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-2078f4bd-eaeb-8016-72e8-5c3ef76a96c9)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-26f4c306-beaa-322b-3e24-d5707dd54265)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-36531b65-0cfe-daab-691d-850ab99a21a3)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-439cdb31-3753-83cd-5ee5-9fdc2f67c453)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-55153025-4b24-8df5-6920-b7e7da3342e7)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-5e21d627-3c00-9a8e-41d8-e4252dc88beb)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-67384dce-dc60-c91e-d8de-eb95dd4d640f)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-6b80c6df-f686-a68f-8d94-b2f45123761a)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-6eb88ea5-dfb2-91ca-e85c-dbc9c2eadcf7)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-a5babe2d-5228-0314-e951-f2f909d9f610)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-b4dbec12-6a64-8b32-4542-9bca59cdcf8a)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-ba978a77-c63e-36d7-a2ec-ad39e0b7a869)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-c714e4d5-1c8c-6b4b-bb76-1eeac438a422)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-ced3051b-1f18-20e1-f3c4-c60ee821d8af)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-e7d9c929-0762-9d5b-5661-1cd39e9465fd)
+  rank 0 node0168 localid 0 cpus 0-71
+  rank 1 node0168 localid 1 cpus 72-143
+  rank 2 node0168 localid 2 cpus 144-215
+  rank 3 node0168 localid 3 cpus 216-287
+
+==== 게이트 np=64 (16노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== strong_1024_pencil ====
+  strong_1024_pencil_np64_n16x4_r1     FAIL rc=124
+      | srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+      | [2026-11-16T07:55:54.310] error: *** STEP 1285489.4 ON node0168 CANCELLED AT 2026-11-16T07:55:54 DUE to SIGNAL Killed ***
+      | srun: error: node0175: task 28: Killed
+      | srun: error: node0173: task 20: Killed
+      | srun: error: node0182: tasks 56-59: Killed
+  strong_1024_pencil_np64_n16x4_r2     step_total    45.718 ms/step (rank max)   (18s)
+  strong_1024_pencil_np64_n16x4_r3     step_total    45.586 ms/step (rank max)   (18s)
+
+==== strong_1024_slab ====
+  strong_1024_slab_np64_n16x4_r1       step_total    62.105 ms/step (rank max)   (21s)
+  strong_1024_slab_np64_n16x4_r2       step_total    62.047 ms/step (rank max)   (22s)
+  strong_1024_slab_np64_n16x4_r3       step_total    62.265 ms/step (rank max)   (22s)
+
+==== strong_2048_pencil ====
+  strong_2048_pencil_np64_n16x4_r1     step_total   292.951 ms/step (rank max)   (69s)
+  strong_2048_pencil_np64_n16x4_r2     step_total   292.477 ms/step (rank max)   (70s)
+  strong_2048_pencil_np64_n16x4_r3     step_total   293.036 ms/step (rank max)   (69s)
+
+==== strong_2048_slab ====
+  strong_2048_slab_np64_n16x4_r1       step_total   261.556 ms/step (rank max)   (63s)
+  strong_2048_slab_np64_n16x4_r2       step_total   261.613 ms/step (rank max)   (62s)
+  strong_2048_slab_np64_n16x4_r3       step_total   261.592 ms/step (rank max)   (62s)
+
+==== DONE 2026-11-16 08:04:11 ====
+==== !!! 12 런 중 1 런 실패 — 해당 CSV 는 쓰지 말 것 !!! ====
+
+    strong_1024_pencil_np64_n16x4_r1_j1285489  rc=124  (/scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx/strong_1024_pencil/strong_1024_pencil_np64_n16x4_r1_j1285489.log)

@@ -3,6 +3,16 @@
 
   python3 gen_decks.py                            # 기본: n 256·512, strong·weak, slab·pencil, np 1..64
   python3 gen_decks.py --sizes 256 --np 1 2 4 8   # 일부만
+  논문 세트 (decks_zyx/, 셀 크기 = weak_512 와 같음, pencil = cube 블록 zyx, slab = 같은 전역 격자를 1x1xnp 로;
+  *_phases 는 --solver-phases --out decks_zyx_phases 를 더해 같은 명령; paper_campaign.md):
+  python3 gen_decks.py --modes weak   --decomps pencil --pencil-order zyx --sizes 256 512 --np 1 2 4 8 16 32 64 128 256 512 --out decks_zyx
+  python3 gen_decks.py --modes weak   --decomps slab   --pencil-order zyx --slab-mesh pencil --sizes 256 512 --np 8 16 32 64 128 256 --out decks_zyx
+  python3 gen_decks.py --modes strong --decomps pencil --pencil-order zyx --strong-ref 512 --sizes 1024 --np 4 8 16 32 64 128 256 512 --out decks_zyx
+  python3 gen_decks.py --modes strong --decomps pencil --pencil-order zyx --strong-ref 512 --sizes 2048 --np 16 32 64 128 256 512 --out decks_zyx
+  python3 gen_decks.py --modes strong --decomps slab   --strong-ref 512 --sizes 1024 --min-local 4 --np 8 16 32 64 128 256 --out decks_zyx
+  python3 gen_decks.py --modes strong --decomps slab   --strong-ref 512 --sizes 2048 --np 16 32 64 128 256 --out decks_zyx
+    (GH200 120 GB: 512³/GPU ≈ 27 GB → 랭크당 2·512³ (54 GB) 까지 확실. 1024³ 는 np ≥ 4, 2048³ 는 np ≥ 32;
+     2048³ np 16 (4·512³ ≈ 108 GB) 은 시험용 — OOM 이면 뺀다. strong_1024 slab np 256 은 nz_local 4 (하한 완화).)
 
   decks/<study>/<study>_np<N>.ini      study = <strong|weak>_<n>_<slab|pencil>
     strong : 전역 n³ 고정.
@@ -53,20 +63,24 @@ def split(np_, decomp, order="xyz"):
     return tuple(p)
 
 
-def case(mode, n, decomp, np_, order="xyz"):
-    """(전역 격자, 도메인, 프로세스 격자) 또는 만들 수 없으면 (None, 이유)"""
+def case(mode, n, decomp, np_, order="xyz", strong_ref=0, slab_mesh="slab", min_local=MIN_LOCAL):
+    """(전역 격자, 도메인, 프로세스 격자) 또는 만들 수 없으면 (None, 이유)
+       strong_ref > 0 이면 strong 도메인 = BASE_L × n/strong_ref — 셀 크기를 weak_<strong_ref> 와 같게 (논문 strong 세트).
+       slab_mesh = "pencil" 이면 weak slab 의 전역 격자·도메인을 같은 np 의 pencil 과 같게 잡는다 (분할만 1x1xnp) —
+       같은 문제를 slab / pencil 로 나눈 비교. 기본 "slab" 은 z 로만 늘리는 원래 규칙."""
     procs = split(np_, decomp, order)
     if mode == "strong":
         mesh = (n, n, n)
-        length = BASE_L
+        length = tuple(l * n / strong_ref for l in BASE_L) if strong_ref else BASE_L
     else:
-        mesh = tuple(n * p for p in procs)
-        length = tuple(l * p for l, p in zip(BASE_L, procs))
+        grow = split(np_, "pencil", order) if (decomp == "slab" and slab_mesh == "pencil") else procs
+        mesh = tuple(n * p for p in grow)
+        length = tuple(l * p for l, p in zip(BASE_L, grow))
     for axis, (m, p) in enumerate(zip(mesh, procs)):
         if m % p:
             return None, f"{'xyz'[axis]} {m} 이 {p} 로 안 나뉜다"
-        if m // p < MIN_LOCAL:
-            return None, f"{'xyz'[axis]}_local {m // p} < {MIN_LOCAL}"
+        if m // p < min_local:
+            return None, f"{'xyz'[axis]}_local {m // p} < {min_local}"
     groups = procs[0] * procs[1]   # 압력 펜슬 전치 조건 (pressure/solve.hpp): ny ≥ npx·npy, x 모드 수 ≥ npx·npy
     if mesh[1] < groups or mesh[0] // 2 + 1 < groups:
         return None, "압력 펜슬 전치 조건 (ny, nx/2+1 ≥ npx·npy)"
@@ -121,6 +135,12 @@ def main():
     ap.add_argument("--solver-phases", action="store_true",
                     help="[timing] solver_phases = true (풀이 안의 호출별 구간까지; 경계 동기화가 늘어 느려진다)")
     ap.add_argument("--pencil-order", default="xyz", help="pencil 을 나누는 축 순서 (기본 xyz, 예: zyx)")
+    ap.add_argument("--strong-ref", type=int, default=0,
+                    help="strong 도메인 = 6×6×1 × n/REF (셀 크기를 weak_REF 와 같게; 기본 0 = 6×6×1 고정)")
+    ap.add_argument("--slab-mesh", default="slab", choices=["slab", "pencil"],
+                    help="weak slab 의 전역 격자: slab = z 로만 늘림(기본), pencil = 같은 np 의 pencil 과 같은 전역 격자 (slab/pencil 비교용)")
+    ap.add_argument("--min-local", type=int, default=MIN_LOCAL,
+                    help=f"랭크당 축 셀 수 하한 (기본 {MIN_LOCAL}; strong slab 의 큰 np 에 4 등으로 낮출 수 있다)")
     ap.add_argument("--out", default=os.path.join(HERE, "decks"),
                     help="덱 최상위 폴더 (기본 decks/; 다르면 job_scal.sh 에 DECKS= 로 넘긴다)")
     a = ap.parse_args()
@@ -133,7 +153,7 @@ def main():
             for decomp in a.decomps:
                 study = f"{mode}_{n}_{decomp}"
                 for np_ in a.nps:
-                    built, why = case(mode, n, decomp, np_, a.pencil_order)
+                    built, why = case(mode, n, decomp, np_, a.pencil_order, a.strong_ref, a.slab_mesh, a.min_local)
                     if built is None:
                         print(f"  skip {study} np {np_}: {why}")
                         continue

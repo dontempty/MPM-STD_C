@@ -1,0 +1,40 @@
+ 0: # settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/_diag/big.ini  (64 ranks, tdma=pascal)
+ 0: [mesh]
+ 0: nx = 2048
+ 0: ny = 2048
+ 0: nz = 2048
+ 0: 
+ 0: [domain]
+ 0: lx = 24
+ 0: ly = 24
+ 0: lz = 4
+ 0: 
+ 0: [stretch]
+ 0: uniform_z = false
+ 0: gamma_z = 2.6
+ 0: 
+ 0: [process]
+ 0: npx = 4
+ 0: npy = 4
+ 0: npz = 4
+ 0: 
+ 0: [physics]
+ 0: rayleigh = 1000000
+ 0: prandtl = 2547
+ 0: delta_temperature = 40
+ 0: 
+ 0: [initial]
+ 0: perturb = 0.05
+ 0: 
+ 0: [time]
+ 0: max_step = 4
+ 0: dt_max = 0.05
+ 0: max_cfl = 0.3
+ 0: viscous_coupling_number = 12
+ 0: 
+ 0: [output]
+ 0: monitor_interval = 1
+ 0: 
+ 0: [timing]
+ 0: warmup_steps = 1
+ 0: solver_phases = false

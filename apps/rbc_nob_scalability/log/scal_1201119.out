@@ -1,0 +1,33 @@
+############################################################
+ job      1201119   nodes 1 (node0161)   2026-11-02 21:38:20
+ np       1/4 2/4 4/4   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_512_pencil
+ reps 2   gate 1   timeout 400s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/weak512_zyx_selfcopy
+ bin      2026-11-02 21:37:59  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-9de9c547-f3bf-0cb8-550b-d403b72821d3)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-3bc511fc-014e-562d-8df5-1703540cfc06)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-a8790e24-461f-5fb1-4f1a-4f5d38907732)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-a0ee114b-6385-5a4a-3583-7232587f8410)
+  rank 0 node0161 localid 0 cpus 0-71
+  rank 1 node0161 localid 1 cpus 72-143
+  rank 2 node0161 localid 2 cpus 144-215
+  rank 3 node0161 localid 3 cpus 216-287
+
+==== 게이트 np=4 (1노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_512_pencil ====
+  weak_512_pencil_np1_n1x1_r1          step_total   159.840 ms/step (rank max)   (35s)
+  weak_512_pencil_np1_n1x1_r2          step_total   159.991 ms/step (rank max)   (37s)
+  weak_512_pencil_np2_n1x2_r1          step_total   174.070 ms/step (rank max)   (41s)
+  weak_512_pencil_np2_n1x2_r2          step_total   174.186 ms/step (rank max)   (43s)
+  weak_512_pencil_np4_n1x4_r1          step_total   197.472 ms/step (rank max)   (49s)
+  weak_512_pencil_np4_n1x4_r2          step_total   197.557 ms/step (rank max)   (48s)
+
+==== DONE 2026-11-02 21:43:19 ====
+==== 전 6 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

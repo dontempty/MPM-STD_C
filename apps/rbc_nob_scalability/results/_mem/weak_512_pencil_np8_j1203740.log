@@ -1,0 +1,83 @@
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_mem/weak_512_pencil/weak_512_pencil_np8.ini  (8 ranks, tdma=pascal)
+[mesh]
+nx = 1024
+ny = 1024
+nz = 1024
+
+[domain]
+lx = 12
+ly = 12
+lz = 2
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 2
+npy = 2
+npz = 2
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 6
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 3
+
+[timing]
+warmup_steps = 2
+solver_phases = false
+# mem context + topology             2.41 GB  (+   2.41)
+# mem app fields (10)               13.30 GB  (+  10.89)
+# mem property fields (6)           19.83 GB  (+   6.53)
+# mem workspace (5 slots)           25.21 GB  (+   5.38)
+# mem momentum solver               25.38 GB  (+   0.18)
+# mem scalar solver                 25.56 GB  (+   0.18)
+# mem pressure solver               30.11 GB  (+   4.56)
+# mem statistics                    32.29 GB  (+   2.18)
+# NOB glycerol: Ra=1e+06 Pr=2.55e+03 DeltaT=40.0K | 1024x1024x1024 on 2x2x2 ranks, warmup 2 of 6 steps
+# step      time        dt     max|div|   theta_c      Nu      Tmin     Tmax    Nu_b     Nu_t     D_x    u_bot_max  u_top_max  sec/step
+      1     0.000   0.00045   1.00e-10   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.835e-02  2.828e-02    0.232
+# mem after step 1                  32.30 GB  (+   0.00)
+      3     0.001   0.00045   7.78e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  2.437e-02  4.428e-02    0.157
+      6     0.003   0.00045   9.22e-13   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  8.872e-03  3.567e-02    0.230
+# phase timing: 4 steps, 8 ranks (ms/step; share = max/step_total)
+# phase                           min        avg        max   share%    imbal%
+# step_total                  232.598    232.601    232.605   100.00      0.00
+# dt_cfl                        3.030      3.035      3.037     1.31      0.24
+# dt_viscous                    0.974      0.978      0.981     0.42      0.70
+# properties_1                  2.216      2.225      2.232     0.96      0.72
+# scalar_solve                 31.013     31.030     31.051    13.35      0.12
+# sync_T                        0.356      0.368      0.383     0.16      7.48
+# momentum_rhs                 14.477     14.515     14.549     6.25      0.50
+# momentum_solve              101.779    101.811    101.877    43.80      0.10
+# sync_UVW_1                    1.016      1.065      1.104     0.47      8.30
+# properties_2                  2.219      2.232      2.244     0.96      1.11
+# pressure_rhs                  2.772      2.799      2.828     1.22      1.98
+# pressure_solve               58.685     58.721     58.752    25.26      0.11
+# pressure_correct              5.400      5.417      5.450     2.34      0.93
+# sync_UVW_2                    1.055      1.088      1.104     0.47      4.47
+# predictor                     1.860      1.861      1.861     0.80      0.07
+# clip                          0.687      0.693      0.700     0.30      1.83
+# monitor                       4.731      4.737      4.746     2.04      0.32
+# tdma_comm_scalar_x            0.226      0.247      0.284     0.12     23.71
+# tdma_comm_scalar_y            0.124      0.128      0.132     0.06      6.68
+# tdma_comm_scalar_z            0.116      0.124      0.134     0.06     14.39
+# tdma_comm_momentum_x          0.684      0.771      0.951     0.41     34.60
+# tdma_comm_momentum_y          0.329      0.480      0.746     0.32     86.85
+# tdma_comm_momentum_z          0.321      0.449      0.583     0.25     58.34
+# tdma_comm_pressure_z          1.023      4.134      8.340     3.59    177.02
+# pressure.comm.block_to_planes     15.518     19.777     22.882     9.84     37.23
+# pressure.comm.planes_to_block     15.521     18.839     20.361     8.75     25.69
+# timing csv: /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/_mem/weak_512_pencil_np8_j1203740.csv

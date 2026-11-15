@@ -1,0 +1,53 @@
+== weak_512_pencil_np1_j1203740  rc=0
+   node0321 gpu0  peak 25882 MiB / 97871 MiB
+   node0321 gpu1  peak 9 MiB / 97871 MiB
+   node0321 gpu2  peak 8 MiB / 97871 MiB
+   node0321 gpu3  peak 10 MiB / 97871 MiB
+   # mem context + topology             0.64 GB  (+   0.64)
+   # mem app fields (10)               11.53 GB  (+  10.89)
+   # mem property fields (6)           18.06 GB  (+   6.53)
+   # mem workspace (5 slots)           23.45 GB  (+   5.39)
+   # mem momentum solver               23.63 GB  (+   0.18)
+   # mem scalar solver                 23.80 GB  (+   0.18)
+   # mem pressure solver               23.89 GB  (+   0.09)
+   # mem statistics                    26.06 GB  (+   2.18)
+   # mem after step 1                  27.14 GB  (+   1.07)
+   >       6     0.003   0.00045   8.50e-13   0.00000   0.0000  -0.4996   0.4996   1.0077   0.9923   12.00  8.867e-03  3.371e-02    0.160
+== weak_512_pencil_np8_j1203740  rc=0
+   node0321 gpu0  peak 30800 MiB / 97871 MiB
+   node0321 gpu1  peak 29105 MiB / 97871 MiB
+   node0321 gpu2  peak 29102 MiB / 97871 MiB
+   node0321 gpu3  peak 29106 MiB / 97871 MiB
+   node0322 gpu0  peak 30799 MiB / 97871 MiB
+   node0322 gpu1  peak 29103 MiB / 97871 MiB
+   node0322 gpu2  peak 29103 MiB / 97871 MiB
+   node0322 gpu3  peak 29105 MiB / 97871 MiB
+   # mem context + topology             2.41 GB  (+   2.41)
+   # mem app fields (10)               13.30 GB  (+  10.89)
+   # mem property fields (6)           19.83 GB  (+   6.53)
+   # mem workspace (5 slots)           25.21 GB  (+   5.38)
+   # mem momentum solver               25.38 GB  (+   0.18)
+   # mem scalar solver                 25.56 GB  (+   0.18)
+   # mem pressure solver               30.11 GB  (+   4.56)
+   # mem statistics                    32.29 GB  (+   2.18)
+   # mem after step 1                  32.30 GB  (+   0.00)
+   >       6     0.003   0.00045   9.22e-13   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  8.872e-03  3.567e-02    0.230
+== weak_640_pencil_np8_j1203740  rc=0
+   node0321 gpu0  peak 57681 MiB / 97871 MiB
+   node0321 gpu1  peak 55987 MiB / 97871 MiB
+   node0321 gpu2  peak 55983 MiB / 97871 MiB
+   node0321 gpu3  peak 55987 MiB / 97871 MiB
+   node0322 gpu0  peak 57681 MiB / 97871 MiB
+   node0322 gpu1  peak 55984 MiB / 97871 MiB
+   node0322 gpu2  peak 55983 MiB / 97871 MiB
+   node0322 gpu3  peak 55986 MiB / 97871 MiB
+   # mem context + topology             2.41 GB  (+   2.41)
+   # mem app fields (10)               23.59 GB  (+  21.18)
+   # mem property fields (6)           36.30 GB  (+  12.71)
+   # mem workspace (5 slots)           46.81 GB  (+  10.51)
+   # mem momentum solver               47.13 GB  (+   0.33)
+   # mem scalar solver                 47.46 GB  (+   0.33)
+   # mem pressure solver               56.23 GB  (+   8.77)
+   # mem statistics                    60.47 GB  (+   4.24)
+   # mem after step 1                  60.48 GB  (+   0.01)
+   >       6     0.002   0.00029   1.38e-12   0.00000   0.0000  -0.4998   0.4998   1.0077   0.9923   12.00  8.871e-03  3.608e-02    0.462

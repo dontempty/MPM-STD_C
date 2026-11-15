@@ -1,0 +1,52 @@
+error (rank 7): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 6): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 5): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 4): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 2): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 1): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 3): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+error (rank 0): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_mem/weak_1024_pencil/weak_1024_pencil_np8.ini  (8 ranks, tdma=pascal)
+[mesh]
+nx = 2048
+ny = 2048
+nz = 2048
+
+[domain]
+lx = 12
+ly = 12
+lz = 2
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 2
+npy = 2
+npz = 2
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 6
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 3
+
+[timing]
+warmup_steps = 2
+solver_phases = false
+srun: error: node1048: tasks 5-7: Exited with exit code 1
+srun: error: node1047: tasks 1-3: Exited with exit code 1
+srun: error: node1048: task 4: Exited with exit code 1
+srun: error: node1047: task 0: Exited with exit code 1

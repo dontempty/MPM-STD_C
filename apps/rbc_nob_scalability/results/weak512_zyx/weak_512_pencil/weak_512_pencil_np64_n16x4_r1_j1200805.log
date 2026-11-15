@@ -1,0 +1,123 @@
+error (rank 3): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 2): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 0): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 1): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 19): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 16): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 27): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 36): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 37): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 38): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 39): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 18): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 24): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 25): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 17): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 26): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 45): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 46): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 44): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 47): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 9): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 8): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 11): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 29): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 10): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 28): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 31): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 30): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 13): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 14): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 12): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 15): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 22): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 23): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 20): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 21): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 33): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 32): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 35): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 34): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 50): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 51): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 49): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 48): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 57): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 61): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 56): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 59): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 58): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 60): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 62): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 63): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 43): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 40): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 42): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 41): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 52): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 54): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 55): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 53): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 6): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 5): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 4): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+error (rank 7): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), n * sizeof(real_t)) -> out of memory
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx/weak_512_pencil/weak_512_pencil_np64.ini  (64 ranks, tdma=pascal)
+[mesh]
+nx = 2048
+ny = 2048
+nz = 2048
+
+[domain]
+lx = 24
+ly = 24
+lz = 4
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 4
+npy = 4
+npz = 4
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 200
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 50
+
+[timing]
+warmup_steps = 50
+solver_phases = false
+srun: error: node0403: tasks 60,62-63: Exited with exit code 1
+srun: error: node0389: tasks 12-14: Exited with exit code 1
+srun: error: node0396: tasks 32-33,35: Exited with exit code 1
+srun: error: node0401: tasks 52-55: Exited with exit code 1
+srun: error: node0400: tasks 48-51: Exited with exit code 1
+srun: error: node0398: tasks 40-43: Exited with exit code 1
+srun: error: node0402: tasks 56-59: Exited with exit code 1
+srun: error: node0403: task 61: Exited with exit code 1
+srun: error: node0391: tasks 20-23: Exited with exit code 1
+srun: error: node0399: tasks 44-47: Exited with exit code 1
+srun: error: node0389: task 15: Exited with exit code 1
+srun: error: node0397: tasks 36-39: Exited with exit code 1
+srun: error: node0388: tasks 8-11: Exited with exit code 1
+srun: error: node0396: task 34: Exited with exit code 1
+srun: error: node0390: tasks 16-19: Exited with exit code 1
+srun: error: node0392: tasks 24-27: Exited with exit code 1
+srun: error: node0393: tasks 28-31: Exited with exit code 1
+srun: error: node0387: tasks 4-7: Exited with exit code 1
+srun: error: node0381: tasks 0-3: Exited with exit code 1

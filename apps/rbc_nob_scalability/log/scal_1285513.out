@@ -1,0 +1,47 @@
+############################################################
+ job      1285513   nodes 2 (node[0184-0185])   2026-11-16 07:56:58
+ np       8   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_512_pencil weak_512_slab strong_1024_pencil strong_1024_slab strong_2048_pencil strong_2048_slab
+ reps 1   gate 1   timeout 900s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx_phases
+ bin      2026-11-03 10:11:56  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+WARN: 덱 없음 /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx_phases/strong_2048_pencil/strong_2048_pencil_np8.ini — 이 조합은 건너뛴다 (gen_decks.py 가 만들지 않은 조합일 수 있다)
+WARN: 덱 없음 /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_zyx_phases/strong_2048_slab/strong_2048_slab_np8.ini — 이 조합은 건너뛴다 (gen_decks.py 가 만들지 않은 조합일 수 있다)
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-97cb35d1-313d-af28-580a-e131ffd632d5)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-a372e85e-ba95-81cb-8830-f0a67d0b7332)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-141e7b8e-3156-d10c-34dd-9ee31ea11cf4)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-5a79a2f6-2a28-a159-c668-d2baf8ba0c4a)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-456ff6fc-157e-8468-610d-e7bb88ca04fa)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-a670ad04-077b-13a1-7ce0-dd1b2123748c)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-9d491e2f-75b2-ef7c-c29d-dddcc1eb6c8c)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-bfb1f00e-82b2-61c5-e4a8-b2497d34afa6)
+  rank 0 node0184 localid 0 cpus 0-71
+  rank 1 node0184 localid 1 cpus 72-143
+  rank 2 node0184 localid 2 cpus 144-215
+  rank 3 node0184 localid 3 cpus 216-287
+
+==== 게이트 np=8 (2노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_512_pencil ====
+  weak_512_pencil_np8_n2x4_r1          step_total   230.700 ms/step (rank max)   (56s)
+
+==== weak_512_slab ====
+  weak_512_slab_np8_n2x4_r1            step_total   185.676 ms/step (rank max)   (46s)
+
+==== strong_1024_pencil ====
+  strong_1024_pencil_np8_n2x4_r1       step_total   230.831 ms/step (rank max)   (55s)
+
+==== strong_1024_slab ====
+  strong_1024_slab_np8_n2x4_r1         step_total   185.664 ms/step (rank max)   (47s)
+
+==== strong_2048_pencil ====
+
+==== strong_2048_slab ====
+
+==== DONE 2026-11-16 08:00:40 ====
+==== 전 4 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

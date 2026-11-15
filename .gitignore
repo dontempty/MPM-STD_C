@@ -19,13 +19,14 @@ apps/dhvc/plot/*.png
 apps/dhvc/restart_*/
 apps/dhvc/stats_smoke/
 apps/*/log/
+# 예외 (2026-11-16, 사용자 요청): rbc_nob_scalability 의 측정 결과는 커밋한다 —
+# results/ (CSV·런 로그·env 기록), log/ (Slurm 출력·게이트 로그), plot/figures/ (그림·표·README). 합계 약 11 MB.
+!apps/rbc_nob_scalability/log/
 # apps/ 에서 올라가는 것: main.cpp, settings.{hpp,cpp}, 입력 덱(*.ini),
 apps/*/out_val_*/
 apps/*/plot/*.png
 apps/rbc_nob/scalability/log/
 apps/rbc_nob/scalability/out/
-apps/rbc_nob_scalability/results/
-apps/rbc_nob_scalability/plot/figures/
 apps/*/restart_val_*/
 apps/*/scale/log/
 apps/*/scale/out/

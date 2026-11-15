@@ -1,0 +1,47 @@
+############################################################
+ job      1285500   nodes 4 (node[0136-0139])   2026-11-16 07:43:07
+ np       16   (기본 노드당 4 랭크; 항목 np/rpn 이 우선)
+ studies  weak_512_pencil weak_512_slab
+ reps 3   gate 1   timeout 900s/run
+ results  /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/results/paper_zyx
+ bin      2026-11-03 10:11:56  /scratch/t525a06/KDH/MPM-STD_C/build_gpu/bin/rbc_nob_scalability
+############################################################
+
+==== GPU / binding ====
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-43f27245-e87b-64f6-a992-6b3920e4e3d3)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-5a8ccc91-b49d-cfea-1af8-eaec695c9acb)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-6704cab0-1f0f-d7c0-61b2-4f3f1735e924)
+      1 GPU 0: NVIDIA GH200 120GB (UUID: GPU-be47329f-1a78-7ac9-9781-bce806963496)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-3c7605c4-1903-5487-c4b6-a9072b4c0084)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-4c965c60-ae52-e9ed-bf84-21651f6f252c)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-94198832-e96e-a114-e5f0-e82c1116b71f)
+      1 GPU 1: NVIDIA GH200 120GB (UUID: GPU-b5153a8f-ce37-88a6-46e0-4a87bbc86be6)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-51be5699-2c43-2ee4-022b-b44e55398f21)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-741df530-77dd-716d-4dfc-7d6c576079f7)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-d4251d31-ae47-7148-caa2-6af417e70cad)
+      1 GPU 2: NVIDIA GH200 120GB (UUID: GPU-e4298872-9364-7bb2-b78c-4a24fed9dfff)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-42aeaa9e-1a89-05b8-3b85-4e9e008af029)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-7d8ed942-d5dc-ad4a-4947-f277e15a5a21)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-8295424e-bfc0-aec6-70d0-52e63945729a)
+      1 GPU 3: NVIDIA GH200 120GB (UUID: GPU-979b9141-b49e-e811-2fee-250784275db9)
+  rank 0 node0136 localid 0 cpus 0-71
+  rank 1 node0136 localid 1 cpus 72-143
+  rank 2 node0136 localid 2 cpus 144-215
+  rank 3 node0136 localid 3 cpus 216-287
+
+==== 게이트 np=16 (4노드 x 4): rbc_nob vs rbc_nob_scalability (decks/gate/, 60 스텝) ====
+  steps compared 7, identical
+  GATE PASS
+
+==== weak_512_pencil ====
+  weak_512_pencil_np16_n4x4_r1         step_total   243.176 ms/step (rank max)   (70s)
+  weak_512_pencil_np16_n4x4_r2         step_total   243.604 ms/step (rank max)   (59s)
+  weak_512_pencil_np16_n4x4_r3         step_total   243.268 ms/step (rank max)   (59s)
+
+==== weak_512_slab ====
+  weak_512_slab_np16_n4x4_r1           step_total   189.626 ms/step (rank max)   (47s)
+  weak_512_slab_np16_n4x4_r2           step_total   189.574 ms/step (rank max)   (47s)
+  weak_512_slab_np16_n4x4_r3           step_total   189.627 ms/step (rank max)   (47s)
+
+==== DONE 2026-11-16 07:48:58 ====
+==== 전 6 런 정상 (rc=0, step_total 있음) — python3 summarize.py ====

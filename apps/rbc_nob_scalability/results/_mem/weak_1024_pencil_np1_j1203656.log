@@ -1,0 +1,42 @@
+error (rank 0): CUDA failed: cudaMalloc(reinterpret_cast<void**>(&data_), size_ * sizeof(real_t)) -> out of memory
+# settings loaded from /scratch/t525a06/KDH/MPM-STD_C/apps/rbc_nob_scalability/decks_mem/weak_1024_pencil/weak_1024_pencil_np1.ini  (1 ranks, tdma=pascal)
+[mesh]
+nx = 1024
+ny = 1024
+nz = 1024
+
+[domain]
+lx = 6
+ly = 6
+lz = 1
+
+[stretch]
+uniform_z = false
+gamma_z = 2.6
+
+[process]
+npx = 1
+npy = 1
+npz = 1
+
+[physics]
+rayleigh = 1000000
+prandtl = 2547
+delta_temperature = 40
+
+[initial]
+perturb = 0.05
+
+[time]
+max_step = 6
+dt_max = 0.05
+max_cfl = 0.3
+viscous_coupling_number = 12
+
+[output]
+monitor_interval = 3
+
+[timing]
+warmup_steps = 2
+solver_phases = false
+srun: error: node1048: task 0: Exited with exit code 1
